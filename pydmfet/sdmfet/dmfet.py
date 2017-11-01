@@ -3,7 +3,7 @@ from pydmfet import subspac,oep
 
 class DMFET:
 
-    def __init__(self, ints, cluster, impAtom, Ne_frag, oep_params = None, ecw_method = 'HF', is_dfet = False):
+    def __init__(self, ints, cluster, impAtom, Ne_frag, oep_params = None, ecw_method = 'HF', do_dfet = False):
 
         self.ints = ints
         self.cluster = cluster
@@ -17,7 +17,7 @@ class DMFET:
 
 
         self.ecw_method = ecw_method
-        self.is_dfet = is_dfet
+        self.do_dfet = do_dfet
 
         #construct subspace
         self.OneDM_loc = self.ints.build_1pdm_loc()
