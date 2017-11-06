@@ -6,6 +6,7 @@ def scf( OEI, TEI, Norb, Nelec, OneDM0=None ):
 
 
     # Get the RHF solution
+    OEI = 0.5*(OEI.T + OEI)
     mol = gto.Mole()
     mol.build( verbose=0 )
     mol.atom.append(('C', (0, 0, 0)))
@@ -16,16 +17,37 @@ def scf( OEI, TEI, Norb, Nelec, OneDM0=None ):
     mf.get_ovlp = lambda *args: np.eye( Norb )
     mf._eri = ao2mo.restore(8, TEI, Norb)
     mf.scf( OneDM0 )
-    DMloc = np.dot(np.dot( mf.mo_coeff, np.diag( mf.mo_occ )), mf.mo_coeff.T )
 
     if ( mf.converged == False ):
         assert(0==1)
 
-    ERHF = mf.e_tot
+    #ERHF = mf.e_tot
     RDM1 = mf.make_rdm1()
+    RDM1 = 0.5*(RDM1.T + RDM1)
     JK   = mf.get_veff(None, dm=RDM1)
+    JK = 0.5*(JK.T + JK)
 
+
+    energy = np.trace(np.dot(RDM1,OEI)) + 0.5*np.trace(np.dot(RDM1,JK)) 
+
+    return ( energy, RDM1 )
+
+
+def scf_oei( OEI, Norb, Nelec):
+
+    FOCKcopy = OEI.copy()
+    FOCKcopy = 0.5*(FOCKcopy.T + FOCKcopy)
+    eigenvals, eigenvecs = np.linalg.eigh( FOCKcopy )
+
+    Nocc = Nel/2  #closed shell
+
+    idx = eigenvals.argsort()
+    eigenvals = eigenvals[idx]
+    eigenvecs = eigenvecs[:,idx]
+    RDM1 = 2 * np.dot( eigenvecs[:,:Nocc] , eigenvecs[:,:Nocc].T )
     RDM1 = 0.5*(RDM1.T + RDM1)
 
-    return ( ERHF, RDM1 )
+    energy = np.trace(np.dot(RDM1,FOCKcopy))
+
+    return ( energy, RDM1 )
 

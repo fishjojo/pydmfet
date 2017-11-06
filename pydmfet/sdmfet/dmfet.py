@@ -3,7 +3,7 @@ from pydmfet import subspac,oep
 
 class DMFET:
 
-    def __init__(self, ints, cluster, impAtom, Ne_frag, oep_params = None, ecw_method = 'HF', do_dfet = False):
+    def __init__(self, ints, cluster, impAtom, Ne_frag, charge=[0,0], spin=[0,0], sub_threshold = 1e-13, oep_params = None, ecw_method = 'HF', do_dfet = False):
 
         self.ints = ints
         self.cluster = cluster
@@ -14,19 +14,29 @@ class DMFET:
         self.dim_frag = np.sum(self.cluster)
         self.dim_env = self.cluster.size - self.dim_frag
 
-
+	self.charge = charge
+	self.spin   = spin
 
         self.ecw_method = ecw_method
         self.do_dfet = do_dfet
+	self.sub_threshold = sub_threshold
 
         #construct subspace
         self.OneDM_loc = self.ints.build_1pdm_loc()
-        self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub = subspac.construct_subspace(self.OneDM_loc, self.cluster)
+        self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, eignimp, eignbath = subspac.construct_subspace(self.OneDM_loc, self.cluster, self.sub_threshold)
         self.dim_sub = self.dim_imp + self.dim_bath
 
+	print 'dimension of subspace'
+	print self.dim_imp,  self.dim_bath
+
         #construct core determinant
-        self.core1PDM_loc, self.Nelec_core = subspac.build_core(self.Occupations, self.loc2sub)
+	idx = self.dim_frag + self.dim_bath
+        self.core1PDM_loc, self.Nelec_core, Norb_imp_throw = subspac.build_core(self.Occupations, self.loc2sub, idx)
+	self.Ne_frag = self.Ne_frag - Norb_imp_throw*2
         self.Ne_env = self.ints.Nelec - self.Ne_frag - self.Nelec_core
+	
+	print 'Ne_frag, Ne_env, Ne_core'
+	print self.Ne_frag, self.Ne_env, self.Nelec_core
 
         self.umat = None
         dim = self.dim_sub

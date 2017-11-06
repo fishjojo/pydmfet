@@ -1,14 +1,65 @@
 import numpy as np
 
-def build_core(occ,loc2sub):
+def fullP_to_fragP(P,dim_imp, dim):
+
+    eigenvals, eigenvecs = np.linalg.eigh( P ) 
+    tmp = -eigenvals
+    idx = tmp.argsort()
+
+    eigenvals = eigenvals[idx]
+    eigenvecs = eigenvecs[:,idx]
+
+    P_imp = np.zeros([dim, dim],dtype = float)
+    P_bath = np.zeros([dim, dim],dtype = float)
+
+    for i in range(dim):
+	if(eigenvals[i] > 1.99):
+	    isimp = classify_orb(eigenvecs[:,i],dim_imp)
+	    if isimp :
+		P_imp = P_imp + 2.0*np.outer(eigenvecs[:,i], eigenvecs[:,i]) 
+	    else :
+		P_bath = P_bath + 2.0*np.outer(eigenvecs[:,i], eigenvecs[:,i])
+	elif(eigenvals[i] > 0.01):
+	    print "fatal error"
+	    assert(0==1)
+
+    return (P_imp,P_bath)
+
+def classify_orb(orb,dim_imp):
+
+    sum_imp = 0.0
+    for i in range(dim_imp):
+	sum_imp += orb[i]*orb[i]
+
+    sum_bath = 1.0-sum_imp
+
+    if(sum_imp > sum_bath):
+	return True
+    else:
+	return False
+
+
+def build_Pimp(occ,loc2sub,tokeep_imp,dim):
+
+    occ_loc = np.zeros([dim],dtype=float)
+    occ_loc[:tokeep_imp] = occ[:tokeep_imp]
+
+    Pimp_loc = np.dot( np.dot( loc2sub, np.diag( occ_loc ) ), loc2sub.T )
+
+    return Pimp_loc
+
+def build_core(occ,loc2sub,idx_imp):
 
         core_cutoff = 0.01
 
+	Ne_imp = 0
         for cnt in range(len(occ)):
             if ( occ[ cnt ] < core_cutoff ):
                 occ[ cnt ] = 0.0
             elif ( occ[ cnt ] > 2.0 - core_cutoff ):
                 occ[ cnt ] = 2.0
+		if(cnt < idx_imp):
+		    Ne_imp += 1
             else:
                 print "environment orbital occupation = ", occ[ cnt ]
                 print "subspace construction failed!"
@@ -16,7 +67,7 @@ def build_core(occ,loc2sub):
 
         Nelec_core = int(round(np.sum( occ )))
         core1PDM_loc = np.dot( np.dot( loc2sub, np.diag( occ ) ), loc2sub.T )
-        return (core1PDM_loc, Nelec_core)
+        return (core1PDM_loc, Nelec_core, Ne_imp)
 
 
 def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
@@ -108,7 +159,7 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
 
     #print loc2sub
     Occupations = np.hstack(( eigenvals_imp, eigenvals_bath ))
-
+    #print Occupations
     Occupations[:tokeep_imp] = 0.0
     Occupations[numImpOrbs:numImpOrbs+tokeep_bath] = 0.0
     #print Occupations
@@ -125,4 +176,4 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
         _Occupations[tokeep_imp:tokeep_imp+tokeep_bath] = Occupations[numImpOrbs:numImpOrbs+tokeep_bath]
         _Occupations[tokeep_imp+tokeep_bath:tokeep_bath+numImpOrbs] = Occupations[tokeep_imp:numImpOrbs]
 
-    return ( tokeep_imp, tokeep_bath, _Occupations, _loc2sub )
+    return ( tokeep_imp, tokeep_bath, _Occupations, _loc2sub,eigenvals_imp, eigenvals_bath )

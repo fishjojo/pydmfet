@@ -17,13 +17,14 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 '''
 
-from pyscf import gto, scf, ao2mo, tools, future
+from pyscf import gto, scf, ao2mo, tools
 from pyscf import lo
 from pyscf.lo import nao, orth
 from pyscf.tools import molden, localizer
 from pydmfet.locints import iao_helper
 from pydmfet import tools
 import numpy as np
+import copy
 
 class LocalIntegrals:
 
@@ -79,7 +80,7 @@ class LocalIntegrals:
             self.TI_OK = False # Check yourself if OK, then overwrite
             #self.molden( 'dump.molden' ) # Debugging mode
         assert( self.loc_ortho() < 1e-8 )
-        
+
         # Effective Hamiltonian due to frozen part
         self.frozenDMmo  = np.array( the_mf.mo_occ, copy=True )
         self.frozenDMmo[ self.active==1 ] = 0 # Only the frozen MO occupancies nonzero
@@ -192,74 +193,74 @@ class LocalIntegrals:
             TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
         return TEIdmet
         
-    def frag_mol_ao(self, impAtom):
+    def frag_mol_ao(self, impAtom, charge = 0, spin = 0):
         '''
             Xing: get fragment Vnuc
         '''
-        mol1 = gto.Mole()
-        mol1.atom = self.mol.atom[:]
+	mol1 = copy.deepcopy(self.mol)
+	mol1.atom = gto.format_atom(mol1.atom, unit = 'B') #hack, don't change coordinates
+	mol1.charge = charge
+	mol1.spin = spin
 
-        NAtom = len(mol1.atom)
+        NAtom = mol1.natm
         for i in range(NAtom):
             if(impAtom[i] == 0):
                 lst = list(mol1.atom[i])
                 lst[0] = 'ghost'+lst[0]
                 mol1.atom[i] = tuple(lst)
-        
-        mol1.basis = self.mol.basis
-        mol1.build(verbose=0)
 
+        mol1.build(verbose=0)
         return mol1
 
-    def frag_oei_loc(self, impAtom):
+    def frag_oei_loc(self, impAtom, charge = 0, spin = 0):
 
-        mol = self.frag_mol_ao(impAtom)
+        mol = self.frag_mol_ao(impAtom, charge, spin)
         oei_ao = mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
 
-    def frag_oei_sub( self, impAtom, loc2sub, numActive ):
+    def frag_oei_sub( self, impAtom, loc2sub, numActive,charge = 0, spin = 0 ):
 
-        oei_loc = self.frag_oei_loc(impAtom)
+        oei_loc = self.frag_oei_loc(impAtom, charge, spin )
         subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
         return subOEI
 
 
-    def frag_vnuc_loc(self, impAtom):
-        mol = self.frag_mol_ao(impAtom)
+    def frag_vnuc_loc(self, impAtom, charge = 0, spin = 0):
+        mol = self.frag_mol_ao(impAtom, charge, spin)
         oei_ao = mol.intor('cint1e_nuc_sph')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
 
-    def frag_vnuc_sub( self, impAtom, loc2sub, numActive ):
+    def frag_vnuc_sub( self, impAtom, loc2sub, numActive,charge = 0, spin = 0 ):
 
-        oei_loc = self.frag_vnuc_loc(impAtom)
+        oei_loc = self.frag_vnuc_loc(impAtom,charge, spin)
         subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
         return subOEI
 
 
 
-    def frag_kin_loc(self, impAtom):
+    def frag_kin_loc(self, impAtom, charge = 0, spin = 0):
 
-        mol = self.frag_mol_ao(impAtom)
+        mol = self.frag_mol_ao(impAtom, charge, spin)
         oei_ao = mol.intor('cint1e_kin_sph')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
 
-    def frag_kin_sub( self, impAtom, loc2sub, numActive ):
+    def frag_kin_sub( self, impAtom, loc2sub, numActive,charge = 0, spin = 0 ):
 
-        oei_loc = self.frag_kin_loc(impAtom)
+        oei_loc = self.frag_kin_loc(impAtom, charge, spin)
         subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
         return subOEI
 
-    def frag_fock_sub( self, impAtom, loc2sub, numActive, coreOneDM_loc):
+    def frag_fock_sub( self, impAtom, loc2sub, numActive, coreOneDM_loc, charge = 0, spin = 0):
         
-        oei_sub = self.frag_oei_sub( impAtom, loc2sub, numActive )
-        fock_sub = self.dmet_fock( loc2sub, numActive, coreOneDM_loc )
-        fock_sub = fock_sub + oei_sub
+        oei_sub = self.frag_oei_sub( impAtom, loc2sub, numActive,charge, spin )
+        coreJK_sub = self.coreJK_sub( loc2sub, numActive, coreOneDM_loc )
+        fock_sub = coreJK_sub + oei_sub
         return fock_sub
 
 
@@ -269,3 +270,28 @@ class LocalIntegrals:
         onedm = tools.fock2onedm(fock, NOcc)
 
         return onedm
+
+    def coreJK_sub(self, loc2sub, numActive, coreDMloc):
+
+	coreJK_sub = np.dot( np.dot( loc2sub[:,:numActive].T, self.coreJK_loc( coreDMloc ) ), loc2sub[:,:numActive] )
+
+        return coreJK_sub
+
+
+    def coreJK_loc( self, DMloc ):
+
+        if ( self.ERIinMEM == False ):
+            DM_ao = np.dot( np.dot( self.ao2loc, DMloc ), self.ao2loc.T )
+            JK_ao = scf.hf.get_veff( self.mol, DM_ao, 0, 0, 1 ) #Last 3 numbers: dm_last, vhf_last, hermi
+            JK_loc = np.dot( np.dot( self.ao2loc.T, JK_ao ), self.ao2loc )
+        else:
+            JK_loc = np.einsum( 'ijkl,ij->kl', self.activeERI, DMloc ) - 0.5 * np.einsum( 'ijkl,ik->jl', self.activeERI, DMloc )
+
+        return JK_loc
+
+
+    def impJK_sub( self, DMsub, ERIsub):
+	
+	impJK_sub = np.einsum( 'ijkl,ij->kl', ERIsub, DMsub ) - 0.5 * np.einsum( 'ijkl,ik->jl', ERIsub, DMsub )
+
+	return impJK_sub
