@@ -1,4 +1,4 @@
-from pydmfet.oep import oepwy, oepparam
+from pydmfet.oep import oep_main, oepparam
 from pydmfet.oep.oepparam import *
 
 def OEP(embedobj,params,*args):
@@ -7,4 +7,4 @@ def OEP(embedobj,params,*args):
 
     if(oep_method == 'WY'):
 
-        return oepwy.OEPWY(embedobj,params, *args)
+        return oep_main.OEP(embedobj,params, *args)
