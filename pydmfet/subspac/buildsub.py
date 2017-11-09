@@ -1,27 +1,28 @@
 import numpy as np
+from pydmfet import qcwrap
 
-def fullP_to_fragP(P,dim_imp, dim):
+def fullP_to_fragP(obj, Nelec,P_ref, dim, dim_imp):
 
-    eigenvals, eigenvecs = np.linalg.eigh( P ) 
-    tmp = -eigenvals
-    idx = tmp.argsort()
+    loc2sub = obj.loc2sub
+    core1PDM_loc = obj.core1PDM_loc
 
-    eigenvals = eigenvals[idx]
-    eigenvecs = eigenvecs[:,idx]
+    fock_sub = obj.ints.fock_sub( loc2sub, dim, core1PDM_loc)
+    subTEI = obj.ints.dmet_tei( loc2sub, dim )
+
+    energy, OneDM, mo_coeff = qcwrap.pyscf_rhf.scf( fock_sub, subTEI, dim, Nelec, P_ref)
+
 
     P_imp = np.zeros([dim, dim],dtype = float)
     P_bath = np.zeros([dim, dim],dtype = float)
 
-    for i in range(dim):
-	if(eigenvals[i] > 1.99):
-	    isimp = classify_orb(eigenvecs[:,i],dim_imp)
-	    if isimp :
-		P_imp = P_imp + 2.0*np.outer(eigenvecs[:,i], eigenvecs[:,i]) 
-	    else :
-		P_bath = P_bath + 2.0*np.outer(eigenvecs[:,i], eigenvecs[:,i])
-	elif(eigenvals[i] > 0.01):
-	    print "fatal error"
-	    assert(0==1)
+    NOcc = Nelec/2
+    for i in range(NOcc):
+	isimp = classify_orb(mo_coeff[:,i],dim_imp)
+	P_tmp = 2.0*np.outer(mo_coeff[:,i], mo_coeff[:,i])
+	if isimp :
+	    P_imp = P_imp + P_tmp
+	else :
+	    P_bath = P_bath + P_tmp
 
     return (P_imp,P_bath)
 
@@ -52,14 +53,14 @@ def build_core(occ,loc2sub,idx_imp):
 
         core_cutoff = 0.01
 
-	Ne_imp = 0
+	NOrb_imp = 0
         for cnt in range(len(occ)):
             if ( occ[ cnt ] < core_cutoff ):
                 occ[ cnt ] = 0.0
             elif ( occ[ cnt ] > 2.0 - core_cutoff ):
                 occ[ cnt ] = 2.0
 		if(cnt < idx_imp):
-		    Ne_imp += 1
+		    NOrb_imp += 1
             else:
                 print "environment orbital occupation = ", occ[ cnt ]
                 print "subspace construction failed!"
@@ -67,7 +68,7 @@ def build_core(occ,loc2sub,idx_imp):
 
         Nelec_core = int(round(np.sum( occ )))
         core1PDM_loc = np.dot( np.dot( loc2sub, np.diag( occ ) ), loc2sub.T )
-        return (core1PDM_loc, Nelec_core, Ne_imp)
+        return (core1PDM_loc, Nelec_core, NOrb_imp)
 
 
 def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
@@ -127,7 +128,6 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
 
     #print eigenvals_bath
     #print eigenvecs_bath
-
 
     frozenEigVals_bath = -eigenvals_bath[tokeep_bath:]
     frozenEigVecs_bath = eigenvecs_bath[:,tokeep_bath:]

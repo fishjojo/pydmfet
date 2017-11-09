@@ -22,6 +22,8 @@ def vec2mat(x, dim):
 
 def mat2vec(mat, dim):
 
+    size = dim*(dim+1)/2
+    x = np.zeros(size,dtype=float)
     iu = np.triu_indices(dim)
     x = mat[iu]
     return x

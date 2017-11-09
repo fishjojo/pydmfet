@@ -1,21 +1,19 @@
 import numpy as np
-from pydmfet import subspac,oep
+from pydmfet import subspac,oep,tools
 
 class DMFET:
 
-    def __init__(self, ints, cluster, impAtom, Ne_frag, charge=[0,0], spin=[0,0], sub_threshold = 1e-13, oep_params = None, ecw_method = 'HF', do_dfet = False):
+    def __init__(self, ints, cluster, impAtom, Ne_frag, boundary_atoms=None, \
+		 sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', do_dfet = False):
 
         self.ints = ints
         self.cluster = cluster
         self.impAtom = impAtom
-
         self.Ne_frag = Ne_frag
+	self.boundary_atoms = boundary_atoms
 
         self.dim_frag = np.sum(self.cluster)
-        self.dim_env = self.cluster.size - self.dim_frag
-
-	self.charge = charge
-	self.spin   = spin
+        #self.dim_env = self.cluster.size - self.dim_frag
 
         self.ecw_method = ecw_method
         self.do_dfet = do_dfet
@@ -32,6 +30,7 @@ class DMFET:
         #construct core determinant
 	idx = self.dim_frag + self.dim_bath
         self.core1PDM_loc, self.Nelec_core, Norb_imp_throw = subspac.build_core(self.Occupations, self.loc2sub, idx)
+
 	self.Ne_frag = self.Ne_frag - Norb_imp_throw*2
         self.Ne_env = self.ints.Nelec - self.Ne_frag - self.Nelec_core
 	
@@ -41,11 +40,10 @@ class DMFET:
         self.umat = None
         dim = self.dim_sub
         loc2sub = self.loc2sub
+
         self.P_ref_sub = np.dot(np.dot(loc2sub[:,:dim].T ,self.OneDM_loc - self.core1PDM_loc), loc2sub[:,:dim]) 
 
         self.oep_params = oep_params
-        if(self.oep_params is None):
-            self.oep_params = oep.OEPparams()
 
     def calc_umat(self):
         

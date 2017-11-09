@@ -193,72 +193,91 @@ class LocalIntegrals:
             TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
         return TEIdmet
         
-    def frag_mol_ao(self, impAtom, charge = 0, spin = 0):
+    def frag_mol_ao(self, impAtom):
         '''
             Xing: get fragment Vnuc
         '''
-	mol1 = copy.deepcopy(self.mol)
-	mol1.atom = gto.format_atom(mol1.atom, unit = 'B') #hack, don't change coordinates
-	mol1.charge = charge
-	mol1.spin = spin
+	mol = self.mol
+	NAtom = mol.natm
 
-        NAtom = mol1.natm
-        for i in range(NAtom):
-            if(impAtom[i] == 0):
-                lst = list(mol1.atom[i])
-                lst[0] = 'ghost'+lst[0]
-                mol1.atom[i] = tuple(lst)
+	mol1 = copy.deepcopy(mol)
+	for i in range(NAtom):
+	    if(impAtom[i] == 0):
+		mol1._atm[i][0] = 0 #make environment atoms ghost
 
-        mol1.build(verbose=0)
         return mol1
 
-    def frag_oei_loc(self, impAtom, charge = 0, spin = 0):
 
-        mol = self.frag_mol_ao(impAtom, charge, spin)
+    def bound_mol_ao(self, boundary_atoms):
+
+	mol = self.mol
+        NAtom = mol.natm
+
+	mol1 = copy.deepcopy(mol)
+	for i in range(NAtom):
+            mol1._atm[i][0] = boundary_atoms[i]
+
+	return mol1
+
+
+    def bound_vnuc_sub(self, boundary_atoms, loc2sub, numActive):
+
+	vnuc_sub = np.zeros((numActive,numActive),dtype=float)
+	if (boundary_atoms is None):
+	    return vnuc_sub 
+	else:
+	    mol = self.bound_mol_ao(boundary_atoms)
+	    vnuc_ao = mol.intor('cint1e_nuc_sph')
+	    vnuc_loc = np.dot( np.dot( self.ao2loc.T, vnuc_ao ), self.ao2loc )
+	    vnuc_sub = np.dot( np.dot( loc2sub[:,:numActive].T, vnuc_loc ), loc2sub[:,:numActive] )
+	    return vnuc_sub
+
+
+    def frag_oei_loc(self, impAtom):
+
+        mol = self.frag_mol_ao(impAtom)
         oei_ao = mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
 
-    def frag_oei_sub( self, impAtom, loc2sub, numActive,charge = 0, spin = 0 ):
+    def frag_oei_sub( self, impAtom, loc2sub, numActive):
 
-        oei_loc = self.frag_oei_loc(impAtom, charge, spin )
+        oei_loc = self.frag_oei_loc(impAtom )
         subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
         return subOEI
 
 
-    def frag_vnuc_loc(self, impAtom, charge = 0, spin = 0):
-        mol = self.frag_mol_ao(impAtom, charge, spin)
+    def frag_vnuc_loc(self, impAtom):
+        mol = self.frag_mol_ao(impAtom)
         oei_ao = mol.intor('cint1e_nuc_sph')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
 
-    def frag_vnuc_sub( self, impAtom, loc2sub, numActive,charge = 0, spin = 0 ):
+    def frag_vnuc_sub( self, impAtom, loc2sub, numActive):
 
-        oei_loc = self.frag_vnuc_loc(impAtom,charge, spin)
+        oei_loc = self.frag_vnuc_loc(impAtom)
         subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
         return subOEI
 
 
+    def frag_kin_loc(self):
 
-    def frag_kin_loc(self, impAtom, charge = 0, spin = 0):
-
-        mol = self.frag_mol_ao(impAtom, charge, spin)
-        oei_ao = mol.intor('cint1e_kin_sph')
+        oei_ao = self.mol.intor('cint1e_kin_sph')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
 
-    def frag_kin_sub( self, impAtom, loc2sub, numActive,charge = 0, spin = 0 ):
+    def frag_kin_sub( self, impAtom, loc2sub, numActive ):
 
-        oei_loc = self.frag_kin_loc(impAtom, charge, spin)
+        oei_loc = self.frag_kin_loc()
         subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
         return subOEI
 
-    def frag_fock_sub( self, impAtom, loc2sub, numActive, coreOneDM_loc, charge = 0, spin = 0):
+    def frag_fock_sub( self, impAtom, loc2sub, numActive, coreOneDM_loc):
         
-        oei_sub = self.frag_oei_sub( impAtom, loc2sub, numActive,charge, spin )
+        oei_sub = self.frag_oei_sub( impAtom, loc2sub, numActive)
         coreJK_sub = self.coreJK_sub( loc2sub, numActive, coreOneDM_loc )
         fock_sub = coreJK_sub + oei_sub
         return fock_sub
@@ -295,3 +314,13 @@ class LocalIntegrals:
 	impJK_sub = np.einsum( 'ijkl,ij->kl', ERIsub, DMsub ) - 0.5 * np.einsum( 'ijkl,ik->jl', ERIsub, DMsub )
 
 	return impJK_sub
+
+
+
+
+    def fock_sub( self, loc2sub, dim, coreDMloc ):
+
+        fock_sub = np.dot( np.dot( loc2sub[:,:dim].T, self.loc_rhf_fock_bis( coreDMloc ) ), loc2sub[:,:dim] )
+
+        return fock_sub
+

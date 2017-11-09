@@ -1,4 +1,4 @@
-from pydmfet import locints, sdmfet
+from pydmfet import locints, sdmfet,oep
 from pyscf import gto, scf, ao2mo
 import numpy as np
 from pyscf.tools import molden
@@ -34,9 +34,13 @@ for i in range(natoms):
 	impurities[aoslice[i,2]:aoslice[i,3]] = 1
 
 Ne_frag = 20
+boundary_atoms = np.zeros([natoms], dtype=int)
+boundary_atoms[5] = 1
+boundary_atoms[8]=1
+#boundary_atoms[9]=1
+#boundary_atoms[12]=1
 
-charge = [-1, 0]
-spin   = [ 0, 0]
-theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, charge, spin, 1e-3)
+params = oep.OEPparams(algorithm = 'split', ftol = 1e-10, gtol = 1e-6,diffP_tol=1e-6, outer_maxit = 100, maxit = 100,oep_print = 3)
+theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, sub_threshold = 1e-3, oep_params=params)
 umat = theDMFET.embedding_potential()
 
