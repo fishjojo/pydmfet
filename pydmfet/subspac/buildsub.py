@@ -1,13 +1,12 @@
 import numpy as np
 from pydmfet import qcwrap
 
-def fullP_to_fragP(obj, Nelec,P_ref, dim, dim_imp):
+def fullP_to_fragP(obj, subTEI, Nelec,P_ref, dim, dim_imp):
 
     loc2sub = obj.loc2sub
     core1PDM_loc = obj.core1PDM_loc
 
     fock_sub = obj.ints.fock_sub( loc2sub, dim, core1PDM_loc)
-    subTEI = obj.ints.dmet_tei( loc2sub, dim )
 
     energy, OneDM, mo_coeff = qcwrap.pyscf_rhf.scf( fock_sub, subTEI, dim, Nelec, P_ref)
 

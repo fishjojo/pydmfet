@@ -24,7 +24,7 @@ from pyscf.tools import molden, localizer
 from pydmfet.locints import iao_helper
 from pydmfet import tools
 import numpy as np
-import copy
+import copy,time
 
 class LocalIntegrals:
 
@@ -185,12 +185,17 @@ class LocalIntegrals:
         return DMguess
         
     def dmet_tei( self, loc2dmet, numAct ):
-    
+   
+	t0 = (time.clock(),time.time()) 
         if ( self.ERIinMEM == False ):
             transfo = np.dot( self.ao2loc, loc2dmet[:,:numAct] )
-            TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo, compact=False).reshape(numAct, numAct, numAct, numAct)
+            #TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo, compact=False).reshape(numAct, numAct, numAct, numAct)
+	    TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo)
         else:
-            TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
+            #TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
+	    TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct])
+
+	t1 = tools.timer("locints.dmet_tei",t0)
         return TEIdmet
         
     def frag_mol_ao(self, impAtom):
@@ -292,8 +297,10 @@ class LocalIntegrals:
 
     def coreJK_sub(self, loc2sub, numActive, coreDMloc):
 
+	t0 = (time.clock(), time.time())
 	coreJK_sub = np.dot( np.dot( loc2sub[:,:numActive].T, self.coreJK_loc( coreDMloc ) ), loc2sub[:,:numActive] )
 
+	t1 = tools.timer("locints.coreJK_sub",t0)
         return coreJK_sub
 
 
@@ -310,12 +317,13 @@ class LocalIntegrals:
 
 
     def impJK_sub( self, DMsub, ERIsub):
-	
-	impJK_sub = np.einsum( 'ijkl,ij->kl', ERIsub, DMsub ) - 0.5 * np.einsum( 'ijkl,ik->jl', ERIsub, DMsub )
+
+	#impJK_sub = np.einsum( 'ijkl,ij->kl', ERIsub, DMsub ) - 0.5 * np.einsum( 'ijkl,ik->jl', ERIsub, DMsub )
+
+	j, k=scf.hf.dot_eri_dm(ERIsub, DMsub, hermi=1)
+	impJK_sub = j - 0.5*k
 
 	return impJK_sub
-
-
 
 
     def fock_sub( self, loc2sub, dim, coreDMloc ):

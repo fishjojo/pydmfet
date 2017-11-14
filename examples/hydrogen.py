@@ -2,7 +2,7 @@ from pydmfet import locints, sdmfet, oep
 from pyscf import gto, scf, ao2mo
 import numpy as np
 from pyscf.tools import molden
-import copy
+import copy,time
 
 DMguess  = None
 
@@ -62,3 +62,5 @@ for bondlength in bondlengths:
 	params = oep.OEPparams(algorithm = 'split', ftol = 1e-10, gtol = 1e-6, diffP_tol = 1e-6, outer_maxit = 100, oep_print = 3)
         theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms = boundary_atoms, oep_params = params)
         umat = theDMFET.embedding_potential()
+
+

@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import optimize
 from pydmfet import qcwrap,tools,subspac
+import time
 
 class OEP:
 
@@ -41,11 +42,35 @@ class OEP:
 
 	umat = self.umat.copy()
 	P_ref = self.P_ref
-	umat = self.oep_base(umat,P_ref)
+	_ops = self.build_ops()
+	umat = self.oep_base(umat,P_ref,_ops)
 
 	return umat
 
+    def build_ops(self):
 
+	t0 = (time.clock(), time.time())
+
+	dim = self.dim
+        ints = self.ints
+        loc2sub = self.loc2sub
+        impAtom = self.impAtom
+        boundary_atoms = self.boundary_atoms
+        core1PDM_loc = self.core1PDM_loc
+
+        subKin = ints.frag_kin_sub( impAtom, loc2sub, dim )
+        subVnuc1 = ints.frag_vnuc_sub( impAtom, loc2sub, dim)
+        subVnuc2 = ints.frag_vnuc_sub( 1-impAtom, loc2sub, dim )
+
+        subVnuc_bound = ints.bound_vnuc_sub(boundary_atoms, loc2sub, dim )
+
+        subCoreJK = ints.coreJK_sub( loc2sub, dim, core1PDM_loc )
+        subTEI = ints.dmet_tei( loc2sub, dim )
+
+        ops = [subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI]
+
+	tools.timer("oep.build_ops",t0)
+	return ops
 
     def oep_loop(self):
 
@@ -58,23 +83,28 @@ class OEP:
         dim = self.dim
 	dim_imp = self.dim_imp
 
+        #calculate operators
+        ops = self.build_ops()
+	subTEI = ops[-1]
+
 	P_ref = self.P_ref
 	Nelec = self.Ne_frag + self.Ne_env
-	P_imp, P_bath = subspac.fullP_to_fragP(self, Nelec, P_ref, dim, dim_imp)
+	P_imp, P_bath = subspac.fullP_to_fragP(self, subTEI, Nelec, P_ref, dim, dim_imp)
 
-	tools.MatPrint(P_imp, "P_imp")
-	tools.MatPrint(P_bath, "P_bath")
+	#tools.MatPrint(P_imp, "P_imp")
+	#tools.MatPrint(P_bath, "P_bath")
 
 	threshold = self.params.diffP_tol
 	maxit = self.params.outer_maxit
 	it = 0
+	t0 = (time.clock(),time.time())
 	while it < maxit:
 	    it += 1
 	    print " OEP iteration ", it
 
 	    P_imp_old = P_imp.copy()
             P_bath_old = P_bath.copy()
-	    umat, P_imp, P_bath = self.oep_base(umat,P_ref, P_imp_old,P_bath_old)
+	    umat, P_imp, P_bath = self.oep_base(umat,P_ref, ops,P_imp_old,P_bath_old)
 
 	    diffP_imp = P_imp - P_imp_old
 	    diffP_bath = P_bath - P_bath_old
@@ -88,11 +118,12 @@ class OEP:
 
 	    P_imp_old = None
 	    P_bath_old = None
+	t1 = tools.timer("oep", t0)
 
 	return umat
 
 
-    def oep_base(self,umat,P_ref,P_imp = None, P_bath = None):
+    def oep_base(self,umat,P_ref,ops,P_imp = None, P_bath = None):
 
         dim = self.dim
         x = tools.mat2vec(umat, dim)
@@ -100,24 +131,10 @@ class OEP:
         Ne_frag = self.Ne_frag
         Ne_env = self.Ne_env
 
-        loc2sub = self.loc2sub
-        impAtom = self.impAtom
-        boundary_atoms = self.boundary_atoms
-        core1PDM_loc = self.core1PDM_loc
-
         ints = self.ints
-
-        subKin = ints.frag_kin_sub( impAtom, loc2sub, dim )
-        subVnuc1 = ints.frag_vnuc_sub( impAtom, loc2sub, dim)
-        subVnuc2 = ints.frag_vnuc_sub( 1-impAtom, loc2sub, dim )
-
-	subVnuc_bound = ints.bound_vnuc_sub(boundary_atoms, loc2sub, dim )
-
-        subCoreJK = ints.coreJK_sub( loc2sub, dim, core1PDM_loc )
-        subTEI = ints.dmet_tei( loc2sub, dim )
-
 	impJK_sub  = None
 	bathJK_sub = None
+	subTEI = ops[-1]
 	if( P_imp is not None):
 	    impJK_sub = ints.impJK_sub( P_imp, subTEI)
 	    if(P_bath is None):
@@ -125,8 +142,12 @@ class OEP:
 	if( P_bath is not None):
 	    bathJK_sub = ints.impJK_sub( P_bath, subTEI)
 
-
-        _args = (P_ref,dim,Ne_frag,Ne_env,subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,impJK_sub,bathJK_sub,subTEI)
+	_args = [P_ref,dim,Ne_frag,Ne_env]
+	_args = _args + ops
+	_args.append(impJK_sub)
+	_args.append(bathJK_sub)
+	_args = tuple(_args)
+        #_args = (P_ref,dim,Ne_frag,Ne_env,subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI,impJK_sub,bathJK_sub)
 
 	opt_method = self.params.opt_method
 	result = None
@@ -139,6 +160,11 @@ class OEP:
 	if (P_imp is None and P_bath is None):
             return umat
 	else:
+	    subKin = ops[0]
+	    subVnuc1 = ops[1]
+	    subVnuc2 = ops[2]
+	    subVnuc_bound = ops[3]
+	    subCoreJK = ops[4]
 	    subOEI1 = subKin+subVnuc1+subVnuc_bound+subCoreJK+impJK_sub+umat
             subOEI2 = subKin+subVnuc2-subVnuc_bound+subCoreJK+bathJK_sub+umat
             E_imp, P_imp = qcwrap.pyscf_rhf.scf_oei( subOEI1, dim, Ne_frag)
@@ -156,7 +182,7 @@ class OEP:
 
 	return result
 
-    def cost_wuyang(self, x, P_ref,dim, Ne_frag, Ne_env, subKin, subVnuc1, subVnuc2, subVnuc_bound, subCoreJK, impJK_sub,bathJK_sub,subTEI):
+    def cost_wuyang(self, x, P_ref,dim, Ne_frag, Ne_env, subKin, subVnuc1, subVnuc2, subVnuc_bound, subCoreJK, subTEI, impJK_sub,bathJK_sub):
 
         umat = tools.vec2mat(x, dim)
 
