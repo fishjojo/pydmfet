@@ -19,10 +19,13 @@ class OEP:
 	self.boundary_atoms = embedobj.boundary_atoms
         self.core1PDM_loc = embedobj.core1PDM_loc
         self.ints = embedobj.ints
+	self.ops = embedobj.ops
 
         self.params = params
 
     def kernel(self):
+
+	ops = self.ops
 
         dim = self.dim
         if(self.umat is None):
@@ -30,11 +33,13 @@ class OEP:
 
 	algorithm = self.params.algorithm
 	if(algorithm == '2011'):
-	    self.umat = self.oep_old()
+	    self.umat = self.oep_old(ops)
 	elif(algorithm == 'split'):
-            self.umat = self.oep_loop()
+            self.umat = self.oep_loop(ops)
 
-    def oep_old(self):
+	self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
+
+    def oep_old(self,_ops):
 
 	'''
 	extended Wu-Yang 2011
@@ -42,37 +47,12 @@ class OEP:
 
 	umat = self.umat.copy()
 	P_ref = self.P_ref
-	_ops = self.build_ops()
 	umat = self.oep_base(umat,P_ref,_ops)
 
 	return umat
 
-    def build_ops(self):
 
-	t0 = (time.clock(), time.time())
-
-	dim = self.dim
-        ints = self.ints
-        loc2sub = self.loc2sub
-        impAtom = self.impAtom
-        boundary_atoms = self.boundary_atoms
-        core1PDM_loc = self.core1PDM_loc
-
-        subKin = ints.frag_kin_sub( impAtom, loc2sub, dim )
-        subVnuc1 = ints.frag_vnuc_sub( impAtom, loc2sub, dim)
-        subVnuc2 = ints.frag_vnuc_sub( 1-impAtom, loc2sub, dim )
-
-        subVnuc_bound = ints.bound_vnuc_sub(boundary_atoms, loc2sub, dim )
-
-        subCoreJK = ints.coreJK_sub( loc2sub, dim, core1PDM_loc )
-        subTEI = ints.dmet_tei( loc2sub, dim )
-
-        ops = [subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI]
-
-	tools.timer("oep.build_ops",t0)
-	return ops
-
-    def oep_loop(self):
+    def oep_loop(self,ops):
 
 	'''
 	New OEP scheme
@@ -84,7 +64,6 @@ class OEP:
 	dim_imp = self.dim_imp
 
         #calculate operators
-        ops = self.build_ops()
 	subTEI = ops[-1]
 
 	P_ref = self.P_ref

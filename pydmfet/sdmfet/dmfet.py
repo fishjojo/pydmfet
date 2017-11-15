@@ -1,3 +1,4 @@
+import time
 import numpy as np
 from pydmfet import subspac,oep,tools
 
@@ -45,8 +46,36 @@ class DMFET:
 
         self.oep_params = oep_params
 
+
+    def build_ops(self):
+
+        t0 = (time.clock(), time.time())
+
+        dim = self.dim_sub
+        ints = self.ints
+        loc2sub = self.loc2sub
+        impAtom = self.impAtom
+        boundary_atoms = self.boundary_atoms
+        core1PDM_loc = self.core1PDM_loc
+
+        subKin = ints.frag_kin_sub( impAtom, loc2sub, dim )
+        subVnuc1 = ints.frag_vnuc_sub( impAtom, loc2sub, dim)
+        subVnuc2 = ints.frag_vnuc_sub( 1-impAtom, loc2sub, dim )
+
+        subVnuc_bound = ints.bound_vnuc_sub(boundary_atoms, loc2sub, dim )
+
+        subCoreJK = ints.coreJK_sub( loc2sub, dim, core1PDM_loc )
+        subTEI = ints.dmet_tei( loc2sub, dim )
+
+        self.ops = [subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI]
+
+        tools.timer("dmfet.build_ops",t0)
+        return self.ops
+
+
     def calc_umat(self):
-        
+       
+	self.build_ops() 
         myoep = oep.OEP(self,self.oep_params)
         myoep.kernel()
         self.umat = myoep.umat
@@ -63,5 +92,33 @@ class DMFET:
 
     def total_energy(self):
         energy = 0.0
+
+	print "Performing ECW energy calculation"
+
+	if(self.ecw_method.lower() == 'hf'):
+	    energy = self.hf_energy()
+	elif(self.ecw_method.lower() == 'ccsd'):
+	    energy = self.ccsd_energy()
+	else:
+	    raise Exception("ecw_method not supported!")
+
+
         return energy
 
+
+    def hf_energy(self):
+	
+	energy = 0.0
+
+	print "ECW method is HF"
+
+	return energy
+
+
+    def ccsd_energy(self):
+
+	energy = 0.0
+
+	print "ECW method is CCSD"
+
+	return energy
