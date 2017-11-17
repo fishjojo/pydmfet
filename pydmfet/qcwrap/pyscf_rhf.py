@@ -2,6 +2,29 @@ import numpy as np
 from pyscf import ao2mo, gto
 from pyscf import scf as pyscf_scf
 
+
+def rhf( OEI, TEI, Norb, Nelec, OneDM0=None ):
+
+    # Get the RHF solution
+    OEI = 0.5*(OEI.T + OEI)
+    mol = gto.Mole()
+    mol.build( verbose=0 )
+    mol.atom.append(('C', (0, 0, 0)))
+    mol.nelectron = Nelec
+    mol.incore_anyway = True
+    mf = pyscf_scf.RHF( mol )
+    mf.get_hcore = lambda *args: OEI
+    mf.get_ovlp = lambda *args: np.eye( Norb )
+    mf._eri = ao2mo.restore(8, TEI, Norb)
+    mf.scf( OneDM0 )
+
+    if ( mf.converged == False ):
+        raise Exception(" SCF not converged!")
+
+    return mf
+
+
+
 def scf( OEI, TEI, Norb, Nelec, OneDM0=None ):
 
 

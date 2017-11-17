@@ -31,13 +31,17 @@ class OEP:
         if(self.umat is None):
             self.umat = np.zeros([dim,dim],dtype=float)
 
+        P_imp = None
+        P_bath = None
 	algorithm = self.params.algorithm
 	if(algorithm == '2011'):
 	    self.umat = self.oep_old(ops)
 	elif(algorithm == 'split'):
-            self.umat = self.oep_loop(ops)
+            self.umat,P_imp,P_bath = self.oep_loop(ops)
 
 	self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
+
+        return (P_imp,P_bath)
 
     def oep_old(self,_ops):
 
@@ -99,7 +103,7 @@ class OEP:
 	    P_bath_old = None
 	t1 = tools.timer("oep", t0)
 
-	return umat
+	return (umat,P_imp,P_bath)
 
 
     def oep_base(self,umat,P_ref,ops,P_imp = None, P_bath = None):

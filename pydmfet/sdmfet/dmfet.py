@@ -1,6 +1,7 @@
 import time
 import numpy as np
-from pydmfet import subspac,oep,tools
+from pydmfet import subspac,oep,tools,qcwrap
+from pyscf import cc
 
 class DMFET:
 
@@ -77,7 +78,7 @@ class DMFET:
        
 	self.build_ops() 
         myoep = oep.OEP(self,self.oep_params)
-        myoep.kernel()
+        self.P_imp, self.P_bath = myoep.kernel()
         self.umat = myoep.umat
 
 
@@ -93,6 +94,9 @@ class DMFET:
     def total_energy(self):
         energy = 0.0
 
+        if(self.umat is None):
+            self.calc_umat()
+
 	print "Performing ECW energy calculation"
 
 	if(self.ecw_method.lower() == 'hf'):
@@ -106,19 +110,125 @@ class DMFET:
         return energy
 
 
+    def core_energy(self):
+
+        core1PDM_loc = self.core1PDM_loc
+        oei_loc = self.ints.loc_oei()
+        coreJK_loc = self.ints.coreJK_loc(core1PDM_loc)
+
+        core_energy = np.trace(np.dot(core1PDM_loc,oei_loc)) + 0.5*np.trace(np.dot(core1PDM_loc,coreJK_loc))
+        return core_energy
+
+
+    def total_scf_energy(self):
+
+        energy = 0.0
+
+        dim = self.dim_sub
+        Ne_frag = self.Ne_frag
+        Ne_env = self.Ne_env
+        ops = self.ops
+
+        subKin = ops[0]
+        subVnuc1 = ops[1]
+        subVnuc2 = ops[2]
+        subCoreJK = ops[4]
+        subTEI = ops[-1]
+
+
+        subOEI = subKin+subVnuc1+subVnuc2+subCoreJK
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag+Ne_env, self.P_ref_sub)
+
+
+        #print onedm - self.P_ref_sub
+        energy = energy + self.core_energy() + self.ints.const()
+
+        print "total scf energy = ",energy
+        return energy
+
+
+    def imp_scf_energy(self):
+
+        energy = 0.0
+
+        dim = self.dim_sub
+        Ne_frag = self.Ne_frag
+        ops = self.ops
+
+        subKin = ops[0]
+        subVnuc1 = ops[1]
+        subVnuc_bound = ops[3]
+        subCoreJK = ops[4]
+        subTEI = ops[-1]
+        umat = self.umat
+
+        subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
+
+        #energy = energy - np.trace(np.dot(onedm,umat+subVnuc_bound)) 
+
+        print "embeded imp scf (electron) energy = ",energy
+        return energy
+
+
+
     def hf_energy(self):
-	
-	energy = 0.0
 
-	print "ECW method is HF"
+        print "ECW method is HF"	
+        energy = 0.0
 
-	return energy
+        dim = self.dim_sub
+        Ne_frag = self.Ne_frag
+        ops = self.ops
 
+        subKin = ops[0]
+        subVnuc1 = ops[1]
+        subVnuc_bound = ops[3]
+        subCoreJK = ops[4]
+        subTEI = ops[-1]
+        umat = self.umat
+
+        subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
+
+        #energy = energy - np.trace(np.dot(onedm,umat+subVnuc_bound))
+
+        imp_scf_energy = self.imp_scf_energy()
+        total_scf_energy = self.total_scf_energy()
+
+        energy = energy - imp_scf_energy + total_scf_energy
+
+        print "total dmfet energy = ",energy
+        return energy
 
     def ccsd_energy(self):
 
+        print "ECW method is CCSD"
 	energy = 0.0
 
-	print "ECW method is CCSD"
+        dim = self.dim_sub
+        Ne_frag = self.Ne_frag
+        ops = self.ops
 
+        subKin = ops[0]
+        subVnuc1 = ops[1]
+        subVnuc_bound = ops[3]
+        subCoreJK = ops[4]
+        subTEI = ops[-1]
+        umat = self.umat
+
+        subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
+
+        mf = qcwrap.pyscf_rhf.rhf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
+        mycc = cc.CCSD(mf).run()
+        et = mycc.ccsd_t()
+        e_hf = mf.e_tot
+        e_ccsd = e_hf + mycc.e_corr + et
+
+        imp_scf_energy = self.imp_scf_energy()
+        total_scf_energy = self.total_scf_energy()
+
+        energy = e_ccsd - imp_scf_energy + total_scf_energy
+
+        print "total dmfet energy = ",energy
 	return energy
