@@ -64,8 +64,9 @@ for bondlength in bondlengths:
 	boundary_atoms[8] = 1
 	boundary_atoms[9] = 1
 
-	params = oep.OEPparams(algorithm = 'split', ftol = 1e-10, gtol = 1e-6, diffP_tol = 1e-6, outer_maxit = 100, oep_print = 3)
+	params = oep.OEPparams(algorithm = 'split', ftol = 1e-10, gtol = 1e-6, diffP_tol = 1e-6, outer_maxit = 200, maxit = 200, oep_print = 3)
         theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms = boundary_atoms, oep_params = params,ecw_method = 'CCSD')
+
         umat = theDMFET.embedding_potential()
 	print umat
 	

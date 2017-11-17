@@ -221,7 +221,8 @@ class DMFET:
 
         mf = qcwrap.pyscf_rhf.rhf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
         mycc = cc.CCSD(mf).run()
-        et = mycc.ccsd_t()
+	et = 0.0
+        #et = mycc.ccsd_t()
         e_hf = mf.e_tot
         e_ccsd = e_hf + mycc.e_corr + et
 
