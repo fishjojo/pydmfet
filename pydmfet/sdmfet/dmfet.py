@@ -1,4 +1,4 @@
-import time
+import time,copy
 import numpy as np
 from pydmfet import subspac,oep,tools,qcwrap
 from pyscf import cc
@@ -6,18 +6,20 @@ from pyscf import cc
 class DMFET:
 
     def __init__(self, ints, cluster, impAtom, Ne_frag, boundary_atoms=None, \
-		 sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', do_dfet = False):
+		 sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF',do_dfet = False):
 
         self.ints = ints
         self.cluster = cluster
         self.impAtom = impAtom
         self.Ne_frag = Ne_frag
+	self.Ne_frag_orig = copy.copy(self.Ne_frag)
 	self.boundary_atoms = boundary_atoms
 
         self.dim_frag = np.sum(self.cluster)
         #self.dim_env = self.cluster.size - self.dim_frag
 
         self.ecw_method = ecw_method
+	self.mf_method = mf_method
         self.do_dfet = do_dfet
 	self.sub_threshold = sub_threshold
 
@@ -31,7 +33,7 @@ class DMFET:
 
         #construct core determinant
 	idx = self.dim_frag + self.dim_bath
-        self.core1PDM_loc, self.Nelec_core, Norb_imp_throw = subspac.build_core(self.Occupations, self.loc2sub, idx)
+        self.core1PDM_loc, self.Nelec_core, Norb_imp_throw, self.frag_core1PDM_loc = subspac.build_core(self.Occupations, self.loc2sub, idx)
 
 	self.Ne_frag = self.Ne_frag - Norb_imp_throw*2
         self.Ne_env = self.ints.Nelec - self.Ne_frag - self.Nelec_core
@@ -47,17 +49,17 @@ class DMFET:
 
         self.oep_params = oep_params
 
+	self.ops = None
 
-    def build_ops(self):
+
+    def build_ops(self, core1PDM_loc, dim):
 
         t0 = (time.clock(), time.time())
 
-        dim = self.dim_sub
         ints = self.ints
         loc2sub = self.loc2sub
         impAtom = self.impAtom
         boundary_atoms = self.boundary_atoms
-        core1PDM_loc = self.core1PDM_loc
 
         subKin = ints.frag_kin_sub( impAtom, loc2sub, dim )
         subVnuc1 = ints.frag_vnuc_sub( impAtom, loc2sub, dim)
@@ -68,18 +70,27 @@ class DMFET:
         subCoreJK = ints.coreJK_sub( loc2sub, dim, core1PDM_loc )
         subTEI = ints.dmet_tei( loc2sub, dim )
 
-        self.ops = [subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI]
+        ops = [subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI]
 
         tools.timer("dmfet.build_ops",t0)
-        return self.ops
+        return ops
 
 
     def calc_umat(self):
-       
-	self.build_ops() 
-        myoep = oep.OEP(self,self.oep_params)
-        self.P_imp, self.P_bath = myoep.kernel()
+      
+	dim = self.dim_sub 
+	self.ops = self.build_ops(self.core1PDM_loc, dim) 
+        myoep = oep.OEP(self, self.oep_params)
+        myoep.kernel()
         self.umat = myoep.umat
+	self.P_imp = myoep.P_imp
+	self.P_bath = myoep.P_bath
+
+	tools.MatPrint(self.P_imp,"P_imp")
+	tools.MatPrint(self.P_bath,"P_bath")
+	tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
+	tools.MatPrint(self.umat,"umat")
+	exit()
 
 
     def embedding_potential(self):
@@ -91,7 +102,7 @@ class DMFET:
 
 
 
-    def total_energy(self):
+    def correction_energy(self):
         energy = 0.0
 
         if(self.umat is None):
@@ -99,8 +110,19 @@ class DMFET:
 
 	print "Performing ECW energy calculation"
 
+	#resize subspace
+	dim = self.dim_frag + self.dim_bath
+	if(dim != self.dim_sub):
+	    coredm = self.core1PDM_loc - self.frag_core1PDM_loc
+	    self.ops = self.build_ops(coredm, dim)
+
+	umat = self.umat.copy()
+	npad = dim - self.dim_sub
+	umat = np.pad(umat, ((0,npad),(0,npad)), mode='constant', constant_values=0.0)
+
+
 	if(self.ecw_method.lower() == 'hf'):
-	    energy = self.hf_energy()
+	    energy = self.hf_energy(umat,dim)
 	elif(self.ecw_method.lower() == 'ccsd'):
 	    energy = self.ccsd_energy()
 	else:
@@ -137,7 +159,7 @@ class DMFET:
 
 
         subOEI = subKin+subVnuc1+subVnuc2+subCoreJK
-        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag+Ne_env, self.P_ref_sub)
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag+Ne_env, self.P_ref_sub, self.mf_method)
 
 
         #print onedm - self.P_ref_sub
@@ -163,7 +185,7 @@ class DMFET:
         umat = self.umat
 
         subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
-        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, self.P_imp, self.mf_method)
 
         #energy = energy - np.trace(np.dot(onedm,umat+subVnuc_bound)) 
 
@@ -171,14 +193,18 @@ class DMFET:
         return energy
 
 
+    def imp_scf_energy2(self):
 
-    def hf_energy(self):
+	dim = self.dim_frag + self.dim_bath
+	Nelec = self.Ne_frag_orig
+
+
+    def hf_energy(self, umat, dim):
 
         print "ECW method is HF"	
         energy = 0.0
 
-        dim = self.dim_sub
-        Ne_frag = self.Ne_frag
+        Ne_frag = self.Ne_frag_orig
         ops = self.ops
 
         subKin = ops[0]
@@ -186,19 +212,35 @@ class DMFET:
         subVnuc_bound = ops[3]
         subCoreJK = ops[4]
         subTEI = ops[-1]
-        umat = self.umat
 
         subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
-        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
 
-        #energy = energy - np.trace(np.dot(onedm,umat+subVnuc_bound))
+	dim_sub = self.dim_sub
+	npad = dim - dim_sub
+	P_guess = np.pad(self.P_imp, ((0,npad),(0,npad)), mode='constant', constant_values=0.0)
 
+	norb = (Ne_frag - self.Ne_frag)/2
+	for i in range(norb):
+	    index = dim_sub+i
+	    P_guess[index][index] = 2.0
+
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, P_guess)
+
+	P = np.dot(np.dot(self.loc2sub[:,:dim_sub],self.P_imp),self.loc2sub[:,:dim_sub].T)
+        P = np.dot(np.dot(self.loc2sub[:,:dim].T,P),self.loc2sub[:,:dim])
+	print np.linalg.norm(P_guess-P)
+	print np.linalg.norm(onedm-P)
+	exit()
+
+        tools.MatPrint(self.P_imp, "P_imp")
+        tools.MatPrint(P,"P_imp+virt")
+	print energy
+	exit()
         imp_scf_energy = self.imp_scf_energy()
-        total_scf_energy = self.total_scf_energy()
 
-        energy = energy - imp_scf_energy + total_scf_energy
+        energy = energy - imp_scf_energy
 
-        print "total dmfet energy = ",energy
+        print "dmfet correction energy = ",energy
         return energy
 
     def ccsd_energy(self):
@@ -227,9 +269,8 @@ class DMFET:
         e_ccsd = e_hf + mycc.e_corr + et
 
         imp_scf_energy = self.imp_scf_energy()
-        total_scf_energy = self.total_scf_energy()
 
-        energy = e_ccsd - imp_scf_energy + total_scf_energy
+        energy = e_ccsd - imp_scf_energy
 
-        print "total dmfet energy = ",energy
+        print "dmfet correction energy = ",energy
 	return energy

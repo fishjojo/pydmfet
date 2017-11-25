@@ -112,7 +112,6 @@ class LocalIntegrals:
         ShouldBeI = np.dot( np.dot( self.ao2loc.T , self.mol.intor('cint1e_ovlp_sph') ) , self.ao2loc )
         return np.linalg.norm( ShouldBeI - np.eye( ShouldBeI.shape[0] ) )
        
-    ''' 
     def debug_matrixelements( self ):
     
         eigvals, eigvecs = np.linalg.eigh( self.activeFOCK )
@@ -130,7 +129,6 @@ class LocalIntegrals:
         print "2-norm difference of self.activeFOCK and FOCK(RDM(self.active{OEI,ERI})) =", np.linalg.norm( self.activeFOCK - newFOCKloc )
         print "RHF energy of mean-field input           =", self.fullEhf
         print "RHF energy based on self.active{OEI,ERI} =", newRHFener
-    '''
  
     def const( self ):
     

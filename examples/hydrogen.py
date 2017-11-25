@@ -19,7 +19,7 @@ for bondlength in bondlengths:
         theta = i * (2*np.pi/nat)
         mol.atom.append(('H', (r*np.cos(theta), r*np.sin(theta), 0)))
 
-    mol.basis = 'sto-6g'
+    mol.basis = 'ccpvdz'
     mol.build(verbose=0)
 
 
@@ -51,24 +51,26 @@ for bondlength in bondlengths:
         #myInts.molden( 'hydrogen-loc.molden' )
         myInts.TI_OK = True # Only s functions
 
-        orbs_per_imp = 8
+	print "Norbs = ", mol.nao_nr()
+        orbs_per_imp = mol.nao_nr()/10*2
 
         impurities = np.zeros( [ myInts.Norbs ], dtype=int )
         for orb in range( orbs_per_imp ):
             impurities[ orb ] = 1
 
-        impAtom = impurities
-        Ne_frag = 8
+        impAtom = np.zeros( (10), dtype = int)
+	for i in range(2):
+	    impAtom[i] = 1
+        Ne_frag = 2
 
-	boundary_atoms = np.zeros( [ myInts.Norbs ], dtype=int )
-	boundary_atoms[8] = 1
+	boundary_atoms = np.zeros( (10), dtype=int )
+	boundary_atoms[2] = 1
 	boundary_atoms[9] = 1
 
-	params = oep.OEPparams(algorithm = 'split', ftol = 1e-10, gtol = 1e-6, diffP_tol = 1e-6, outer_maxit = 200, maxit = 200, oep_print = 3)
-        theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms = boundary_atoms, oep_params = params,ecw_method = 'CCSD')
+	params = oep.OEPparams(algorithm = 'split', ftol = 1e-11, gtol = 1e-7, diffP_tol = 1e-9, outer_maxit = 200, maxit = 200, oep_print = 3)
+        theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms = boundary_atoms, oep_params = params,ecw_method = 'HF')
 
         umat = theDMFET.embedding_potential()
 	print umat
-	
-	energy = theDMFET.total_energy()
+	energy = theDMFET.correction_energy()
 

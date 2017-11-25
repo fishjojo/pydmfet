@@ -16,9 +16,11 @@ mf.max_cycle = 1000
 DMguess = None
 mf.scf(dm0=DMguess)
 
+print mol.nao_nr()
 
-
-myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'iao' )
+myInts.molden( 'iao.molden' )
+exit()
 #myInts.molden( 'hydrogen-loc.molden' )
 myInts.TI_OK = False # Only s functions
 
