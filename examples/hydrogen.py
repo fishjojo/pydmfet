@@ -72,5 +72,6 @@ for bondlength in bondlengths:
 
         umat = theDMFET.embedding_potential()
 	print umat
+	exit()
 	energy = theDMFET.correction_energy()
 

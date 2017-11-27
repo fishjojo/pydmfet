@@ -1,4 +1,5 @@
 import numpy as np
+from pydmfet import tools
 from pyscf import ao2mo, gto
 from pyscf import scf as pyscf_scf
 
@@ -64,6 +65,8 @@ def scf( OEI, TEI, Norb, Nelec, OneDM0=None, mf_method = 'HF' ):
 
     print "mo energy"
     print mf.mo_energy
+    #tools.MatPrint(mf.get_fock(),"fock")
+    tools.MatPrint(mf.mo_coeff,"mo_coeff")
     return (energy, RDM1, mo_coeff)
 
 

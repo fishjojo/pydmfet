@@ -174,6 +174,7 @@ class OEP:
         umat = tools.vec2mat(x, dim)
 
 	if(self.params.oep_print == 3):
+	    print "sum(diag(umat)) = ", np.sum(np.diag(umat))
 	    tools.MatPrint(umat, 'umat')
 
 	FRAG_1RDM=None

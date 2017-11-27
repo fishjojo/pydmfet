@@ -5,7 +5,7 @@ from pyscf import cc
 
 class DMFET:
 
-    def __init__(self, ints, cluster, impAtom, Ne_frag, boundary_atoms=None, \
+    def __init__(self, ints, cluster, impAtom, Ne_frag, boundary_atoms=None, umat = None,\
 		 sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF',do_dfet = False):
 
         self.ints = ints
@@ -41,7 +41,7 @@ class DMFET:
 	print 'Ne_frag, Ne_env, Ne_core'
 	print self.Ne_frag, self.Ne_env, self.Nelec_core
 
-        self.umat = None
+        self.umat = umat
         dim = self.dim_sub
         loc2sub = self.loc2sub
 
@@ -72,13 +72,20 @@ class DMFET:
 
         ops = [subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI]
 
+
         tools.timer("dmfet.build_ops",t0)
         return ops
 
 
     def calc_umat(self):
       
-	dim = self.dim_sub 
+	dim = self.dim_sub
+
+	dim = 50
+	self.dim_sub = dim
+	self.P_ref_sub = np.dot(np.dot(self.loc2sub[:,:dim].T ,self.OneDM_loc - self.core1PDM_loc), self.loc2sub[:,:dim])
+	tools.MatPrint(self.P_ref_sub,"P_ref")
+ 
 	self.ops = self.build_ops(self.core1PDM_loc, dim) 
         myoep = oep.OEP(self, self.oep_params)
         myoep.kernel()
@@ -90,6 +97,7 @@ class DMFET:
 	tools.MatPrint(self.P_bath,"P_bath")
 	tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
 	tools.MatPrint(self.umat,"umat")
+
 	exit()
 
 
