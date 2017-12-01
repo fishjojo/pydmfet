@@ -63,10 +63,13 @@ def scf( OEI, TEI, Norb, Nelec, OneDM0=None, mf_method = 'HF' ):
 
     energy = mf.energy_elec()[0]
 
-    print "mo energy"
-    print mf.mo_energy
+    #print "mo energy"
+    #print mf.mo_energy
     #tools.MatPrint(mf.get_fock(),"fock")
-    tools.MatPrint(mf.mo_coeff,"mo_coeff")
+    #JK   = mf.get_veff(None, dm=RDM1)
+    #tools.MatPrint(JK,"JK")
+    #tools.MatPrint(np.dot(mf.get_fock(), mf.mo_coeff),"test")
+    #tools.MatPrint(mf.mo_coeff,"mo_coeff")
     return (energy, RDM1, mo_coeff)
 
 

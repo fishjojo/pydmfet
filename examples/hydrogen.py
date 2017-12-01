@@ -48,7 +48,7 @@ for bondlength in bondlengths:
         
     else:
         myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
-        #myInts.molden( 'hydrogen-loc.molden' )
+        myInts.molden( 'hydrogen-loc.molden' )
         myInts.TI_OK = True # Only s functions
 
 	print "Norbs = ", mol.nao_nr()
@@ -69,6 +69,15 @@ for bondlength in bondlengths:
 
 	params = oep.OEPparams(algorithm = 'split', ftol = 1e-11, gtol = 1e-7, diffP_tol = 1e-9, outer_maxit = 200, maxit = 200, oep_print = 3)
         theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms = boundary_atoms, oep_params = params,ecw_method = 'HF')
+
+
+	#write subspace orbitals
+	transfo = np.dot( myInts.ao2loc, theDMFET.loc2sub )
+	filename =  'hydrogen-sub.molden'
+	with open( filename, 'w' ) as thefile:
+            molden.header( myInts.mol, thefile )
+            molden.orbital_coeff( myInts.mol, thefile, transfo )
+
 
         umat = theDMFET.embedding_potential()
 	print umat

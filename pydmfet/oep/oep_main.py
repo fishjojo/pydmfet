@@ -11,6 +11,7 @@ class OEP:
         self.umat = embedobj.umat
         self.dim = embedobj.dim_sub
 	self.dim_imp = embedobj.dim_imp
+	self.dim_imp_virt = embedobj.dim_imp_virt
 	self.dim_bath = embedobj.dim_bath
         self.Ne_frag = embedobj.Ne_frag
         self.Ne_env = embedobj.Ne_env
@@ -21,19 +22,14 @@ class OEP:
         self.ints = embedobj.ints
 	self.ops = embedobj.ops
 	self.mf_method = embedobj.mf_method
-	self.P_imp = None
-	self.P_bath = None
-	self.umat = None
+	self.P_imp = embedobj.P_imp
+	self.P_bath = embedobj.P_bath
 
         self.params = params
 
-    def kernel(self, umat = None, P_imp=None, P_bath=None):
+    def kernel(self):
 
 	dim = self.dim
-
-	self.umat = umat
-	self.P_imp = P_imp
-	self.P_bath = P_bath
 
         if(self.umat is None):
             self.umat = np.zeros([dim,dim],dtype=float)
@@ -87,7 +83,8 @@ class OEP:
 	'''
 
 	umat = _umat.copy()
-	self.init_density_partition()
+	if(self.P_imp is None):
+	    self.init_density_partition()
 
 	threshold = self.params.diffP_tol
 	maxit = self.params.outer_maxit
@@ -163,7 +160,7 @@ class OEP:
         gtol = self.params.gtol
         ftol = self.params.ftol
 
-        result = optimize.minimize(self.cost_wuyang,x,args=_args,method='BFGS', jac=True, options={'disp': True, 'maxiter': maxit, 'gtol':gtol, 'ftol':ftol} )
+        result = optimize.minimize(self.cost_wuyang,x,args=_args,method='L-BFGS-B', jac=True, options={'disp': True, 'maxiter': maxit, 'gtol':gtol, 'ftol':ftol} )
 
 	return result
 
@@ -171,8 +168,11 @@ class OEP:
 		    subKin, subVnuc1, subVnuc2, subVnuc_bound, subCoreJK, subTEI, \
 		    impJK_sub, bathJK_sub):
 
+	t0 = (time.clock(),time.time())
+
         umat = tools.vec2mat(x, dim)
 
+	print "|umat| = ", np.linalg.norm(umat)
 	if(self.params.oep_print == 3):
 	    print "sum(diag(umat)) = ", np.sum(np.diag(umat))
 	    tools.MatPrint(umat, 'umat')
@@ -211,18 +211,46 @@ class OEP:
         diffP = FRAG_1RDM + ENV_1RDM - P_ref
         energy = FRAG_energy + ENV_energy - np.trace(np.dot(P_ref,umat))
         #print energy
+
+	#istart = self.dim_imp - self.dim_imp_virt
+	#iend = self.dim_imp
+	#for i in range(istart,iend):
+	#    for j in range(istart,iend):
+	#	diffP[i][j] = 0.0
+
         grad = tools.mat2vec(diffP, dim)
         grad = -1.0 * grad
 
 	gtol = self.params.gtol
 	size = dim*(dim+1)/2
-	for i in range(size):
-	    if(abs(grad[i]) < gtol): #numerical error may cumulate
-		grad[i] = 0.0
+	#for i in range(size):
+	#    if(abs(grad[i]) < gtol): #numerical error may accumulate
+#		grad[i] = 0.0
 
         print "2-norm (grad),       max(grad):"
         print np.linalg.norm(grad), ", ", np.amax(np.absolute(grad))
         #print diffP
         #print umat
-        return (-energy, grad)
+
+
+	l2_f, l2_g = self.l2_reg(x)
+
+	f = -energy + l2_f
+	grad = grad + l2_g
+
+	t1 = tools.timer("wu-yang cost function", t0)
+        return (f, grad)
+
+
+
+    def l2_reg(self, x):
+
+	x_norm = np.linalg.norm(x)
+	f = self.params.l2_lambda * x_norm**2
+	g = x*(2.0*self.params.l2_lambda)
+
+	return (f,g)
+
+
+
 

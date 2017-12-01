@@ -94,6 +94,8 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
     idx = np.maximum( -eigenvals_imp, eigenvals_imp - 2.0 ).argsort()
     tokeep_imp = np.sum( -np.maximum( -eigenvals_imp, eigenvals_imp - 2.0 )[idx] > threshold )
 
+    n_imp_virt = np.sum(eigenvals_imp[idx] < threshold )
+
     eigenvals_imp = eigenvals_imp[idx]
     eigenvecs_imp = eigenvecs_imp[:,idx]
 
@@ -127,6 +129,7 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
         print "Throwing out ", tokeep_bath - tokeep_imp, "bath orbitals"
         tokeep_bath = tokeep_imp
 
+    tokeep_bath = tokeep_imp #keep all bath orbitals
     eigenvals_bath = eigenvals_bath[idx]
     eigenvecs_bath = eigenvecs_bath[:,idx]
 
@@ -181,4 +184,4 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
         _Occupations[tokeep_imp:tokeep_imp+tokeep_bath] = Occupations[numImpOrbs:numImpOrbs+tokeep_bath]
         _Occupations[tokeep_imp+tokeep_bath:tokeep_bath+numImpOrbs] = Occupations[tokeep_imp:numImpOrbs]
 
-    return ( tokeep_imp, tokeep_bath, _Occupations, _loc2sub,eigenvals_imp, eigenvals_bath )
+    return ( tokeep_imp, tokeep_bath, n_imp_virt, _Occupations, _loc2sub,eigenvals_imp, eigenvals_bath )

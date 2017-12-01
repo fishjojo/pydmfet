@@ -38,7 +38,8 @@ class LocalIntegrals:
         self.fullEhf    = the_mf.e_tot
         self.fullDMao   = np.dot(np.dot( the_mf.mo_coeff, np.diag( the_mf.mo_occ )), the_mf.mo_coeff.T )
         self.fullJKao   = scf.hf.get_veff( self.mol, self.fullDMao, 0, 0, 1 ) #Last 3 numbers: dm_last, vhf_last, hermi
-        self.fullFOCKao = self.mol.intor('cint1e_kin_sph') + self.mol.intor('cint1e_nuc_sph') + self.fullJKao
+        self.fullFOCKao = self.mol.intor_symmetric('int1e_kin') + self.mol.intor_symmetric('int1e_nuc') + self.fullJKao
+
 
         # Active space information
         self._which   = localizationtype
@@ -67,7 +68,7 @@ class LocalIntegrals:
             self.TI_OK = False # Check yourself if OK, then overwrite
         if ( self._which == 'lowdin' ):
             assert( self.Norbs == self.mol.nao_nr() ) # Full active space required
-            ovlp = self.mol.intor('cint1e_ovlp_sph')
+            ovlp = self.mol.intor_symmetric('int1e_ovlp')
             ovlp_eigs, ovlp_vecs = np.linalg.eigh( ovlp )
             assert ( np.linalg.norm( np.dot( np.dot( ovlp_vecs, np.diag( ovlp_eigs ) ), ovlp_vecs.T ) - ovlp ) < 1e-10 )
             self.ao2loc = np.dot( np.dot( ovlp_vecs, np.diag( np.power( ovlp_eigs, -0.5 ) ) ), ovlp_vecs.T )
@@ -94,7 +95,13 @@ class LocalIntegrals:
         self.activeFOCK  = np.dot( np.dot( self.ao2loc.T, self.fullFOCKao  ), self.ao2loc )
         if ( self.Norbs <= 150 ):
             self.ERIinMEM  = True
-            self.activeERI = ao2mo.outcore.full_iofree( self.mol, self.ao2loc, compact=False ).reshape(self.Norbs, self.Norbs, self.Norbs, self.Norbs)
+
+	    if(self.mol.cart):
+                intor='int2e_cart'
+            else:
+                intor='int2e_sph'
+
+	    self.activeERI = ao2mo.outcore.full_iofree( self.mol, self.ao2loc, intor, compact=False ).reshape(self.Norbs, self.Norbs, self.Norbs, self.Norbs)
         else:
             self.ERIinMEM  = False
             self.activeERI = None
@@ -109,7 +116,7 @@ class LocalIntegrals:
             
     def loc_ortho( self ):
     
-        ShouldBeI = np.dot( np.dot( self.ao2loc.T , self.mol.intor('cint1e_ovlp_sph') ) , self.ao2loc )
+        ShouldBeI = np.dot( np.dot( self.ao2loc.T , self.mol.intor_symmetric('int1e_ovlp') ) , self.ao2loc )
         return np.linalg.norm( ShouldBeI - np.eye( ShouldBeI.shape[0] ) )
        
     def debug_matrixelements( self ):
@@ -188,7 +195,11 @@ class LocalIntegrals:
         if ( self.ERIinMEM == False ):
             transfo = np.dot( self.ao2loc, loc2dmet[:,:numAct] )
             #TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo, compact=False).reshape(numAct, numAct, numAct, numAct)
-	    TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo)
+	    if(self.mol.cart):
+		intor='int2e_cart'
+	    else:
+		intor='int2e_sph'
+	    TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo, intor)
         else:
             #TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
 	    TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct])
@@ -230,7 +241,7 @@ class LocalIntegrals:
 	    return vnuc_sub 
 	else:
 	    mol = self.bound_mol_ao(boundary_atoms)
-	    vnuc_ao = mol.intor('cint1e_nuc_sph')
+	    vnuc_ao = mol.intor_symmetric('int1e_nuc')
 	    vnuc_loc = np.dot( np.dot( self.ao2loc.T, vnuc_ao ), self.ao2loc )
 	    vnuc_sub = np.dot( np.dot( loc2sub[:,:numActive].T, vnuc_loc ), loc2sub[:,:numActive] )
 	    return vnuc_sub
@@ -239,7 +250,7 @@ class LocalIntegrals:
     def frag_oei_loc(self, impAtom):
 
         mol = self.frag_mol_ao(impAtom)
-        oei_ao = mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')
+        oei_ao = mol.intor_symmetric('int1e_kin') + mol.intor_symmetric('int1e_nuc')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
@@ -253,7 +264,7 @@ class LocalIntegrals:
 
     def frag_vnuc_loc(self, impAtom):
         mol = self.frag_mol_ao(impAtom)
-        oei_ao = mol.intor('cint1e_nuc_sph')
+        oei_ao = mol.intor_symmetric('int1e_nuc')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc
@@ -267,7 +278,7 @@ class LocalIntegrals:
 
     def frag_kin_loc(self):
 
-        oei_ao = self.mol.intor('cint1e_kin_sph')
+        oei_ao = self.mol.intor_symmetric('int1e_kin')
 
         oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
         return oei_loc

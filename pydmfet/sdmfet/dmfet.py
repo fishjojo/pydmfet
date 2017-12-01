@@ -25,11 +25,11 @@ class DMFET:
 
         #construct subspace
         self.OneDM_loc = self.ints.build_1pdm_loc()
-        self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, eignimp, eignbath = subspac.construct_subspace(self.OneDM_loc, self.cluster, self.sub_threshold)
+        self.dim_imp, self.dim_bath, self.dim_imp_virt, self.Occupations, self.loc2sub, eignimp, eignbath = subspac.construct_subspace(self.OneDM_loc, self.cluster, self.sub_threshold)
         self.dim_sub = self.dim_imp + self.dim_bath
 
-	print 'dimension of subspace'
-	print self.dim_imp,  self.dim_bath
+	print 'dimension of subspace: imp_occ, bath, imp_virt', 
+	print self.dim_imp - self.dim_imp_virt, self.dim_bath, self.dim_imp_virt
 
         #construct core determinant
 	idx = self.dim_frag + self.dim_bath
@@ -42,14 +42,19 @@ class DMFET:
 	print self.Ne_frag, self.Ne_env, self.Nelec_core
 
         self.umat = umat
+	self.P_imp = None
+	self.P_bath = None
+
         dim = self.dim_sub
         loc2sub = self.loc2sub
-
-        self.P_ref_sub = np.dot(np.dot(loc2sub[:,:dim].T ,self.OneDM_loc - self.core1PDM_loc), loc2sub[:,:dim]) 
+	self.P_ref_sub = np.dot(np.dot(loc2sub[:,:dim].T, self.OneDM_loc - self.core1PDM_loc),loc2sub[:,:dim])
 
         self.oep_params = oep_params
-
 	self.ops = None
+
+	#self.ops = self.build_ops( self.core1PDM_loc, dim)
+	#self.total_scf_energy()
+	#exit()
 
 
     def build_ops(self, core1PDM_loc, dim):
@@ -80,14 +85,11 @@ class DMFET:
     def calc_umat(self):
       
 	dim = self.dim_sub
-
-	dim = 50
-	self.dim_sub = dim
-	self.P_ref_sub = np.dot(np.dot(self.loc2sub[:,:dim].T ,self.OneDM_loc - self.core1PDM_loc), self.loc2sub[:,:dim])
-	tools.MatPrint(self.P_ref_sub,"P_ref")
- 
 	self.ops = self.build_ops(self.core1PDM_loc, dim) 
         myoep = oep.OEP(self, self.oep_params)
+
+	myoep.params.gtol = myoep.params.gtol * 100.0
+	myoep.params.l2_lambda = myoep.params.gtol * 1.0 #test L2 regularization 
         myoep.kernel()
         self.umat = myoep.umat
 	self.P_imp = myoep.P_imp
@@ -98,8 +100,30 @@ class DMFET:
 	tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
 	tools.MatPrint(self.umat,"umat")
 
-	exit()
+	P1 = self.P_imp.copy()
+	u1 = self.umat.copy()
 
+	#myoep.umat = None
+	myoep.params.algorithm = 'split'
+	myoep.params.gtol = myoep.params.gtol * 0.01
+	myoep.params.l2_lambda = 0.0
+	myoep.kernel()
+        self.umat = myoep.umat
+        self.P_imp = myoep.P_imp
+        self.P_bath = myoep.P_bath
+
+        tools.MatPrint(self.P_imp,"P_imp")
+        tools.MatPrint(self.P_bath,"P_bath")
+        tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
+        tools.MatPrint(self.umat,"umat")
+
+	P2 = self.P_imp.copy()
+	u2 = self.umat.copy()
+
+	
+	print np.linalg.norm(P1-P2)
+	tools.MatPrint(P1-P2,"P_imp_2011 - P_imp_split")
+	tools.MatPrint(u1-u2,"umat_2011 - umat_split")
 
     def embedding_potential(self):
 
@@ -111,6 +135,8 @@ class DMFET:
 
 
     def correction_energy(self):
+	self.total_scf_energy()
+
         energy = 0.0
 
         if(self.umat is None):
@@ -195,6 +221,8 @@ class DMFET:
         subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
         energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, self.P_imp, self.mf_method)
 
+	print "diffP = ",np.linalg.norm(self.P_imp - onedm)
+
         #energy = energy - np.trace(np.dot(onedm,umat+subVnuc_bound)) 
 
         print "embeded imp scf (electron) energy = ",energy
@@ -253,7 +281,7 @@ class DMFET:
 
     def ccsd_energy(self):
 
-        print "ECW method is CCSD"
+        print "ECW method is CCSD(T)"
 	energy = 0.0
 
         dim = self.dim_sub
@@ -270,11 +298,19 @@ class DMFET:
         subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
 
         mf = qcwrap.pyscf_rhf.rhf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
+
+	onedm = mf.make_rdm1() 
+	print "diffP = ",np.linalg.norm(self.P_imp - onedm)
+
+	print mf.e_tot
         mycc = cc.CCSD(mf).run()
 	et = 0.0
-        #et = mycc.ccsd_t()
+        et = mycc.ccsd_t()
         e_hf = mf.e_tot
+	print mycc.e_corr + et
+
         e_ccsd = e_hf + mycc.e_corr + et
+	print e_ccsd
 
         imp_scf_energy = self.imp_scf_energy()
 

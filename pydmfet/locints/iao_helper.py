@@ -27,12 +27,12 @@ def construct_p_list( mol, pmol ):
     p_list      = np.zeros( [ Norbs ], dtype=int )
     counter_mol = 0
     
-    for item in mol.spheric_labels():
-        for pitem in pmol.spheric_labels():
+    for item in mol.ao_labels(False):
+        for pitem in pmol.ao_labels(False):
             if (( pitem[0] == item[0] ) and ( pitem[1] == item[1] ) and ( pitem[2] == item[2] ) and ( pitem[3] == item[3] )):
                 p_list[ counter_mol ] = 1
         counter_mol += 1
-    
+
     assert( counter_mol == Norbs )
     assert( np.sum( p_list ) == pmol.nao_nr() )
     return p_list
@@ -49,7 +49,7 @@ def resort_orbitals( mol, ao2loc ):
     # Sort the orbitals according to the atom list
     Norbs  = mol.nao_nr()
     coords = np.zeros( [ Norbs, 3 ], dtype=float )
-    rvec   = mol.intor( 'cint1e_r_sph', 3 )
+    rvec   = mol.intor( 'int1e_r', 3 )
     for cart in range(3):
         coords[ :, cart ] = np.diag( np.dot( np.dot( ao2loc.T, rvec[cart] ) , ao2loc ) )
     atomid = np.zeros( [ Norbs ], dtype=int )
@@ -78,10 +78,12 @@ def construct_iao( mol, mf ):
     # Knizia, JCTC 9, 4834-4843, 2013 -- appendix C
     ao2occ = mf.mo_coeff[ :, mf.mo_occ > 0.5 ]
     pmol   = mol.copy()
+    if(mol.cart):
+        pmol.cart = True
     pmol.build( False, False, basis='minao' )
-    S21    = gto.mole.intor_cross( 'cint1e_ovlp_sph', pmol, mol )
-    S1     = mol.intor('cint1e_ovlp_sph')
-    S2     = pmol.intor('cint1e_ovlp_sph')
+    S21    = gto.mole.intor_cross( 'int1e_ovlp', pmol, mol )
+    S1     = mol.intor_symmetric('int1e_ovlp')
+    S2     = pmol.intor_symmetric('int1e_ovlp')
     X      = np.linalg.solve( S2, np.dot( S21, ao2occ ) )
     P12    = np.linalg.solve( S1, S21.T )
     Cp     = np.dot( P12, X )
