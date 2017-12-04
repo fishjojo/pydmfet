@@ -102,7 +102,7 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
     #print eigenvals_imp
     #print eigenvecs_imp
 
-    tokeep_imp = numImpOrbs  #keep all imp orbitals in the active space
+    #tokeep_imp = numImpOrbs  #keep all imp orbitals in the active space
     if(tokeep_imp < numImpOrbs):
         frozenEigVals_imp = -eigenvals_imp[tokeep_imp:]
         frozenEigVecs_imp = eigenvecs_imp[:,tokeep_imp:]
@@ -129,11 +129,12 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13):
         print "Throwing out ", tokeep_bath - tokeep_imp, "bath orbitals"
         tokeep_bath = tokeep_imp
 
-    tokeep_bath = tokeep_imp #keep all bath orbitals
+    #tokeep_bath = 2 #keep all bath orbitals
     eigenvals_bath = eigenvals_bath[idx]
     eigenvecs_bath = eigenvecs_bath[:,idx]
 
-    #print eigenvals_bath
+    print "occ_bath"
+    print eigenvals_bath
     #print eigenvecs_bath
 
     frozenEigVals_bath = -eigenvals_bath[tokeep_bath:]

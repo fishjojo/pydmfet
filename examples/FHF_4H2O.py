@@ -46,10 +46,10 @@ for thestructure in range(0,1):
 #boundary_atoms[12]=1
 
     params = oep.OEPparams(algorithm = '2011', ftol = 1e-11, gtol = 1e-6,diffP_tol=1e-8, outer_maxit = 200, maxit = 200,oep_print = 0)
-    theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, sub_threshold = 1e-9, oep_params=params, ecw_method = 'CCSD')
+    theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, sub_threshold = 1e-6, oep_params=params, ecw_method = 'CCSD')
 
     umat = theDMFET.embedding_potential()
-
+    exit()
     e_corr = theDMFET.correction_energy()
 
     e_tot = e_mf + e_corr
