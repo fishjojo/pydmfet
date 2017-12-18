@@ -108,11 +108,27 @@ class LocalIntegrals:
         
         #self.debug_matrixelements()
         
-    def molden( self, filename ):
+    def loc_molden( self, filename ):
     
         with open( filename, 'w' ) as thefile:
             molden.header( self.mol, thefile )
             molden.orbital_coeff( self.mol, thefile, self.ao2loc )
+
+    def sub_molden( self, loc2sub, filename, mo_occ=None ):
+
+	transfo = np.dot( self.ao2loc, loc2sub )
+	with open( filename, 'w' ) as thefile:
+            molden.header( self.mol, thefile )
+            molden.orbital_coeff( self.mol, thefile, transfo, occ=mo_occ )
+
+    def submo_molden( self, mo_coeff, mo_occ, loc2sub, filename ):
+
+	dim = mo_coeff.shape[0]
+	mo_loc = np.dot( loc2sub[:,:dim], mo_coeff )
+	transfo = np.dot( self.ao2loc, mo_loc )
+        with open( filename, 'w' ) as thefile:
+            molden.header( self.mol, thefile )
+            molden.orbital_coeff( self.mol, thefile, transfo, occ=mo_occ )
             
     def loc_ortho( self ):
     
@@ -300,9 +316,9 @@ class LocalIntegrals:
     def build_1pdm_loc(self):
         NOcc = self.Nelec/2  #closed shell 
         fock = self.loc_rhf_fock()
-        onedm = tools.fock2onedm(fock, NOcc)
+        onedm,mo_coeff = tools.fock2onedm(fock, NOcc)
 
-        return onedm
+        return (onedm,mo_coeff)
 
     def coreJK_sub(self, loc2sub, numActive, coreDMloc):
 

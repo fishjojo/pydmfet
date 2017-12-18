@@ -22,7 +22,7 @@ for thestructure in range(0,1):
 
 
     myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
-    myInts.molden( 'iao.molden' )
+#    myInts.molden( 'iao.molden' )
     myInts.TI_OK = False # Only s functions
 
     natoms = mol.natm
@@ -44,12 +44,13 @@ for thestructure in range(0,1):
 #boundary_atoms[8]=1
 #boundary_atoms[9]=1
 #boundary_atoms[12]=1
+    boundary_atoms =  None
 
-    params = oep.OEPparams(algorithm = '2011', ftol = 1e-11, gtol = 1e-6,diffP_tol=1e-8, outer_maxit = 200, maxit = 200,oep_print = 0)
-    theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, sub_threshold = 1e-6, oep_params=params, ecw_method = 'CCSD')
+    params = oep.OEPparams(algorithm = 'split', ftol = 1e-11, gtol = 1e-6,diffP_tol=1e-6, outer_maxit = 100, maxit = 100,l2_lambda = 0.0, oep_print = 0)
+    theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, dim_bath = 25, oep_params=params, ecw_method = 'CCSD')
 
     umat = theDMFET.embedding_potential()
-    exit()
+#    exit()
     e_corr = theDMFET.correction_energy()
 
     e_tot = e_mf + e_corr

@@ -1,11 +1,12 @@
 import time,copy
 import numpy as np
-from pydmfet import subspac,oep,tools,qcwrap
+from pydmfet import subspac,oep,tools,qcwrap,libgen
 from pyscf import cc
+from pyscf.tools import molden
 
 class DMFET:
 
-    def __init__(self, ints, cluster, impAtom, Ne_frag, boundary_atoms=None, umat = None,\
+    def __init__(self, ints, cluster, impAtom, Ne_frag, boundary_atoms=None, boundary_atoms2=None, umat = None, dim_bath = None, \
 		 sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF',do_dfet = False):
 
         self.ints = ints
@@ -14,6 +15,7 @@ class DMFET:
         self.Ne_frag = Ne_frag
 	self.Ne_frag_orig = copy.copy(self.Ne_frag)
 	self.boundary_atoms = boundary_atoms
+	self.boundary_atoms2 = boundary_atoms2
 
         self.dim_frag = np.sum(self.cluster)
         #self.dim_env = self.cluster.size - self.dim_frag
@@ -24,16 +26,22 @@ class DMFET:
 	self.sub_threshold = sub_threshold
 
         #construct subspace
-        self.OneDM_loc = self.ints.build_1pdm_loc()
-        self.dim_imp, self.dim_bath, self.dim_imp_virt, self.Occupations, self.loc2sub, eignimp, eignbath = subspac.construct_subspace(self.OneDM_loc, self.cluster, self.sub_threshold)
-        self.dim_sub = self.dim_imp + self.dim_bath
+        self.OneDM_loc, mo_coeff = self.ints.build_1pdm_loc()
 
-	print 'dimension of subspace: imp_occ, bath, imp_virt', 
-	print self.dim_imp - self.dim_imp_virt, self.dim_bath, self.dim_imp_virt
+	self.P_frag_loc, self.P_env_loc = subspac.loc_fullP_to_fragP(self.cluster,mo_coeff,self.ints.Nelec/2, self.ints.Norbs)
+        self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, occ_imp, occ_bath = \
+	subspac.construct_subspace(self.OneDM_loc, self.cluster, self.sub_threshold, dim_bath)
+
+        self.dim_sub = self.dim_imp + self.dim_bath
+	print 'dimension of subspace: imp, bath', 
+	print self.dim_imp, self.dim_bath
 
         #construct core determinant
 	idx = self.dim_frag + self.dim_bath
         self.core1PDM_loc, self.Nelec_core, Norb_imp_throw, self.frag_core1PDM_loc = subspac.build_core(self.Occupations, self.loc2sub, idx)
+
+
+	self.P_env_loc = self.P_env_loc - self.core1PDM_loc  #assume core does not have imp contribution
 
 	self.Ne_frag = self.Ne_frag - Norb_imp_throw*2
         self.Ne_env = self.ints.Nelec - self.Ne_frag - self.Nelec_core
@@ -45,85 +53,82 @@ class DMFET:
 	self.P_imp = None
 	self.P_bath = None
 
+
         dim = self.dim_sub
         loc2sub = self.loc2sub
 	self.P_ref_sub = np.dot(np.dot(loc2sub[:,:dim].T, self.OneDM_loc - self.core1PDM_loc),loc2sub[:,:dim])
 
+	#density partition
+	self.P_imp,P2 = subspac.subocc_to_dens_part(self.P_ref_sub,occ_imp, occ_bath, self.dim_imp, self.dim_bath)
+
+	self.P_bath = self.P_ref_sub - self.P_imp
+	print 'check idempotency for P_imp, P_bath'
+        print np.linalg.norm(np.dot(self.P_imp,self.P_imp)-2.0*self.P_imp)
+	print np.linalg.norm(np.dot(self.P_bath,self.P_bath)-2.0*self.P_bath)
+
+	'''
+	frag_occ = np.zeros([dim],dtype = float)
+        for i in range(dim):
+            frag_occ[i] = self.P_imp[i,i]
+        self.ints.sub_molden( self.loc2sub[:,:dim], 'frag_dens_guess.molden', frag_occ )
+
+        env_occ = np.zeros([dim],dtype = float)
+        for i in range(dim):
+            env_occ[i] = self.P_bath[i,i]
+        self.ints.sub_molden( self.loc2sub[:,:dim], 'env_dens_guess.molden', env_occ )
+	'''
+
+	self.P_imp = None
+        self.P_bath = None
+
         self.oep_params = oep_params
 	self.ops = None
 
-	#self.ops = self.build_ops( self.core1PDM_loc, dim)
-	#self.total_scf_energy()
-	#exit()
+        self.ops = libgen.build_subops(self.impAtom, self.boundary_atoms,self.boundary_atoms2, self.ints, self.loc2sub, self.core1PDM_loc, self.dim_sub)
+	tmp, self.P_ref_sub = self.total_scf_energy()
 
-
-    def build_ops(self, core1PDM_loc, dim):
-
-        t0 = (time.clock(), time.time())
-
-        ints = self.ints
-        loc2sub = self.loc2sub
-        impAtom = self.impAtom
-        boundary_atoms = self.boundary_atoms
-
-        subKin = ints.frag_kin_sub( impAtom, loc2sub, dim )
-        subVnuc1 = ints.frag_vnuc_sub( impAtom, loc2sub, dim)
-        subVnuc2 = ints.frag_vnuc_sub( 1-impAtom, loc2sub, dim )
-
-        subVnuc_bound = ints.bound_vnuc_sub(boundary_atoms, loc2sub, dim )
-
-        subCoreJK = ints.coreJK_sub( loc2sub, dim, core1PDM_loc )
-        subTEI = ints.dmet_tei( loc2sub, dim )
-
-        ops = [subKin,subVnuc1,subVnuc2,subVnuc_bound,subCoreJK,subTEI]
-
-
-        tools.timer("dmfet.build_ops",t0)
-        return ops
-
+	#tools.MatPrint(self.P_ref_sub, "P_ref_sub")
 
     def calc_umat(self):
       
 	dim = self.dim_sub
-	self.ops = self.build_ops(self.core1PDM_loc, dim) 
+	if(self.ops is None):
+	    self.ops = libgen.build_subops(self.impAtom, self.boundary_atoms,self.boundary_atoms2, self.ints, self.loc2sub, self.core1PDM_loc, self.dim_sub) 
         myoep = oep.OEP(self, self.oep_params)
 
-	myoep.params.gtol = myoep.params.gtol * 100.0
-	myoep.params.l2_lambda = myoep.params.gtol * 1.0 #test L2 regularization 
+	#myoep.params.gtol = myoep.params.gtol * 100.0
+	#myoep.params.l2_lambda = myoep.params.gtol * 1.0 #test L2 regularization 
         myoep.kernel()
         self.umat = myoep.umat
 	self.P_imp = myoep.P_imp
 	self.P_bath = myoep.P_bath
 
-	tools.MatPrint(self.P_imp,"P_imp")
-	tools.MatPrint(self.P_bath,"P_bath")
-	tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
-	tools.MatPrint(self.umat,"umat")
+	#tools.MatPrint(self.P_imp,"P_imp")
+	#tools.MatPrint(self.P_bath,"P_bath")
+	#tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
+	#tools.MatPrint(self.umat,"umat")
 
-	P1 = self.P_imp.copy()
-	u1 = self.umat.copy()
-
-	#myoep.umat = None
+	#P1 = self.P_imp.copy()
+	#u1 = self.umat.copy()
+	'''
 	myoep.params.algorithm = 'split'
-	myoep.params.gtol = myoep.params.gtol * 0.01
 	myoep.params.l2_lambda = 0.0
 	myoep.kernel()
         self.umat = myoep.umat
         self.P_imp = myoep.P_imp
         self.P_bath = myoep.P_bath
-
-        tools.MatPrint(self.P_imp,"P_imp")
-        tools.MatPrint(self.P_bath,"P_bath")
-        tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
-        tools.MatPrint(self.umat,"umat")
-
-	P2 = self.P_imp.copy()
-	u2 = self.umat.copy()
+        #tools.MatPrint(self.P_imp,"P_imp")
+        #tools.MatPrint(self.P_bath,"P_bath")
+        #tools.MatPrint(self.P_imp+self.P_bath,"P_imp+P_bath")
+        #tools.MatPrint(self.umat,"umat")
+	'''
+	#P2 = self.P_imp.copy()
+	#u2 = self.umat.copy()
 
 	
-	print np.linalg.norm(P1-P2)
-	tools.MatPrint(P1-P2,"P_imp_2011 - P_imp_split")
-	tools.MatPrint(u1-u2,"umat_2011 - umat_split")
+	#print np.linalg.norm(P1-P2)
+	#tools.MatPrint(P1-P2,"P_imp_2011 - P_imp_split")
+	#tools.MatPrint(u1-u2,"umat_2011 - umat_split")
 
     def embedding_potential(self):
 
@@ -148,7 +153,7 @@ class DMFET:
 	dim = self.dim_frag + self.dim_bath
 	if(dim != self.dim_sub):
 	    coredm = self.core1PDM_loc - self.frag_core1PDM_loc
-	    self.ops = self.build_ops(coredm, dim)
+	    self.ops = libgen.build_subops(self.impAtom, self.boundary_atoms,self.boundary_atoms2, self.ints, self.loc2sub, coredm, dim)
 
 	umat = self.umat.copy()
 	npad = dim - self.dim_sub
@@ -185,22 +190,15 @@ class DMFET:
         Ne_env = self.Ne_env
         ops = self.ops
 
-        subKin = ops[0]
-        subVnuc1 = ops[1]
-        subVnuc2 = ops[2]
-        subCoreJK = ops[4]
-        subTEI = ops[-1]
-
-
-        subOEI = subKin+subVnuc1+subVnuc2+subCoreJK
-        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag+Ne_env, self.P_ref_sub, self.mf_method)
+        subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc2"]+ops["subCoreJK"]
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, ops["subTEI"], dim, Ne_frag+Ne_env, self.P_ref_sub, self.mf_method)
 
 
         #print onedm - self.P_ref_sub
         energy = energy + self.core_energy() + self.ints.const()
 
         print "total scf energy = ",energy
-        return energy
+        return (energy,onedm)
 
 
     def imp_scf_energy(self):
@@ -210,16 +208,10 @@ class DMFET:
         dim = self.dim_sub
         Ne_frag = self.Ne_frag
         ops = self.ops
-
-        subKin = ops[0]
-        subVnuc1 = ops[1]
-        subVnuc_bound = ops[3]
-        subCoreJK = ops[4]
-        subTEI = ops[-1]
         umat = self.umat
 
-        subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
-        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, self.P_imp, self.mf_method)
+        subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]+umat
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, ops["subTEI"], dim, Ne_frag, self.P_imp, self.mf_method)
 
 	print "diffP = ",np.linalg.norm(self.P_imp - onedm)
 
@@ -243,13 +235,7 @@ class DMFET:
         Ne_frag = self.Ne_frag_orig
         ops = self.ops
 
-        subKin = ops[0]
-        subVnuc1 = ops[1]
-        subVnuc_bound = ops[3]
-        subCoreJK = ops[4]
-        subTEI = ops[-1]
-
-        subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
+        subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]+ops["subCoreJK"]+umat
 
 	dim_sub = self.dim_sub
 	npad = dim - dim_sub
@@ -260,7 +246,7 @@ class DMFET:
 	    index = dim_sub+i
 	    P_guess[index][index] = 2.0
 
-        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, subTEI, dim, Ne_frag, P_guess)
+        energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, ops["subTEI"], dim, Ne_frag, P_guess)
 
 	P = np.dot(np.dot(self.loc2sub[:,:dim_sub],self.P_imp),self.loc2sub[:,:dim_sub].T)
         P = np.dot(np.dot(self.loc2sub[:,:dim].T,P),self.loc2sub[:,:dim])
@@ -287,17 +273,11 @@ class DMFET:
         dim = self.dim_sub
         Ne_frag = self.Ne_frag
         ops = self.ops
-
-        subKin = ops[0]
-        subVnuc1 = ops[1]
-        subVnuc_bound = ops[3]
-        subCoreJK = ops[4]
-        subTEI = ops[-1]
         umat = self.umat
 
-        subOEI = subKin+subVnuc1+subVnuc_bound+subCoreJK+umat
+        subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]+umat
 
-        mf = qcwrap.pyscf_rhf.rhf( subOEI, subTEI, dim, Ne_frag, self.P_imp)
+        mf = qcwrap.pyscf_rhf.rhf( subOEI, ops["subTEI"], dim, Ne_frag, self.P_imp)
 
 	onedm = mf.make_rdm1() 
 	print "diffP = ",np.linalg.norm(self.P_imp - onedm)
@@ -318,3 +298,29 @@ class DMFET:
 
         print "dmfet correction energy = ",energy
 	return energy
+
+    def tot_ccsd_energy(self):
+
+	energy = 0.0
+
+        dim = self.dim_frag+self.dim_bath
+        Ne = self.Ne_frag+self.Ne_env
+        ops = libgen.build_subops(self.impAtom, self.boundary_atoms, self.boundary_atoms2, self.ints, self.loc2sub, self.core1PDM_loc, self.dim_sub)
+
+        subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc2"]+ops["subCoreJK"]
+
+        mf = qcwrap.pyscf_rhf.rhf( subOEI, ops["subTEI"], dim, Ne)
+
+	e_hf = mf.e_tot + self.core_energy() + self.ints.const()
+        print "hf energy = ", e_hf
+
+        mycc = cc.CCSD(mf).run()
+        et = 0.0
+        et = mycc.ccsd_t()
+
+        print "correlation energy = ", mycc.e_corr + et
+
+        e_ccsd = e_hf + mycc.e_corr + et
+        print "total CCSD(T) energy = ", e_ccsd
+        return energy
+

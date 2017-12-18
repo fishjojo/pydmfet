@@ -9,6 +9,7 @@ def rhf( OEI, TEI, Norb, Nelec, OneDM0=None ):
     # Get the RHF solution
     OEI = 0.5*(OEI.T + OEI)
     mol = gto.Mole()
+    mol.max_memory = 8000
     mol.build( verbose=0 )
     mol.atom.append(('C', (0, 0, 0)))
     mol.nelectron = Nelec
@@ -17,10 +18,21 @@ def rhf( OEI, TEI, Norb, Nelec, OneDM0=None ):
     mf.get_hcore = lambda *args: OEI
     mf.get_ovlp = lambda *args: np.eye( Norb )
     mf._eri = ao2mo.restore(8, TEI, Norb)
-    mf.kernel( OneDM0 )
+    mf.max_cycle = 100
+    #mf.conv_tol = 1e-8
+    #adiis = pyscf_scf.diis.ADIIS()
+    #mf.diis = adiis
+    #mf.verbose = 5
+    mf.kernel(OneDM0)
 
     if ( mf.converged == False ):
-        raise Exception(" rhf not converged!")
+	#RDM1 = mf.make_rdm1()
+	#cdiis = pyscf_scf.diis.SCF_DIIS()
+	#mf.diis = cdiis
+	#mf.max_cycle = 200
+	#mf.kernel(RDM1)
+	if ( mf.converged == False ):
+            raise Exception(" rhf not converged!")
 
     return mf
 
@@ -60,8 +72,12 @@ def scf( OEI, TEI, Norb, Nelec, OneDM0=None, mf_method = 'HF' ):
     RDM1 = 0.5*(RDM1.T + RDM1)
 
     mo_coeff = mf.mo_coeff
-
+    mo_energy = mf.mo_energy
     energy = mf.energy_elec()[0]
+
+    mo = np.zeros([Norb,Norb+1],dtype=float)
+    mo[:,:-1] = mo_coeff
+    mo[:,-1] = mo_energy
 
     #print "mo energy"
     #print mf.mo_energy
@@ -70,7 +86,7 @@ def scf( OEI, TEI, Norb, Nelec, OneDM0=None, mf_method = 'HF' ):
     #tools.MatPrint(JK,"JK")
     #tools.MatPrint(np.dot(mf.get_fock(), mf.mo_coeff),"test")
     #tools.MatPrint(mf.mo_coeff,"mo_coeff")
-    return (energy, RDM1, mo_coeff)
+    return (energy, RDM1, mo)
 
 
 def scf_oei( OEI, Norb, Nelec):

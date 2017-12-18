@@ -8,7 +8,9 @@ def fock2onedm(fock, NOcc):
     eigenvecs = eigenvecs[:,idx]
     OneDM = 2 * np.dot( eigenvecs[:,:NOcc] , eigenvecs[:,:NOcc].T )
 
-    return OneDM
+    OneDM = 0.5*(OneDM + OneDM.T)
+
+    return (OneDM,eigenvecs)
 
 
 def vec2mat(x, dim):
