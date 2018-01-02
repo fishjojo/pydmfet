@@ -60,7 +60,11 @@ class OEP:
 #	self.P_ref = P_ref
 #	self.umat = self.oep_old(self.umat)
 
-#	tools.MatPrint(self.umat,"umat")
+	self.P_imp, self.P_bath = self.verify_scf(self.umat)
+
+	#tools.MatPrint(self.P_imp,"P_imp")
+        #tools.MatPrint(self.P_bath,"P_bath")
+	#tools.MatPrint(self.umat,"umat")
 	return self
 
 
@@ -164,7 +168,7 @@ class OEP:
         #tools.MatPrint(self.P_bath,"P_bath")
 	#tools.MatPrint(umat,"umat")
 
-	self.P_imp,self.P_bath = self.verify_scf(umat)
+	#self.P_imp,self.P_bath = self.verify_scf(umat)
 
 	t1 = tools.timer("oep", t0)
 
@@ -185,6 +189,7 @@ class OEP:
 	    subOEI1 = subOEI1 + umat
 	    subOEI2 = subOEI2 + umat
 
+	'''
 	frag_coredm_guess = self.P_imp
 	env_coredm_guess = self.P_bath
 	FRAG_energy, FRAG_1RDM, frag_mo = qcwrap.pyscf_rhf.scf( subOEI1, subTEI, dim, Ne_frag, frag_coredm_guess, mf_method = self.mf_method )
@@ -202,16 +207,17 @@ class OEP:
         for i in range(Ne_env/2):
             env_occ[i] = 2.0
         self.ints.submo_molden( env_mo[:,:dim], env_occ, self.loc2sub, 'env_dens_nonscf.molden' )
+	'''
 
         frag_coredm_guess,mo_coeff = tools.fock2onedm(subOEI1, Ne_frag/2)
         FRAG_energy, FRAG_1RDM, frag_mo = qcwrap.pyscf_rhf.scf( subOEI1, subTEI, dim, Ne_frag, frag_coredm_guess, mf_method = self.mf_method )
         env_coredm_guess,mo_coeff = tools.fock2onedm(subOEI2, Ne_env/2)
         ENV_energy, ENV_1RDM, env_mo = qcwrap.pyscf_rhf.scf( subOEI2, subTEI, dim, Ne_env, env_coredm_guess, mf_method = self.mf_method )
 
-	print "scf energies:"
-        print FRAG_energy, ENV_energy
-	self.ints.submo_molden( frag_mo[:,:dim], frag_occ, self.loc2sub, 'frag_dens_scf.molden' )
-        self.ints.submo_molden( env_mo[:,:dim], env_occ, self.loc2sub, 'env_dens_scf.molden' )
+	#print "scf energies:"
+        #print FRAG_energy, ENV_energy
+	#self.ints.submo_molden( frag_mo[:,:dim], frag_occ, self.loc2sub, 'frag_dens_scf.molden' )
+        #self.ints.submo_molden( env_mo[:,:dim], env_occ, self.loc2sub, 'env_dens_scf.molden' )
 
 
 	if(self.P_imp is not None):
@@ -222,6 +228,9 @@ class OEP:
 	diffP_max = np.amax(np.absolute(diffP) )
 	print "|P_frag + P_env - P_ref| = ", diffP_norm
 	print "max element of (P_frag + P_env - P_ref) = ", diffP_max
+
+	self.frag_mo = frag_mo
+	self.env_mo = env_mo
 
 	return (FRAG_1RDM, ENV_1RDM)
 
@@ -266,7 +275,7 @@ class OEP:
         gtol = self.params.gtol
         ftol = self.params.ftol
 
-        result = optimize.minimize(self.cost_wuyang,x,args=_args,method='BFGS', jac=True, options={'disp': False, 'maxiter': maxit, 'gtol':gtol, 'ftol':ftol} )
+        result = optimize.minimize(self.cost_wuyang,x,args=_args,method='L-BFGS-B', jac=True, options={'disp': True, 'maxiter': maxit, 'gtol':gtol, 'ftol':ftol} )
 
 	return result
 
@@ -313,6 +322,9 @@ class OEP:
 	    if(Ne_env > 0):
 	        ENV_energy, ENV_1RDM = qcwrap.pyscf_rhf.scf_oei( subOEI2, dim, Ne_env)
 
+
+	#tools.MatPrint(frag_mo,"frag_mo")
+	#tools.MatPrint(env_mo,"env_mo")
 
 	self.P_imp = FRAG_1RDM
         self.P_bath = ENV_1RDM

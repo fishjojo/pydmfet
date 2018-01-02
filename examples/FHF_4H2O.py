@@ -6,7 +6,7 @@ import FHF_4H2O_struct
 
 thebasis = 'ccpvdz'
 e_tot_list = []
-for thestructure in range(0,1):
+for thestructure in range(17,18):
 
     mol = FHF_4H2O_struct.structure( thestructure, thebasis)
 
@@ -46,7 +46,7 @@ for thestructure in range(0,1):
 #boundary_atoms[12]=1
     boundary_atoms =  None
 
-    params = oep.OEPparams(algorithm = 'split', ftol = 1e-11, gtol = 1e-6,diffP_tol=1e-6, outer_maxit = 100, maxit = 100,l2_lambda = 0.0, oep_print = 0)
+    params = oep.OEPparams(algorithm = '2011', ftol = 1e-11, gtol = 1e-6,diffP_tol=1e-6, outer_maxit = 100, maxit = 100,l2_lambda = 0.0, oep_print = 0)
     theDMFET = sdmfet.DMFET( myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, dim_bath = 25, oep_params=params, ecw_method = 'CCSD')
 
     umat = theDMFET.embedding_potential()

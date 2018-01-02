@@ -1,3 +1,5 @@
 *.pyc
-*.out
+*.out*
 *.molden
+tmp*
+*.dat
