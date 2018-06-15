@@ -32,29 +32,34 @@ class LocalIntegrals:
 
         assert (( localizationtype == 'meta_lowdin' ) or ( localizationtype == 'boys' ) or ( localizationtype == 'lowdin' ) or ( localizationtype == 'iao' ))
         
-        # Information on the full HF problem
+        # Information on the full SCF problem
         self.mo_occ = the_mf.mo_occ
         self.mol        = the_mf.mol
+	self.s1e_ao = the_mf.get_ovlp()
         self.fullEhf    = the_mf.e_tot
-        self.fullDMao   = np.dot(np.dot( the_mf.mo_coeff, np.diag( the_mf.mo_occ )), the_mf.mo_coeff.T )
-        self.fullJKao   = scf.hf.get_veff( self.mol, self.fullDMao, 0, 0, 1 ) #Last 3 numbers: dm_last, vhf_last, hermi
-        self.fullFOCKao = self.mol.intor_symmetric('int1e_kin') + self.mol.intor_symmetric('int1e_nuc') + self.fullJKao
+        #self.fullDMao   = np.dot(np.dot( the_mf.mo_coeff, np.diag( the_mf.mo_occ )), the_mf.mo_coeff.T )
+	self.fullDMao = the_mf.make_rdm1()
+        #self.fullJKao   = scf.hf.get_veff( self.mol, self.fullDMao, 0, 0, 1 ) #Last 3 numbers: dm_last, vhf_last, hermi
+	#self.fullJKao = the_mf.get_veff()
+        #self.fullFOCKao = self.mol.intor_symmetric('int1e_kin') + self.mol.intor_symmetric('int1e_nuc') + self.fullJKao
+	self.fullFOCKao = the_mf.get_fock()
+	self.fullOEIao = the_mf.get_hcore()
 
 
         # Active space information
         self._which   = localizationtype
         self.active   = np.zeros( [ self.mol.nao_nr() ], dtype=int )
         self.active[ active_orbs ] = 1
-        self.Norbs    = np.sum( self.active ) # Number of active space orbitals
+        self.NOrb    = np.sum( self.active ) # Number of active space orbitals
         self.Nelec    = int(np.rint( self.mol.nelectron - np.sum( the_mf.mo_occ[ self.active==0 ] ))) # Total number of electrons minus frozen part
         
         # Localize the orbitals
         if (( self._which == 'meta_lowdin' ) or ( self._which == 'boys' )):
             if ( self._which == 'meta_lowdin' ):
-                assert( self.Norbs == self.mol.nao_nr() ) # Full active space required
+                assert( self.NOrb == self.mol.nao_nr() ) # Full active space required
             if ( self._which == 'boys' ):
                 self.ao2loc = the_mf.mo_coeff[ : , self.active==1 ]
-            if ( self.Norbs == self.mol.nao_nr() ): # If you want the full active, do meta-Lowdin
+            if ( self.NOrb == self.mol.nao_nr() ): # If you want the full active, do meta-Lowdin
                 nao.AOSHELL[4] = ['1s0p0d0f', '2s1p0d0f'] # redefine the valence shell for Be
                 self.ao2loc = orth.orth_ao( self.mol, 'meta_lowdin' )
                 if ( ao_rotation is not None ):
@@ -67,33 +72,36 @@ class LocalIntegrals:
                 self.ao2loc = loc.optimize( threshold=localization_threshold )
             self.TI_OK = False # Check yourself if OK, then overwrite
         if ( self._which == 'lowdin' ):
-            assert( self.Norbs == self.mol.nao_nr() ) # Full active space required
+            assert( self.NOrb == self.mol.nao_nr() ) # Full active space required
             ovlp = self.mol.intor_symmetric('int1e_ovlp')
             ovlp_eigs, ovlp_vecs = np.linalg.eigh( ovlp )
             assert ( np.linalg.norm( np.dot( np.dot( ovlp_vecs, np.diag( ovlp_eigs ) ), ovlp_vecs.T ) - ovlp ) < 1e-10 )
             self.ao2loc = np.dot( np.dot( ovlp_vecs, np.diag( np.power( ovlp_eigs, -0.5 ) ) ), ovlp_vecs.T )
             self.TI_OK  = False # Check yourself if OK, then overwrite
         if ( self._which == 'iao' ):
-            assert( self.Norbs == self.mol.nao_nr() ) # Full active space assumed
+            assert( self.NOrb == self.mol.nao_nr() ) # Full active space assumed
             self.ao2loc = iao_helper.localize_iao( self.mol, the_mf )
             if ( ao_rotation is not None ):
                 self.ao2loc = np.dot( self.ao2loc, ao_rotation.T )
             self.TI_OK = False # Check yourself if OK, then overwrite
             #self.molden( 'dump.molden' ) # Debugging mode
-        assert( self.loc_ortho() < 1e-8 )
+        assert( self.loc_ortho() < 1e-9 )
 
+	'''
         # Effective Hamiltonian due to frozen part
         self.frozenDMmo  = np.array( the_mf.mo_occ, copy=True )
         self.frozenDMmo[ self.active==1 ] = 0 # Only the frozen MO occupancies nonzero
         self.frozenDMao  = np.dot(np.dot( the_mf.mo_coeff, np.diag( self.frozenDMmo )), the_mf.mo_coeff.T )
         self.frozenJKao  = scf.hf.get_veff( self.mol, self.frozenDMao, 0, 0, 1 ) #Last 3 numbers: dm_last, vhf_last, hermi
         self.frozenOEIao = self.fullFOCKao - self.fullJKao + self.frozenJKao
-        
+        '''
+	self.frozenOEIao = self.fullOEIao
+
         # Active space OEI and ERI
-        self.activeCONST = self.mol.energy_nuc() + np.einsum( 'ij,ij->', self.frozenOEIao - 0.5*self.frozenJKao, self.frozenDMao )
+        self.activeCONST = self.mol.energy_nuc() #+ np.einsum( 'ij,ij->', self.frozenOEIao - 0.5*self.frozenJKao, self.frozenDMao )
         self.activeOEI   = np.dot( np.dot( self.ao2loc.T, self.frozenOEIao ), self.ao2loc )
         self.activeFOCK  = np.dot( np.dot( self.ao2loc.T, self.fullFOCKao  ), self.ao2loc )
-        if ( self.Norbs <= 150 ):
+        if ( self.NOrb <= 150 ):
             self.ERIinMEM  = True
 
 	    if(self.mol.cart):
@@ -101,7 +109,7 @@ class LocalIntegrals:
             else:
                 intor='int2e_sph'
 
-	    self.activeERI = ao2mo.outcore.full_iofree( self.mol, self.ao2loc, intor, compact=False ).reshape(self.Norbs, self.Norbs, self.Norbs, self.Norbs)
+	    self.activeERI = ao2mo.outcore.full_iofree( self.mol, self.ao2loc, intor, compact=False ).reshape(self.NOrb, self.NOrb, self.NOrb, self.NOrb)
         else:
             self.ERIinMEM  = False
             self.activeERI = None
@@ -113,6 +121,14 @@ class LocalIntegrals:
         with open( filename, 'w' ) as thefile:
             molden.header( self.mol, thefile )
             molden.orbital_coeff( self.mol, thefile, self.ao2loc )
+
+    def locmo_molden( self, mo_coeff, mo_occ, filename):
+
+	transfo = np.dot( self.ao2loc, mo_coeff )
+	with open( filename, 'w' ) as thefile:
+	    molden.header( self.mol, thefile )
+	    molden.orbital_coeff( self.mol, thefile, transfo, occ=mo_occ )
+
 
     def sub_molden( self, loc2sub, filename, mo_occ=None ):
 
@@ -157,7 +173,7 @@ class LocalIntegrals:
     
         return self.activeCONST
         
-    def loc_oei( self ):
+    def hcore_loc( self ):
         
         return self.activeOEI
         
@@ -180,7 +196,6 @@ class LocalIntegrals:
     
         if ( self.ERIinMEM == False ):
             print "localintegrals::loc_tei : ERI of the localized orbitals are not stored in memory."
-        assert ( self.ERIinMEM == True )
         return self.activeERI
         
     def dmet_oei( self, loc2dmet, numActive ):
@@ -205,7 +220,7 @@ class LocalIntegrals:
         DMguess = 2 * np.dot( eigvecs[ :, :numPairs ], eigvecs[ :, :numPairs ].T )
         return DMguess
         
-    def dmet_tei( self, loc2dmet, numAct ):
+    def tei_sub( self, loc2dmet, numAct ):
    
 	t0 = (time.clock(),time.time()) 
         if ( self.ERIinMEM == False ):
@@ -217,8 +232,8 @@ class LocalIntegrals:
 		intor='int2e_sph'
 	    TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo, intor)
         else:
-            #TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
-	    TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.Norbs), loc2dmet[:,:numAct])
+            #TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.NOrb), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
+	    TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.NOrb), loc2dmet[:,:numAct])
 
 	t1 = tools.timer("locints.dmet_tei",t0)
         return TEIdmet
@@ -230,7 +245,7 @@ class LocalIntegrals:
 	mol = self.mol
 	NAtom = mol.natm
 
-	mol1 = copy.deepcopy(mol)
+	mol1 = mol.copy()
 	for i in range(NAtom):
 	    if(impAtom[i] == 0):
 		mol1._atm[i][0] = 0 #make environment atoms ghost
@@ -238,16 +253,20 @@ class LocalIntegrals:
         return mol1
 
 
-    def bound_mol_ao(self, boundary_atoms):
+    def bound_vnuc_ao(self, boundary_atoms):
 
 	mol = self.mol
         NAtom = mol.natm
 
-	mol1 = copy.deepcopy(mol)
+	vnuc = 0.0
+	mol1 = mol.copy()
 	for i in range(NAtom):
-            mol1._atm[i][0] = boundary_atoms[i]
+            #mol1._atm[i][0] = boundary_atoms[i]
+	    if( abs(boundary_atoms[i]) > 1e-6 ):
+	        mol1.set_rinv_origin(mol.atom_coord(i))
+		vnuc += -1.0*boundary_atoms[i] * mol1.intor_symmetric('int1e_rinv_sph')
 
-	return mol1
+	return vnuc
 
 
     def bound_vnuc_sub(self, boundary_atoms, loc2sub, numActive):
@@ -256,10 +275,10 @@ class LocalIntegrals:
 	if (boundary_atoms is None):
 	    return vnuc_sub 
 	else:
-	    mol = self.bound_mol_ao(boundary_atoms)
-	    vnuc_ao = mol.intor_symmetric('int1e_nuc')
-	    vnuc_loc = np.dot( np.dot( self.ao2loc.T, vnuc_ao ), self.ao2loc )
-	    vnuc_sub = np.dot( np.dot( loc2sub[:,:numActive].T, vnuc_loc ), loc2sub[:,:numActive] )
+	    vnuc_ao = self.bound_vnuc_ao(boundary_atoms)
+	    vnuc_loc = reduce( np.dot, ( self.ao2loc.T, vnuc_ao, self.ao2loc ))
+	    vnuc_sub = reduce( np.dot, (loc2sub[:,:numActive].T, vnuc_loc, loc2sub[:,:numActive] ))
+
 	    return vnuc_sub
 
 
@@ -277,33 +296,31 @@ class LocalIntegrals:
         subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
         return subOEI
 
-
+    '''
     def frag_vnuc_loc(self, impAtom):
-        mol = self.frag_mol_ao(impAtom)
+
+	mol = self.frag_mol_ao(impAtom)
+
         oei_ao = mol.intor_symmetric('int1e_nuc')
-
-        oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
+        oei_loc = reduce( np.dot, ( self.ao2loc.T, oei_ao, self.ao2loc ) )
         return oei_loc
+    '''
 
-    def frag_vnuc_sub( self, impAtom, loc2sub, numActive):
+    def frag_vnuc_loc(self, mol):
 
-        oei_loc = self.frag_vnuc_loc(impAtom)
-        subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
-        return subOEI
+        oei_ao = mol.intor_symmetric('int1e_nuc')
+	if mol.has_ecp():
+	    oei_ao += mol.intor_symmetric('ECPscalar')
+        oei_loc = reduce( np.dot, ( self.ao2loc.T, oei_ao, self.ao2loc ) )
+        return oei_loc
 
 
     def frag_kin_loc(self):
 
         oei_ao = self.mol.intor_symmetric('int1e_kin')
-
-        oei_loc = np.dot( np.dot( self.ao2loc.T, oei_ao ), self.ao2loc )
+        oei_loc = reduce( np.dot, (self.ao2loc.T, oei_ao, self.ao2loc) )
         return oei_loc
 
-    def frag_kin_sub( self, impAtom, loc2sub, numActive ):
-
-        oei_loc = self.frag_kin_loc()
-        subOEI = np.dot( np.dot( loc2sub[:,:numActive].T, oei_loc ), loc2sub[:,:numActive] )
-        return subOEI
 
     def frag_fock_sub( self, impAtom, loc2sub, numActive, coreOneDM_loc):
         
@@ -314,39 +331,38 @@ class LocalIntegrals:
 
 
     def build_1pdm_loc(self):
+
+	mo_coeff = None
         NOcc = self.Nelec/2  #closed shell 
         fock = self.loc_rhf_fock()
         onedm,mo_coeff = tools.fock2onedm(fock, NOcc)
 
-        return (onedm,mo_coeff)
+	dm_loc = tools.dm_ao2loc(self.fullDMao, self.s1e_ao, self.ao2loc)
+	#print 'dm_loc - dm_ao = ',np.linalg.norm(onedm-dm_loc)
 
-    def coreJK_sub(self, loc2sub, numActive, coreDMloc):
-
-	t0 = (time.clock(), time.time())
-	coreJK_sub = np.dot( np.dot( loc2sub[:,:numActive].T, self.coreJK_loc( coreDMloc ) ), loc2sub[:,:numActive] )
-
-	t1 = tools.timer("locints.coreJK_sub",t0)
-        return coreJK_sub
+        return (dm_loc,mo_coeff)
 
 
-    def coreJK_loc( self, DMloc ):
+    def coreJK_loc( self, DMloc, Kcoeff=1.0 ):
 
         if ( self.ERIinMEM == False ):
             DM_ao = np.dot( np.dot( self.ao2loc, DMloc ), self.ao2loc.T )
-            JK_ao = scf.hf.get_veff( self.mol, DM_ao, 0, 0, 1 ) #Last 3 numbers: dm_last, vhf_last, hermi
+	    vj,vk = scf.hf.get_jk(self.mol, DM_ao, hermi=1)
+	    JK_ao = vj - vk * 0.5 * Kcoeff
+            #JK_ao = scf.hf.get_veff( self.mol, DM_ao, 0, 0, 1 ) #Last 3 numbers: dm_last, vhf_last, hermi
             JK_loc = np.dot( np.dot( self.ao2loc.T, JK_ao ), self.ao2loc )
         else:
-            JK_loc = np.einsum( 'ijkl,ij->kl', self.activeERI, DMloc ) - 0.5 * np.einsum( 'ijkl,ik->jl', self.activeERI, DMloc )
+            JK_loc = np.einsum( 'ijkl,ij->kl', self.activeERI, DMloc ) - 0.5 * Kcoeff * np.einsum( 'ijkl,ik->jl', self.activeERI, DMloc )
 
         return JK_loc
 
 
-    def impJK_sub( self, DMsub, ERIsub):
+    def impJK_sub( self, DMsub, ERIsub, Kcoeff=1.0):
 
 	#impJK_sub = np.einsum( 'ijkl,ij->kl', ERIsub, DMsub ) - 0.5 * np.einsum( 'ijkl,ik->jl', ERIsub, DMsub )
 
 	j, k=scf.hf.dot_eri_dm(ERIsub, DMsub, hermi=1)
-	impJK_sub = j - 0.5*k
+	impJK_sub = j - 0.5*Kcoeff*k
 
 	return impJK_sub
 
@@ -357,3 +373,7 @@ class LocalIntegrals:
 
         return fock_sub
 
+
+    def energy_nuc(self):
+
+        return self.mol.energy_nuc()

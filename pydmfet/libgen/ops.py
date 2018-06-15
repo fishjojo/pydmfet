@@ -2,24 +2,30 @@ import time
 import numpy as np
 from pydmfet import tools
 
-def build_subops(impAtom, boundary_atoms,boundary_atoms2, ints, loc2sub, core1PDM_loc, dim):
+def build_subops(impAtom, mol_frag, mol_env, boundary_atoms1, boundary_atoms2, ints, loc2sub, core1PDM_loc, dim, Kcoeff = 1.0, Ne_core=0):
 
     t0 = (time.clock(), time.time())
 
-    subKin = ints.frag_kin_sub( impAtom, loc2sub, dim )
-    subVnuc1 = ints.frag_vnuc_sub( impAtom, loc2sub, dim)
-    subVnuc2 = ints.frag_vnuc_sub( 1-impAtom, loc2sub, dim )
+    subKin = frag_kin_sub( ints, loc2sub, dim )
+    #subVnuc1 = frag_vnuc_sub( ints, impAtom, loc2sub, dim)
+    #subVnuc2 = frag_vnuc_sub( ints, 1-impAtom, loc2sub, dim )
 
-    subVnuc_bound1 = ints.bound_vnuc_sub(boundary_atoms, loc2sub, dim )
-    subVnuc_bound2 = -subVnuc_bound1
+    subVnuc1 = frag_vnuc_sub(mol_frag, ints, loc2sub, dim)
+    subVnuc2 = frag_vnuc_sub(mol_env, ints, loc2sub, dim)
+
+    subVnuc_bound1 = 0.0
+    subVnuc_bound2 = 0.0
+    if(boundary_atoms1 is not None):
+	subVnuc_bound1 += ints.bound_vnuc_sub(boundary_atoms1, loc2sub, dim )
     if(boundary_atoms2 is not None):
-	subVnuc_bound2 = -ints.bound_vnuc_sub(boundary_atoms2, loc2sub, dim )
+        subVnuc_bound2 += ints.bound_vnuc_sub(boundary_atoms2, loc2sub, dim )
+
 
     #tools.MatPrint(subVnuc_bound1,"subVnuc_bound1")
     #tools.MatPrint(subVnuc_bound2,"subVnuc_bound2")
 
-    subCoreJK = ints.coreJK_sub( loc2sub, dim, core1PDM_loc )
-    subTEI = ints.dmet_tei( loc2sub, dim )
+    subCoreJK = coreJK_sub( ints, loc2sub, dim, core1PDM_loc, Ne_core, Kcoeff )
+    subTEI = ints.tei_sub( loc2sub, dim )
 
     ops = {"subKin":subKin}
     ops["subVnuc1"] = subVnuc1
@@ -31,4 +37,39 @@ def build_subops(impAtom, boundary_atoms,boundary_atoms2, ints, loc2sub, core1PD
 
     tools.timer("libgen.build_subops",t0)
     return ops
+
+
+def frag_kin_sub( ints, loc2sub, numActive ):
+
+    kin_loc = ints.frag_kin_loc()
+    kin_sub = tools.op_loc2sub(kin_loc, loc2sub[:,:numActive])
+    return kin_sub
+
+'''
+def frag_vnuc_sub(ints, impAtom, loc2sub, numActive):
+
+    vnuc_loc = ints.frag_vnuc_loc(impAtom)
+    vnuc_sub = tools.op_loc2sub(vnuc_loc, loc2sub[:,:numActive])
+    return vnuc_sub
+'''
+
+def frag_vnuc_sub(mol, ints, loc2sub, numActive):
+
+    vnuc_loc = ints.frag_vnuc_loc(mol)
+    vnuc_sub = tools.op_loc2sub(vnuc_loc, loc2sub[:,:numActive])
+    return vnuc_sub
+
+
+def coreJK_sub(ints, loc2sub, numActive, coreDMloc, Ne_core, Kcoeff = 1.0):
+
+    t0 = (time.clock(), time.time())
+    sub_coreJK = None
+    if(Ne_core == 0):
+	sub_coreJK = 0.0	
+    else:
+        loc_coreJK = ints.coreJK_loc(coreDMloc, Kcoeff)
+        sub_coreJK = tools.op_loc2sub(loc_coreJK, loc2sub[:,:numActive])
+
+    t1 = tools.timer("coreJK_sub",t0)
+    return sub_coreJK
 

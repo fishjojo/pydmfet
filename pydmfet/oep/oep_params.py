@@ -2,8 +2,8 @@
 class OEPparams:
 
     def __init__(self, algorithm = '2011', oep_method = 'WY', \
-		 opt_method = 'BFGS', ftol = 1e-11, gtol = 1e-6, maxit = 200, \
-		 diffP_tol = 1e-8, outer_maxit = 200, l2_lambda = 0.0, oep_print = 0):
+		 opt_method = 'L-BFGS-B', ftol = 1e-10, gtol = 1e-5, maxit = 200, \
+		 diffP_tol = 1e-5, outer_maxit = 200, l2_lambda = 0.0, oep_print = 0):
 
 	self.algorithm = algorithm
         self.oep_method = oep_method

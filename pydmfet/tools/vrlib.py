@@ -10,7 +10,20 @@ def fock2onedm(fock, NOcc):
 
     OneDM = 0.5*(OneDM + OneDM.T)
 
+    print "mo energy:"
+    print eigenvals
     return (OneDM,eigenvecs)
+
+def fock2mo(fock,NOcc):
+
+    eigenvals, eigenvecs = np.linalg.eigh(fock)
+    idx = eigenvals.argsort()
+    mo_energy = eigenvals[idx]
+    mo_coeff = eigenvecs[:,idx]
+    mo_occ = np.zeros((fock.shape[0]))
+    mo_occ[:NOcc] = 2.0
+
+    return (mo_coeff, mo_energy, mo_occ)
 
 
 def vec2mat(x, dim):
@@ -29,3 +42,56 @@ def mat2vec(mat, dim):
     iu = np.triu_indices(dim)
     x = mat[iu]
     return x
+
+
+def dm_ao2loc(dm_ao, s, ao2loc):
+
+    st = np.dot(s,ao2loc)
+    dm_loc = reduce(np.dot, (st.T, dm_ao, st))
+
+    return dm_loc
+
+def dm_loc2sub(dm_loc, loc2sub):
+
+    dm_sub = reduce(np.dot, (loc2sub.T, dm_loc, loc2sub))
+    return dm_sub
+
+def dm_loc2ao(dm_loc, ao2loc):
+
+    dm_ao = reduce(np.dot, (ao2loc, dm_loc, ao2loc.T))
+    return dm_ao
+
+def dm_sub2ao(dm_sub, ao2sub):
+
+    return dm_loc2ao(dm_sub, ao2sub)
+
+#ao2sub = ao2loc*loc2sub
+def mo_sub2ao(mo_coeff_sub, ao2sub):
+
+    mo_coeff_ao = np.dot(ao2sub, mo_coeff_sub)
+    return mo_coeff_ao
+
+
+def op_loc2sub(op_loc, loc2sub):
+
+    op_sub = reduce(np.dot, (loc2sub.T, op_loc, loc2sub))
+    return op_sub
+
+def op_ao2sub(op_ao, ao2sub):
+
+    op_sub = reduce(np.dot, (ao2sub.T, op_ao, ao2sub))
+    return op_sub
+
+def rank(s,tol=None):
+
+    if tol is None:
+	tol = s.max()*len(s)*np.finfo(s.dtype).eps
+
+    rank = 0
+    for i in range(len(s)):
+
+	if s[i] > tol:
+	    rank += 1
+
+    return rank
+

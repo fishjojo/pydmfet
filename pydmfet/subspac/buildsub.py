@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from pydmfet import qcwrap
+from pydmfet import qcwrap,tools,libgen
 
 
 def subocc_to_dens_part(P_ref, occ_imp, occ_bath, dim_imp, dim_bath):
@@ -36,6 +36,29 @@ def subocc_to_dens_part(P_ref, occ_imp, occ_bath, dim_imp, dim_bath):
     '''
     return (P_imp, P_bath)
 
+
+def mulliken_partition_loc(frag_orbs,dm_loc):
+
+    dim = dm_loc.shape[0]
+
+    P_frag = np.zeros([dim,dim],dtype=float)
+    P_env = np.zeros([dim,dim],dtype=float)
+
+    for i in range(dim):
+	for j in range(dim):
+	    if(frag_orbs[i] == 1 and frag_orbs[j] == 1): 
+		P_frag[i,j] = dm_loc[i,j]
+	    elif(frag_orbs[i] == 0 and frag_orbs[j] == 0):
+		P_env[i,j] = dm_loc[i,j]
+	    else:
+		P_frag[i,j] = 0.5*dm_loc[i,j]
+		P_env[i,j]  = 0.5*dm_loc[i,j]
+
+    print "Ne_frag_loc = ", np.sum(np.diag(P_frag))
+    print "Ne_env_loc = ", np.sum(np.diag(P_env))
+
+    return (P_frag,P_env)
+
 def loc_fullP_to_fragP(frag_orbs,mo_coeff,NOcc,NOrb):
 
     weight_frag = []
@@ -57,17 +80,26 @@ def loc_fullP_to_fragP(frag_orbs,mo_coeff,NOcc,NOrb):
     P_frag = np.zeros([NOrb,NOrb],dtype=float)
     P_env = np.zeros([NOrb,NOrb],dtype=float)
 
+    index = 0
+    dim = mo_coeff.shape[0]
+    mo_frag = np.zeros((dim,NOcc))
+    mo_occ = np.zeros((NOcc))
     for i in range(NOcc):
 	P_tmp = 2.0*np.outer(mo_coeff[:,i], mo_coeff[:,i])
+	print weight_frag[i], weight_env[i]
 	if(weight_frag[i] >= weight_env[i]):
 	    P_frag = P_frag + P_tmp
+
+	    mo_frag[:,index] = mo_coeff[:,i]
+	    mo_occ[index] = 2.0
+	    index +=1
 	else:
 	    P_env = P_env + P_tmp
 
     print "Ne_frag_loc = ", np.sum(np.diag(P_frag))
     print "Ne_env_loc = ", np.sum(np.diag(P_env))
 
-    return (P_frag, P_env)
+    return (P_frag, P_env, mo_frag, mo_occ)
 
 
 def fullP_to_fragP(obj, subTEI, Nelec,P_ref, dim, dim_imp, mf_method):
@@ -149,7 +181,7 @@ def build_core(occ,loc2sub,idx_imp):
         return (core1PDM_loc, Nelec_core, NOrb_imp, frag_core1PDM_loc)
 
 
-def construct_subspace(OneDM, impurityOrbs, threshold=1e-13, dim_bath = None):
+def construct_subspace(ints,mol_frag,mol_env,OneDM, impurityOrbs, threshold=1e-13, dim_bath = None, dim_imp = None):
     '''
     Subspace construction
     OneDM is in local orbital representation
@@ -165,17 +197,13 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13, dim_bath = None):
     isImp = np.dot( impOrbs.T , impOrbs ) == 1
     imp1RDM = np.reshape( OneDM[ isImp ], ( numImpOrbs , numImpOrbs ) )
 
-    eigenvals_imp, eigenvecs_imp = np.linalg.eigh( imp1RDM )
-    idx = np.maximum( -eigenvals_imp, eigenvals_imp - 2.0 ).argsort()
-    #tokeep_imp = np.sum( -np.maximum( -eigenvals_imp, eigenvals_imp - 2.0 )[idx] > threshold )
-    eigenvals_imp = eigenvals_imp[idx]
-    eigenvecs_imp = eigenvecs_imp[:,idx]
+    eigenvals_imp, eigenvecs_imp = fix_virt(ints, mol_frag, imp1RDM, numImpOrbs,numTotalOrbs, threshold)
 
     tmp = []
     for i in range(numImpOrbs):
-	if(eigenvals_imp[i] < 0.0):
+	if(eigenvals_imp[i] < threshold):
 	    eigenvals_imp[i] = 0.0
-	elif(eigenvals_imp[i] > 2.0):
+	elif(eigenvals_imp[i] > 2.0 - threshold):
 	    eigenvals_imp[i] = 2.0
 	    tmp.append(i)
 
@@ -189,13 +217,16 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13, dim_bath = None):
 	    break
 
     if(last_imp_orb == -1):
-	tokeep_imp = np.sum( -np.maximum( -eigenvals_imp, eigenvals_imp - 2.0 )[idx] > threshold )
+	tokeep_imp = np.sum( -np.maximum( -eigenvals_imp, eigenvals_imp - 2.0 ) > threshold )
     else:
 	tokeep_imp = last_imp_orb + 1
 
     print "occ_imp"
     print eigenvals_imp
     #print eigenvecs_imp
+
+
+###############################################
 
     embeddingOrbs = 1 - impurityOrbs
     embeddingOrbs = np.matrix( embeddingOrbs )
@@ -205,16 +236,12 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13, dim_bath = None):
     numEmbedOrbs = np.sum( embeddingOrbs )
     embedding1RDM = np.reshape( OneDM[ isEmbedding ], ( numEmbedOrbs , numEmbedOrbs ) )
 
-    eigenvals_bath, eigenvecs_bath = np.linalg.eigh( embedding1RDM )
-    idx = np.maximum( -eigenvals_bath, eigenvals_bath - 2.0 ).argsort() # Occupation numbers closest to 1 come first
-    #tokeep_bath = np.sum( -np.maximum( -eigenvals_bath, eigenvals_bath - 2.0 )[idx] > threshold )
-    eigenvals_bath = eigenvals_bath[idx]
-    eigenvecs_bath = eigenvecs_bath[:,idx]
+    eigenvals_bath, eigenvecs_bath = fix_virt(ints, mol_frag, embedding1RDM, numEmbedOrbs,numTotalOrbs, threshold)
 
     for i in range(numEmbedOrbs):
-        if(eigenvals_bath[i] < 0.0):
+        if(eigenvals_bath[i] < threshold):
             eigenvals_bath[i] = 0.0
-        elif(eigenvals_bath[i] > 2.0):
+        elif(eigenvals_bath[i] > 2.0-threshold):
             eigenvals_bath[i] = 2.0
 
     #if (tokeep_bath > tokeep_imp):
@@ -225,6 +252,9 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13, dim_bath = None):
     if(dim_bath is not None):
 	tokeep_bath = min(dim_bath, numTotalOrbs - numImpOrbs)
 	tokeep_imp = min(dim_bath,numImpOrbs)
+
+    if(dim_imp is not None):
+	tokeep_imp = min(dim_imp,numImpOrbs)
 
     print "occ_bath"
     print eigenvals_bath
@@ -291,3 +321,67 @@ def construct_subspace(OneDM, impurityOrbs, threshold=1e-13, dim_bath = None):
     
 
     return ( tokeep_imp, tokeep_bath, _Occupations, _loc2sub, eigenvals_imp, eigenvals_bath)
+
+
+
+def fix_virt(ints, mol, imp1RDM, numImpOrbs,numTotalOrbs, thresh):
+
+    eigenvals_imp, eigenvecs_imp = np.linalg.eigh( imp1RDM )
+    idx = np.argmax(abs(eigenvecs_imp), axis=0)
+    eigenvecs_imp[:,eigenvecs_imp[idx,np.arange(numImpOrbs)]<0] *= -1
+
+    nvirt = 0
+    for i in range(numImpOrbs):
+        if(abs(eigenvals_imp[i]) < thresh or eigenvals_imp[i]<0.0):
+            nvirt += 1
+    nocc = numImpOrbs - nvirt
+    eigenvals_imp[:nocc] = eigenvals_imp[nvirt:].copy()
+    eigenvals_imp[nocc:] = 0.0
+
+    tmp = np.pad(eigenvecs_imp[:,:nvirt], ((0,numTotalOrbs-numImpOrbs),(0,0)), 'constant', constant_values=0 )
+    subKin = libgen.frag_kin_sub( ints, tmp, nvirt )
+    subVnuc1 = libgen.frag_vnuc_sub(mol, ints, tmp, nvirt)
+    mo_energy, mo_coeff = np.linalg.eigh(subKin+subVnuc1)
+    #print mo_energy
+
+    virt_imp = np.dot(tmp[:numImpOrbs,:],mo_coeff)
+    eigenvecs_imp = np.concatenate((eigenvecs_imp[:,nvirt:], virt_imp), axis=1)
+
+    idx = np.maximum( -eigenvals_imp[:nocc], eigenvals_imp[:nocc] - 2.0 ).argsort()
+    eigenvals_imp[:nocc] = eigenvals_imp[idx]
+    eigenvecs_imp[:,:nocc] = eigenvecs_imp[:,idx]
+
+    idx = np.argmax(abs(eigenvecs_imp), axis=0)
+    eigenvecs_imp[:,eigenvecs_imp[idx,np.arange(numImpOrbs)]<0] *= -1
+
+    one = np.dot(eigenvecs_imp.T,eigenvecs_imp)
+    assert(np.linalg.norm(one-np.eye(numImpOrbs)) <1e-9)
+################################################################
+    '''
+    deg_info = []
+    i = 0
+    while i< nocc-1:
+	n_deg = 0
+	for j in range(i+1, nocc):
+	    gap = abs(eigenvals_imp[i] - eigenvals_imp[j])
+	    if(gap < 1e-10):
+		n_deg += 1
+	deg_info.append((i,n_deg+1))
+	i += n_deg+1
+
+    for i, pair in enumerate(deg_info):
+	print i, pair
+	if(pair[1] > 1):
+	    tmp = np.pad(eigenvecs_imp[:,pair[0]:pair[0]+pair[1]], ((0,numTotalOrbs-numImpOrbs),(0,0)), 'constant', constant_values=0 )
+	    subKin = libgen.frag_kin_sub( ints, tmp, pair[1] )
+            subVnuc1 = libgen.frag_vnuc_sub(mol, ints, tmp, pair[1])
+	    mo_energy, mo_coeff = np.linalg.eigh(subKin+subVnuc1)
+	    tools.MatPrint( subKin+subVnuc1, "Hamilton")
+	    print mo_energy
+	    tmp1 = np.dot(tmp[:numImpOrbs,:],mo_coeff)
+	    eigenvecs_imp[:,pair[0]:pair[0]+pair[1]] = tmp1.copy()
+
+    one = np.dot(eigenvecs_imp.T,eigenvecs_imp)
+    assert(np.linalg.norm(one-np.eye(numImpOrbs)) <1e-9)
+    '''
+    return (eigenvals_imp, eigenvecs_imp)

@@ -6,35 +6,36 @@ import copy,time
 
 DMguess  = None
 
-bondlengths = np.arange(0.74, 0.79, 0.1)
+bondlengths = np.arange(1.8,1.9, 0.1)
 energies = []
 
 bas = 'sto-6g'
 
 for bondlength in bondlengths:
 
-    nat = 40
+    nat = 30
     mol = gto.Mole()
     mol.atom = []
     r = 0.5 * bondlength / np.sin(np.pi/nat)
     for i in range(nat):
         theta = i * (2*np.pi/nat)
-        mol.atom.append(('H', (r*np.cos(theta), r*np.sin(theta), 0)))
+        mol.atom.append(('Be', (r*np.cos(theta), r*np.sin(theta), 0)))
 
     mol.basis = bas
-    mol.build(verbose=4)
+    mol.build(max_memory=16000, verbose=4)
 
     #mf = scf.RHF(mol)
     mf = dft.RKS(mol)
     mf.xc = 'pbe,pbe'
     mf.smear_sigma = 0.005
-    mf.max_cycle = 50
+    mf.max_cycle = 100
     mf.scf()
 
-    P=mf.make_rdm1()
+    #P=mf.make_rdm1()
     #tools.MatPrint(P,"P_ref_ao")
-    cubegen.density(mol, "h20_dens.cube", P, nx=100, ny=100, nz=100)
-
+    #cubegen.density(mol, "h20_dens.cube", P, nx=100, ny=100, nz=100)
+    print 'e_mf = ',  mf.e_tot
+    #continue
     if ( False ):   
 #        ENUCL = mf.mol.energy_nuc()
 #        OEI   = np.dot(np.dot(mf.mo_coeff.T, mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')), mf.mo_coeff)
@@ -44,11 +45,12 @@ for bondlength in bondlengths:
 #        print "bl =", bondlength," and energy =", Energy
 
         mycc = cc.CCSD(mf).run()
-        et = mycc.ccsd_t()
+	et=0.0
+        #et = mycc.ccsd_t()
         e_hf = mf.e_tot
         e_ccsd = e_hf + mycc.e_corr + et
 
-        print e_ccsd    #-4.96124910741
+        print 'e_tot = ', e_ccsd    #-4.96124910741
         
     else:
         myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
@@ -59,7 +61,7 @@ for bondlength in bondlengths:
 	natoms = mol.natm
 
 	impAtom = np.zeros([natoms], dtype=int)
-	for i in range(20):
+	for i in range(2):
 	    impAtom[i] = 1
 
 	ghost_frag = 1-impAtom
@@ -101,7 +103,7 @@ for bondlength in bondlengths:
 	    if(impAtom[i] == 1):
 		impurities[aoslice[i,2]:aoslice[i,3]] = 1
 
-	Ne_frag = 20
+	Ne_frag = 8
 	boundary_atoms = np.zeros((natoms))
 	boundary_atoms[20:40] = 1.0
 	#boundary_atoms[19] = -1
@@ -115,8 +117,8 @@ for bondlength in bondlengths:
 	umat=None
 	P_frag=None
 	P_env=None
-	params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
-                       ftol = 1e-11, gtol = 1e-5,diffP_tol=1e-5, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+	params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-11, gtol = 1e-5,diffP_tol=1e-5, outer_maxit = 50, maxit = 200,l2_lambda = 0.0, oep_print = 0)
 	theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
                          umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
                          dim_imp = nbas, dim_bath=nbas, dim_big =nbas, smear_sigma = 0.005, oep_params=params,ecw_method='hf', mf_method = mf.xc)

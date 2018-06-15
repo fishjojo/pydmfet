@@ -5,13 +5,17 @@ from pyscf.tools import molden
 import time
 import FHF_4H2O_struct
 
-thebasis = 'ccpvdz'
+basis_env = 'ccpvdz'
+basis_frag = 'ccpvdz'
 e_tot_list = []
+
 for thestructure in range(0,20):
 
     t0 = (time.clock(), time.time())
-    mol = FHF_4H2O_struct.structure( thestructure, thebasis)
-
+    #mol = FHF_4H2O_struct.structure( thestructure, thebasis)
+    mol_frag, mol_env = FHF_4H2O_struct.structure( thestructure, basis_frag, basis_env)
+    mol = gto.mole.conc_mol(mol_frag, mol_env)
+    mol.build()
 
     mf = scf.RHF(mol)
     mf.max_cycle = 100
