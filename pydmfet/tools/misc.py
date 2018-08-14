@@ -127,3 +127,23 @@ def localize_dens(mf,nfrag_atm, norb, method = 'pipek'):
 
 
     return (P_frag, P_env)
+
+
+
+
+def print_eomcc_t1(t1, thresh = 0.1):
+
+    #nocc = t1.shape[0]
+    #nvirt = t1.shape[1]
+
+    ind = np.unravel_index(np.argsort(-np.absolute(t1),axis=None) ,t1.shape)
+    ind2 = np.absolute(t1[ind]) > thresh
+
+
+    if(sum(ind2) > 0):
+        print ind[0][ind2]+1
+        print '| | |'
+        print ind[1][ind2]
+	print t1[ind[0][ind2],ind[1][ind2]]
+
+

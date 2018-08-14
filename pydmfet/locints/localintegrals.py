@@ -20,7 +20,7 @@
 from pyscf import gto, scf, ao2mo, tools
 from pyscf import lo
 from pyscf.lo import nao, orth
-from pyscf.tools import molden, localizer
+from pyscf.tools import molden
 from pydmfet.locints import iao_helper
 from pydmfet import tools
 import numpy as np
@@ -67,9 +67,11 @@ class LocalIntegrals:
             if ( self._which == 'boys' ):
                 old_verbose = self.mol.verbose
                 self.mol.verbose = 5
-                loc = localizer.localizer( self.mol, self.ao2loc, self._which, use_full_hessian )
+                #loc = localizer.localizer( self.mol, self.ao2loc, self._which, use_full_hessian )
+		boys = Boys(self.mol, self.ao2loc )
                 self.mol.verbose = old_verbose
-                self.ao2loc = loc.optimize( threshold=localization_threshold )
+                #self.ao2loc = loc.optimize( threshold=localization_threshold )
+		self.ao2loc = boys.kernel()
             self.TI_OK = False # Check yourself if OK, then overwrite
         if ( self._which == 'lowdin' ):
             assert( self.NOrb == self.mol.nao_nr() ) # Full active space required
@@ -137,14 +139,16 @@ class LocalIntegrals:
             molden.header( self.mol, thefile )
             molden.orbital_coeff( self.mol, thefile, transfo, occ=mo_occ )
 
-    def submo_molden( self, mo_coeff, mo_occ, loc2sub, filename ):
+    def submo_molden( self, mo_coeff, mo_occ, loc2sub, filename, mol = None ):
+
+	if mol is None: mol = self.mol
 
 	dim = mo_coeff.shape[0]
 	mo_loc = np.dot( loc2sub[:,:dim], mo_coeff )
 	transfo = np.dot( self.ao2loc, mo_loc )
         with open( filename, 'w' ) as thefile:
-            molden.header( self.mol, thefile )
-            molden.orbital_coeff( self.mol, thefile, transfo, occ=mo_occ )
+            molden.header( mol, thefile )
+            molden.orbital_coeff( mol, thefile, transfo, occ=mo_occ )
             
     def loc_ortho( self ):
     

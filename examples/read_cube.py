@@ -40,15 +40,15 @@ def main():
 
     file1 = sys.argv[1]
     file2 = sys.argv[2]
-    file3 = sys.argv[3]
-    first = int(sys.argv[4])
+    #file3 = sys.argv[3]
+    first = int(sys.argv[3])
 
 
     dens1 = read_cube(file1, first)
     dens2 = read_cube(file2, first)
-    dens3 = read_cube(file3, first)
+    #dens3 = read_cube(file3, first)
 
-    diffP = dens1 + dens2 - dens3
+    diffP = dens1 - dens2# - dens3
     print np.max(diffP)
     write_dens("diffP.cube",diffP)
 

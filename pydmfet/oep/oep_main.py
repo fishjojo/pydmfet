@@ -272,6 +272,8 @@ class OEP:
 	    self.P_imp = self.calc_energy_frag(umat, self.impJK_sub, self.Ne_frag, self.dim)[1]
 	    self.P_bath = self.calc_energy_env(umat, self.bathJK_sub, self.Ne_env, self.dim)[1]
 
+	    print "P_imp idem = ", np.linalg.norm(np.dot(self.P_imp,self.P_imp) - 2.0*self.P_imp)
+
 	    diffP_imp = self.P_imp - P_imp_old
 	    diffP_bath = self.P_bath - P_bath_old
 	    gmax_imp = np.amax(np.absolute(diffP_imp))
@@ -392,8 +394,9 @@ class OEP:
 	    frag_coredm_guess = self.P_imp
 
         mf_frag = qcwrap.qc_scf(Ne_frag,dim,self.mf_method,mol=self.mol_frag,oei=subOEI1,tei=subTEI,\
-				dm0=frag_coredm_guess,coredm=0.0,ao2sub=ao2sub, smear_sigma = self.smear_sigma)
-	mf_frag.init_guess =  'minao'
+				dm0=frag_coredm_guess,coredm=0.0,ao2sub=ao2sub, smear_sigma = 0.0)
+	#mf_frag.init_guess =  'minao'
+	mf_frag.conv_check = False
         mf_frag.runscf()
         FRAG_energy = mf_frag.elec_energy
         FRAG_1RDM = mf_frag.rdm1
@@ -409,9 +412,9 @@ class OEP:
 	    env_coredm_guess = self.P_bath
 
 	mf_env = qcwrap.qc_scf(Ne_env,dim,self.mf_method,mol=self.mol_env,oei=subOEI2,tei=subTEI,\
-			       dm0=env_coredm_guess,coredm=coredm,ao2sub=ao2sub, smear_sigma = self.smear_sigma)
-	mf_env.init_guess =  'minao'
-	#mf_env.conv_check = False #temp
+			       dm0=env_coredm_guess,coredm=coredm,ao2sub=ao2sub, smear_sigma = 0.0)
+	#mf_env.init_guess =  'minao'
+	mf_env.conv_check = False #temp
         mf_env.runscf()
         ENV_energy = mf_env.elec_energy
         ENV_1RDM = mf_env.rdm1

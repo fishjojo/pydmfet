@@ -11,7 +11,7 @@ mol = gto.Mole()
 mol.atom = open('C24.xyz').read()
 mol.basis = bas
 mol.charge = 0
-mol.build(max_memory = 24000, verbose=4)
+mol.build(max_memory = 48000, verbose=4)
 
 mf = scf.RHF(mol)
 mf.max_cycle = 100
@@ -39,12 +39,12 @@ ghost_env = 1-ghost_frag
 mol_frag = gto.Mole()
 mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
 mol_frag.basis = bas
-mol_frag.build(max_memory = 24000,verbose = 4)
+mol_frag.build(max_memory = 48000,verbose = 4)
 
 mol_env = gto.Mole()
 mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
 mol_env.basis =  bas
-mol_env.build(max_memory = 24000,verbose = 4)
+mol_env.build(max_memory = 48000,verbose = 4)
 
 
 aoslice = mol.aoslice_by_atom()

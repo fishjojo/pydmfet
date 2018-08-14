@@ -2,7 +2,7 @@ import numpy as np
 from pydmfet import tools
 from pydmfet.qcwrap import pyscf_rhf
 from pyscf import ao2mo, gto, scf, dft, lib
-from pyscf.scf import hf
+from pyscf.scf import hf, rohf, uhf
 from pyscf.dft import rks
 import time
 
@@ -74,10 +74,12 @@ def get_hcore(mf, mol = None):
 
 
 def energy_tot(mf, dm=None, h1e=None, vhf=None, mo_occ = None):
-    r'''Total Hartree-Fock energy, electronic part plus nuclear repulstion
-    See :func:`scf.hf.energy_elec` for the electron part
-    '''
-    e_tot = mf.energy_elec(dm, h1e, vhf, mo_occ)[0]# + mf.energy_nuc()
+
+    e_tot = 0.0
+    if(mo_occ is None):
+	e_tot = mf.energy_elec(dm, h1e, vhf)[0]
+    else:
+        e_tot = mf.energy_elec(dm, h1e, vhf, mo_occ)[0]# + mf.energy_nuc()
     return e_tot.real
 
 def runscf(mf):
@@ -92,10 +94,13 @@ def runscf(mf):
     mf.elec_energy = mf.energy_elec(mf.rdm1)[0]
 
 
-def get_occ(mf, mo_energy=None, mo_coeff=None, smear_sigma = None):
+def get_occ(mf, mo_energy=None, mo_coeff=None):
 
     if mo_energy is None: mo_energy = mf.mo_energy
-    if smear_sigma is None: smear_sigma = mf.smear_sigma
+
+    smear_sigma = 0.0
+    if hasattr(mf, 'smear_sigma'): 
+	smear_sigma = mf.smear_sigma
 
     nmo = mo_energy.size
     mo_occ = np.zeros(nmo)
@@ -129,6 +134,50 @@ def get_occ(mf, mo_energy=None, mo_coeff=None, smear_sigma = None):
     return mo_occ
 
 
+class rohf_pyscf(rohf.ROHF):
+
+    def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
+                 coredm=0.0, ao2sub=1.0):
+
+	mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
+	rohf.ROHF.__init__(self, mol)
+
+	if(self.tei is not None):
+            self._eri = ao2mo.restore(8, self.tei, self.Norb)
+
+    get_ovlp = get_ovlp
+    get_hcore = get_hcore
+    energy_tot = energy_tot
+
+    def init_guess_by_minao(self, mol=None):
+	if mol is None: mol = self.mol
+	dm = init_guess_by_minao(self,mol)
+	return np.array((dm*.5, dm*.5))
+
+
+class uhf_pyscf(uhf.UHF):
+
+    def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
+                 coredm=0.0, ao2sub=1.0):
+
+	mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
+	uhf.UHF.__init__(self, mol)
+
+	if(self.tei is not None):
+            self._eri = ao2mo.restore(8, self.tei, self.Norb)
+
+    get_hcore = get_hcore
+    get_ovlp = get_ovlp
+    energy_tot = energy_tot
+
+    def convert_from_rhf(self, mf):
+
+	self.mo_occ = np.array((mf.mo_occ>0, mf.mo_occ==2), dtype=np.double)
+        self.mo_energy = (mf.mo_energy, mf.mo_energy)
+        self.mo_coeff = (mf.mo_coeff, mf.mo_coeff)
+	self.converged = mf.converged
+	self.e_tot = mf.e_tot
+
 class rhf_pyscf(hf.RHF):
 
     '''
@@ -146,7 +195,6 @@ class rhf_pyscf(hf.RHF):
 
         if(self.tei is not None):
             self._eri = ao2mo.restore(8, self.tei, self.Norb)
-
 
     def energy_elec(mf, dm=None, h1e=None, vhf=None, mo_occ=None):
 
@@ -181,9 +229,9 @@ class rks_pyscf(rks.RKS):
 		 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
 
 	mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method)
-	rks.RKS.__init__(self, mol, smear_sigma = smear_sigma)
+	rks.RKS.__init__(self, mol)
 	self.xc = self.method
-
+	self.smear_sigma = smear_sigma
 	self.level_shift = level_shift
 
 	'''
@@ -203,7 +251,7 @@ class rks_pyscf(rks.RKS):
     get_hcore = get_hcore
     runscf = runscf
     energy_tot = energy_tot
-    #get_occ = get_occ
+    get_occ = get_occ
     init_guess_by_minao = init_guess_by_minao
 
     def energy_elec(mf, dm=None, h1e=None, vhf=None, mo_occ=None):
@@ -215,7 +263,9 @@ class rks_pyscf(rks.RKS):
 	if mo_occ is None: mo_occ = mf.mo_occ
     
         e1 = np.einsum('ij,ji', h1e, dm).real
-        es = entropy_corr(mo_occ, mf.smear_sigma)
+	es = 0.0
+	if (hasattr(mf,'smear_sigma')):
+            es = entropy_corr(mo_occ, mf.smear_sigma)
         tot_e = e1 + vhf.ecoul + vhf.exc + es
     
         return tot_e, vhf.ecoul+vhf.exc
@@ -310,7 +360,7 @@ def get_vxc(ks, mol, dm, n_core_elec=0.0, hermi=1):
 
     return n, exc, vxc, hyb
 
-
+'''
 def prune_small_rho_grids_(ks, mol, dm, grids, n_core_elec = 0.0):
     n, idx = ks._numint.large_rho_indices(mol, dm, grids, ks.small_rho_cutoff)
     print 'No. of grids = ',grids.weights.size
@@ -324,10 +374,25 @@ def prune_small_rho_grids_(ks, mol, dm, grids, n_core_elec = 0.0):
         grids.weights = np.asarray(grids.weights[idx], order='C')
         grids.non0tab = grids.make_mask(mol, grids.coords)
     return grids
+'''
+
+def prune_small_rho_grids_(ks, mol, dm, grids, n_core_elec = 0.0):
+    rho = ks._numint.get_rho(mol, dm, grids, ks.max_memory)
+    n = np.dot(rho, grids.weights)
+
+    error_tol = 0.001
+    if abs(n-mol.nelectron-n_core_elec) < error_tol:
+        rho *= grids.weights
+        idx = abs(rho) > ks.small_rho_cutoff / grids.weights.size
+	print 'No. of dropped grids = ', grids.weights.size - np.count_nonzero(idx)
+        grids.coords  = np.asarray(grids.coords [idx], order='C')
+        grids.weights = np.asarray(grids.weights[idx], order='C')
+        grids.non0tab = grids.make_mask(mol, grids.coords)
+    return grids
 
 
 
-def entropy_corr(mo_occ, smear_sigma):
+def entropy_corr(mo_occ, smear_sigma=0.0):
 
     if mo_occ is None:
 	return 0.0

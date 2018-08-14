@@ -314,7 +314,7 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
 
 def find_efermi(eigenvals, smear_sigma, NAlpha, Norb):
 
-    toll = 1.0e-13
+    toll = 1.0e-10
 
     e_homo = eigenvals[NAlpha-1]
 
