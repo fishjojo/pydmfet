@@ -1,2 +1,2 @@
-# pydmfet
-python wrapper for dmfet
+# PyDMFET
+Python wrapper for DMFET
