@@ -1,0 +1,1 @@
+icpc -shared -fPIC -O3 -qopenmp -xhost -o libhess.so hess.cpp -lmkl_intel_thread -lmkl_core -lmkl_intel_lp64  -lmkl_avx
