@@ -78,6 +78,57 @@ def frag_atom_part_atom(atom, bound_atom_index, replace_symbol):
 
     return atom_new
 
+def frag_atom_part_atom_hmod(atom, bound_atom_index, replace_symbol, bond_length):
+
+    atom_new = ''
+    j = 1
+    for dat in atom.split('\n'):
+        dat = dat.strip()
+        if dat and dat[0] != '#':
+            if(j < bound_atom_index[1]):
+		atom_new = atom_new + dat +'\n'
+		if(j==bound_atom_index[0]):
+		    xyz1 = np.fromstring(dat[2:], dtype=float, sep=' ')
+            elif(j == bound_atom_index[1]):
+		xyz2 = np.fromstring(dat[2:], dtype=float, sep=' ')
+		vec = xyz2 - xyz1
+		coord_h = xyz1 + bond_length/np.linalg.norm(vec) * vec
+		dat = replace_symbol + ' ' + str(coord_h[0]) + ' ' + str(coord_h[1]) + ' ' + str(coord_h[2])
+                #dat = replace_symbol + ' ' + dat[2:]
+                atom_new = atom_new + dat
+        j+=1
+
+    return atom_new
+
+
+def frag_atom_part_atom_hmod_mult(atom, atom1, atom2, bound_atom_index, replace_symbol, bond_length):
+
+    nbound = atom1.size
+    xyz1 = []
+    atom_new = ''
+    j = 1
+    for dat in atom.split('\n'):
+        dat = dat.strip()
+        if dat and dat[0] != '#':
+            if(j <= bound_atom_index[0]):
+                atom_new = atom_new + dat +'\n'
+		for k in range(nbound):
+                    if(j==atom1[k]):
+                        xyz1.append(np.fromstring(dat[2:], dtype=float, sep=' '))
+            elif(j <= bound_atom_index[1]):
+		for k in range(nbound):
+		    if(j==atom2[k]):
+                        xyz2 = np.fromstring(dat[2:], dtype=float, sep=' ')
+                	vec = xyz2 - xyz1[k]
+                	coord_h = xyz1[k] + bond_length/np.linalg.norm(vec) * vec
+                	dat = replace_symbol + ' ' + str(coord_h[0]) + ' ' + str(coord_h[1]) + ' ' + str(coord_h[2])
+                	atom_new = atom_new + dat +'\n'
+        j+=1
+
+    return atom_new
+
+
+
 
 def localize_dens(mf,nfrag_atm, norb, method = 'pipek'):
 

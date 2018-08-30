@@ -12,7 +12,7 @@ class DMFET:
 		 umat = None, P_frag_ao = None, P_env_ao = None, \
 		 dim_imp =None, dim_bath = None, dim_big = None, smear_sigma = 0.0, \
 		 sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
-		 plot_dens=True, plot_mo = True, deproton=None):
+		 plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False):
 
         self.ints = ints
 	self.mf_full = mf_full
@@ -79,12 +79,44 @@ class DMFET:
 	self.dim_big = dim_big
 	if dim_big is None: self.dim_big =  self.dim_frag + self.dim_bath
 
-	self.ao2sub = np.dot(self.ints.ao2loc, self.loc2sub)
-
         #construct core determinant
 	idx = self.dim_frag + self.dim_bath
         self.core1PDM_loc, self.Nelec_core, Norb_imp_throw, self.frag_core1PDM_loc = subspac.build_core(self.Occupations, self.loc2sub, idx)
 	self.core1PDM_ao = tools.dm_loc2ao(self.core1PDM_loc, self.ints.ao2loc) 
+
+	if(use_bath_virt):
+	    #determine boundary orbitals
+	    ##################
+	    nbas = self.mol.nao_nr()
+	    natoms = self.mol.natm
+	    aoslice = self.mol.aoslice_by_atom()
+            impurities = np.zeros([nbas], dtype = int)
+            for i in range(natoms):
+	        if(abs(boundary_atoms[i]) >= 0.01):
+                    impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+	    isbound = impurities ==1
+	    self.is_bound_orb = np.zeros([nbas], dtype = int)
+	    dim_active = self.dim_frag + self.dim_bath
+	    n_bound_orb = 0
+	    for i in range(dim_active + self.Nelec_core/2, nbas):
+	        weight = np.linalg.norm(self.loc2sub[isbound,i])
+	        if(weight > 0.5): 
+		    self.is_bound_orb[i] = 1
+		    n_bound_orb += 1
+
+	    self.is_bound_orb[:dim_active] = -1
+	    self.is_bound_orb[dim_active:dim_active+self.Nelec_core/2] =2
+	    _loc2sub = self.loc2sub.copy()
+	    self.loc2sub[:,dim_active:dim_active+n_bound_orb] = _loc2sub[:,self.is_bound_orb==1]
+	    self.loc2sub[:,dim_active+n_bound_orb:dim_active+n_bound_orb+self.Nelec_core/2] = _loc2sub[:,self.is_bound_orb==2]
+	    self.loc2sub[:,dim_active+n_bound_orb+self.Nelec_core/2:] = _loc2sub[:,self.is_bound_orb==0]
+
+	    self.dim_big += n_bound_orb
+	    print "dim_big = ", self.dim_big
+	    #################
+
+	self.ao2sub = np.dot(self.ints.ao2loc, self.loc2sub)
 
 	self.P_env_loc -= self.core1PDM_loc  #assume core does not have imp contribution
 
@@ -825,7 +857,7 @@ class DMFET:
 	ao2sub = self.ao2sub[:,:dim_big]
 	coredm = self.core1PDM_ao
         if(self.mf_method != 'hf'):
-	    mf1 = qcwrap.qc_scf(self.Ne_frag,dim_big,self.mf_method,mol=self.mol_frag,oei=None,tei=None,dm0=self.P_imp,coredm=0.0,ao2sub=ao2sub)
+	    mf1 = qcwrap.qc_scf(self.Ne_frag,dim_big,self.mf_method,mol=self.mol_frag,oei=None,tei=None,dm0=P_imp_big,coredm=0.0,ao2sub=ao2sub)
             vxc_imp_ao = qcwrap.pyscf_rks.get_vxc(mf1, self.mol_frag, tools.dm_sub2ao(P_imp_big, ao2sub))[2]
             JK_imp += tools.op_ao2sub(vxc_imp_ao, ao2sub)
 
