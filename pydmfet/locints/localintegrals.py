@@ -225,7 +225,9 @@ class LocalIntegrals:
         return DMguess
         
     def tei_sub( self, loc2dmet, numAct ):
-   
+
+	TEIdmet_8 = None
+
 	t0 = (time.clock(),time.time()) 
         if ( self.ERIinMEM == False ):
             transfo = np.dot( self.ao2loc, loc2dmet[:,:numAct] )
@@ -234,13 +236,15 @@ class LocalIntegrals:
 		intor='int2e_cart'
 	    else:
 		intor='int2e_sph'
-	    TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo, intor)
+	    TEIdmet_4 = ao2mo.outcore.full_iofree(self.mol, transfo, intor)
+	    TEIdmet_8 = ao2mo.restore(8, TEIdmet_4, numAct)
+	    TEIdmet_4 = None
         else:
             #TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.NOrb), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
-	    TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.NOrb), loc2dmet[:,:numAct])
+	    TEIdmet_8 = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.NOrb), loc2dmet[:,:numAct])
 
 	t1 = tools.timer("locints.dmet_tei",t0)
-        return TEIdmet
+        return TEIdmet_8
         
     def frag_mol_ao(self, impAtom):
         '''

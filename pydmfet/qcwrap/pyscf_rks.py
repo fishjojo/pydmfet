@@ -143,7 +143,8 @@ class rohf_pyscf(rohf.ROHF):
 	rohf.ROHF.__init__(self, mol)
 
 	if(self.tei is not None):
-            self._eri = ao2mo.restore(8, self.tei, self.Norb)
+	    self._eri = self.tei
+        #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
     get_ovlp = get_ovlp
     get_hcore = get_hcore
@@ -164,7 +165,8 @@ class uhf_pyscf(uhf.UHF):
 	uhf.UHF.__init__(self, mol)
 
 	if(self.tei is not None):
-            self._eri = ao2mo.restore(8, self.tei, self.Norb)
+	    self._eri = self.tei
+        #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
     get_hcore = get_hcore
     get_ovlp = get_ovlp
@@ -194,7 +196,8 @@ class rhf_pyscf(hf.RHF):
 	self.level_shift = level_shift
 
         if(self.tei is not None):
-            self._eri = ao2mo.restore(8, self.tei, self.Norb)
+	    self._eri = self.tei
+        #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
     def energy_elec(mf, dm=None, h1e=None, vhf=None, mo_occ=None):
 
@@ -229,9 +232,10 @@ class rks_pyscf(rks.RKS):
 		 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
 
 	mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method)
+	self.smear_sigma = smear_sigma
 	rks.RKS.__init__(self, mol)
 	self.xc = self.method
-	self.smear_sigma = smear_sigma
+	#self.smear_sigma = smear_sigma
 	self.level_shift = level_shift
 
 	'''
@@ -244,7 +248,8 @@ class rks_pyscf(rks.RKS):
 	'''
 
 	if(self.tei is not None):
-            self._eri = ao2mo.restore(8, self.tei, self.Norb)
+	    self._eri = self.tei
+        #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
 
     get_ovlp = get_ovlp

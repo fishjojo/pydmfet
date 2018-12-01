@@ -286,7 +286,7 @@ class DMFET:
 
     def ecw_energy(self, method, dim):
 
-	mf_energy, Vemb, Vxc = self.imp_mf_energy(dim)
+	mf_energy, Vemb, Vxc = self.imp_mf_energy2(dim)
 
 	Ne_frag = self.Ne_frag
         ops = self.ops
@@ -405,6 +405,8 @@ class DMFET:
 
 	#print np.amax(np.absolute(mf.rdm1 - self.P_ref_sub))	
 	#print np.linalg.norm(mf.rdm1 - self.P_ref_sub)
+
+	self.ints.submo_molden(mf.mo_coeff, mf.mo_occ, self.loc2sub, "total_system_mo.molden",self.mol)
 
         energy = mf.elec_energy + self.core_energy() + self.ints.energy_nuc()
 

@@ -161,7 +161,7 @@ class OEP:
 	    umat = self.oep_loop(self.umat)
 
 	    #tools.MatPrint(umat,"umat")
-	    #umat = self.opt_umat_2(umat, tol=1e-9)
+	    umat = self.opt_umat_2(umat, tol=1e-9)
 	    #tools.MatPrint(umat,"umat")
 
 	    self.umat = umat
@@ -169,7 +169,10 @@ class OEP:
 	elif(algorithm == 'leastsq'):
 	    self.umat = self.oep_leastsq(self.umat)
 
-	#self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
+	print 'sum (diag(umat)) = '
+	print np.sum( np.diag( self.umat ) )
+
+	self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
 #	self.umat = self.oep_old(self.umat)
 
@@ -200,6 +203,8 @@ class OEP:
 
 
     def init_density_partition(self, method = 1):
+
+	print "entering oep_main.init_density_partition()"
 
 	self.ks_frag = self.calc_energy_frag(self.umat, None, self.Ne_frag, self.dim)[5]
         self.ks_env = self.calc_energy_env(self.umat, None, self.Ne_env, self.dim)[5]
@@ -630,6 +635,8 @@ class OEP:
 
     def opt_umat_2(self,umat, tol=1e-6):
 
+	print '|umat| = ', np.linalg.norm(umat)
+
         ops = self.ops
         Ne_frag = self.Ne_frag
         Ne_env = self.Ne_env
@@ -730,6 +737,7 @@ class OEP:
 	print '|c| = ', np.linalg.norm(c)
         for i in range(n):
             x0 += c[i] * vint[:,i]
+	    #x0 += 0.1*np.random.random() * vint[:,i]
 
         umat = tools.vec2mat(x0, dim)
         #xmat = xmat - np.eye( xmat.shape[ 0 ] ) * np.average( np.diag( xmat ) )
