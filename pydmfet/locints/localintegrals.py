@@ -20,6 +20,7 @@
 from pyscf import gto, scf, ao2mo, tools
 from pyscf import lo
 from pyscf.lo import nao, orth
+from pyscf.lo.boys import Boys
 from pyscf.tools import molden
 from pydmfet.locints import iao_helper
 from pydmfet import tools

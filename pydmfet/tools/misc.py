@@ -12,7 +12,7 @@ def add_ghost(atoms, ghost):
             dat = dat.strip()
             if dat and dat[0] != '#':
                 if(ghost[j] == 1):
-                    dat =  'ghost'+dat
+                    dat =  'GHOST-'+dat
                 atom_new = atom_new + dat +'\n'
             j+=1
     else:
@@ -21,7 +21,7 @@ def add_ghost(atoms, ghost):
 	for i in range(natm):
 	    if(ghost[i] == 1):
 		tmp = list(atom_new[i])
-	        tmp[0] = 'ghost'+tmp[0]
+	        tmp[0] = 'GHOST-'+tmp[0]
 		atom_new[i] = tuple(tmp)
 		
     return atom_new
@@ -50,12 +50,12 @@ def add_ghost_part_atom(atom, bound_atom_index, replace_symbol, is_frag=True):
         if dat and dat[0] != '#':
 	    if(j < bound_atom_index):
 		if(is_frag == False):
-		    dat =  'ghost'+dat
+		    dat =  'GHOST-'+dat
             elif(j == bound_atom_index):
 		dat = replace_symbol + ' ' + dat[2:]
 	    elif(j > bound_atom_index):
 		if(is_frag == True):
-                    dat =  'ghost'+dat
+                    dat =  'GHOST-'+dat
             atom_new = atom_new + dat +'\n'
         j+=1
 

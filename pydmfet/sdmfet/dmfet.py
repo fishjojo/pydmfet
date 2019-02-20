@@ -68,6 +68,13 @@ class DMFET:
         self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, occ_imp, occ_bath = \
 	subspac.construct_subspace(self.ints,self.mol_frag,self.mol_env,self.OneDM_loc, self.cluster, self.sub_threshold, dim_bath, dim_imp)
 
+	#test boys
+	#self.loc2sub = np.eye(10)
+	#self.dim_imp=1
+	#self.dim_bath=2
+	#self.Occupations=np.array([0.,0.,0.,2.,2.,0.,0.,0.,0.,0.])
+	#self.Occupations[:]=0.0
+
 	#tools.MatPrint(self.loc2sub,'self.loc2sub')
 	#self.ints.sub_molden( self.loc2sub, 'loc2sub.molden', mo_occ=None )
 	#exit()
@@ -78,7 +85,6 @@ class DMFET:
 
 	self.dim_big = dim_big
 	if dim_big is None: self.dim_big =  self.dim_frag + self.dim_bath
-
         #construct core determinant
 	idx = self.dim_frag + self.dim_bath
         self.core1PDM_loc, self.Nelec_core, Norb_imp_throw, self.frag_core1PDM_loc = subspac.build_core(self.Occupations, self.loc2sub, idx)
@@ -169,6 +175,8 @@ class DMFET:
         self.ints.sub_molden( self.loc2sub[:,:dim], 'env_dens_guess.molden', env_occ )
 	'''
 
+	self.ints.sub_molden( self.loc2sub, "ao2sub.molden")
+
         self.oep_params = oep_params
 	self.ops = None
 
@@ -195,6 +203,12 @@ class DMFET:
 	self.P_bath = myoep.P_bath
 	self.frag_mo = myoep.frag_mo
 	self.env_mo = myoep.env_mo
+
+	P_imp_loc = tools.dm_sub2loc(self.P_imp,self.loc2sub[:,:dim])
+	P_bath_loc = tools.dm_sub2loc(self.P_bath,self.loc2sub[:,:dim])
+	tools.MatPrint(P_imp_loc,"P_imp_loc")
+	tools.MatPrint(P_bath_loc+self.core1PDM_loc,"P_bath_loc+P_core_loc")
+	tools.MatPrint(P_imp_loc+P_bath_loc+self.core1PDM_loc-self.OneDM_loc,"P_sum_loc-P_tot_loc")
 
 	#tools.MatPrint(self.P_imp,"P_imp")
 	#tools.MatPrint(self.P_bath,"P_bath")
@@ -242,11 +256,15 @@ class DMFET:
 	P_imp_ao = tools.dm_sub2ao(self.P_imp, ao2sub)
         P_bath_ao = tools.dm_sub2ao(self.P_bath, ao2sub)
 
+	umat_ao = tools.op_sub2ao(self.umat, ao2sub)
+
 	if(self.plot_dens):
 	    cubegen.density(self.mol, "frag_dens.cube", P_imp_ao, nx=100, ny=100, nz=100)
 	    cubegen.density(self.mol, "bath_dens.cube", P_bath_ao, nx=100, ny=100, nz=100)
 	    cubegen.density(self.mol, "core_dens.cube", self.core1PDM_ao, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "env_dens.cube", P_bath_ao + self.core1PDM_ao, nx=100, ny=100, nz=100)
+	    cubegen.density(self.mol, "vemb.cube", umat_ao, nx=100, ny=100, nz=100)
+
 
 	diffP = P_imp_ao + P_bath_ao + self.core1PDM_ao - self.P_ref_ao
 	print '|diffP_ao| = ', np.linalg.norm(diffP), 'max(diffP_ao) = ', np.max(diffP)
@@ -403,8 +421,8 @@ class DMFET:
 	#mf.init_guess =  'minao'
         mf.runscf()
 
-	#print np.amax(np.absolute(mf.rdm1 - self.P_ref_sub))	
-	#print np.linalg.norm(mf.rdm1 - self.P_ref_sub)
+	print np.amax(np.absolute(mf.rdm1 - self.P_ref_sub))	
+	print np.linalg.norm(mf.rdm1 - self.P_ref_sub)
 
 	self.ints.submo_molden(mf.mo_coeff, mf.mo_occ, self.loc2sub, "total_system_mo.molden",self.mol)
 
@@ -902,7 +920,12 @@ class DMFET:
 	umat[dim_small:, :dim_small] = u
 	umat[:dim_small, dim_small:] = u.T
 
-	'''
+	#umat1=umat.copy()
+	#umat1[dim_small:, :dim_small] = -ext_oei_bath
+	#umat1[:dim_small, dim_small:] = -ext_oei_bath.T
+	
+	#print "u-u1=",np.linalg.norm(umat-umat1)
+
 	#debug
         subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]+umat
         #energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, ops["subTEI"], dim_big, self.Ne_frag, P_imp_big, self.mf_method)
@@ -913,9 +936,15 @@ class DMFET:
         #energy2, onedm2, mo2 = qcwrap.pyscf_rhf.scf( subOEI, ops["subTEI"], dim_big, self.Ne_env, P_bath_big, self.mf_method)
 	mf2 = qcwrap.qc_scf(self.Ne_env,dim_big,self.mf_method,mol=self.mol_env,oei=subOEI,tei=ops["subTEI"],dm0=P_bath_big,coredm=coredm,ao2sub=ao2sub)
 	#mf2.conv_check = False #temp
+
+	#subOEI = ops["subKin"]+ops["subVnuc2"]+ops["subVnuc_bound2"]+umat1
+	#s = self.mf_full.get_ovlp(self.mol)
+        #coredm_sub = tools.dm_ao2sub(coredm,s,ao2sub)
+	#mf2 = qcwrap.qc_scf(self.Ne_env+self.Nelec_core,dim_big,self.mf_method,mol=self.mol_env,oei=subOEI,tei=ops["subTEI"],dm0=P_bath_big+coredm_sub,coredm=0.0,ao2sub=ao2sub)
 	mf2.runscf()
 
 	diffP = mf1.rdm1 + mf2.rdm1 - self.P_ref_sub
+	#diffP = mf1.rdm1 + mf2.rdm1 - tools.dm_loc2sub(self.OneDM_loc, self.loc2sub[:,:dim_big])
 
 	print np.linalg.norm(P_imp_big-mf1.rdm1), np.linalg.norm(P_bath_big-mf2.rdm1)
 	print '|diffP| = ',np.linalg.norm(diffP), 'max(diffP) = ',np.amax(np.absolute(diffP))
@@ -924,5 +953,4 @@ class DMFET:
 	#tools.MatPrint(mf2.rdm1,"P2")
 	#tools.MatPrint(P_imp_small,"P_imp_small")
 	#tools.MatPrint(P_bath_small,"P_bath_small")
-	'''
 	return umat

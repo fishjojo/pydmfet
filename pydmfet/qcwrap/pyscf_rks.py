@@ -106,6 +106,10 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
     mo_occ = np.zeros(nmo)
     Nocc = mf.mol.nelectron // 2
 
+    if(nmo == Nocc): #no virtual
+	mo_occ[:] = 2.0
+	return mo_occ
+
     e_idx = np.argsort(mo_energy)
     e_sort = mo_energy[e_idx]
     mo_occ[e_idx[:Nocc]] = 1.0

@@ -51,6 +51,10 @@ def dm_ao2loc(dm_ao, s, ao2loc):
 
     return dm_loc
 
+def dm_ao2sub(dm_ao, s, ao2sub):
+
+    return dm_ao2loc(dm_ao, s, ao2sub)
+
 def dm_loc2sub(dm_loc, loc2sub):
 
     dm_sub = reduce(np.dot, (loc2sub.T, dm_loc, loc2sub))
@@ -60,6 +64,10 @@ def dm_loc2ao(dm_loc, ao2loc):
 
     dm_ao = reduce(np.dot, (ao2loc, dm_loc, ao2loc.T))
     return dm_ao
+
+def dm_sub2loc(dm_sub, loc2sub):
+
+    return dm_loc2ao(dm_sub, loc2sub)
 
 def dm_sub2ao(dm_sub, ao2sub):
 
@@ -81,6 +89,11 @@ def op_ao2sub(op_ao, ao2sub):
 
     op_sub = reduce(np.dot, (ao2sub.T, op_ao, ao2sub))
     return op_sub
+
+def op_sub2ao(op_sub, ao2sub):
+
+    op_ao = reduce(np.dot, (ao2sub, op_sub, ao2sub.T))
+    return op_ao
 
 def rank(s,tol=None):
 

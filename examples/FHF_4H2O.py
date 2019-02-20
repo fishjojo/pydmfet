@@ -1,4 +1,4 @@
-from pydmfet import locints, sdmfet,oep
+from pydmfet import locints, sdmfet,oep,tools
 from pyscf import gto, scf,dft, ao2mo
 import numpy as np
 from pyscf.tools import molden
@@ -6,17 +6,25 @@ import FHF_4H2O_struct
 
 basis_frag = 'ccpvdz'
 basis_env = 'ccpvdz'
+bas = 'ccpvdz'
 e_tot_list = []
 for thestructure in range(17,18):
 
-    mol_frag, mol_env = FHF_4H2O_struct.structure( thestructure, basis_frag, basis_env)
-    mol = gto.mole.conc_mol(mol_frag, mol_env)
-    mol.build()
+    #mol_frag, mol_env = FHF_4H2O_struct.structure( thestructure, basis_frag, basis_env)
+    #mol = gto.mole.conc_mol(mol_frag, mol_env)
+    #mol.build()
+
+    mol = gto.Mole()
+    mol.atom = open('FHF_4H2O_struct.xyz').read()
+    mol.basis = bas
+    mol.charge = -1
+    mol.build(max_memory = 24000, verbose=4)
+
 
     #total system HF
-    #mf = scf.RHF(mol)
-    mf = dft.RKS(mol)
-    mf.xc = 'b3lyp'
+    mf = scf.RHF(mol)
+    #mf = dft.RKS(mol)
+    #mf.xc = 'b3lyp'
     mf.max_cycle = 100
     mf.verbose = 3
     DMguess = None
@@ -32,6 +40,23 @@ for thestructure in range(17,18):
     impAtom = np.zeros([natoms], dtype=int)
     for i in range(3):
         impAtom[i] = 1
+
+
+    ghost_frag = 1-impAtom
+    ghost_env = 1-ghost_frag
+
+    mol_frag = gto.Mole()
+    mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+    mol_frag.charge = -1
+    mol_frag.basis = bas
+    mol_frag.build(max_memory = 24000,verbose = 4)
+
+    mol_env = gto.Mole()
+    mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+    mol_env.basis =  bas
+    mol_env.build(max_memory = 24000,verbose = 4)
+
+
 
     aoslice = mol.aoslice_by_atom()
     impurities = np.zeros([mol.nao_nr()], dtype = int)
@@ -58,10 +83,10 @@ for thestructure in range(17,18):
                        outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
     theDMFET = sdmfet.DMFET(mf, mol_frag, mol_env, myInts, impurities, impAtom, Ne_frag,\
                         boundary_atoms=boundary_atoms, boundary_atoms2=None,\
-                        dim_imp =nbas, dim_bath =nbas,dim_big=None, oep_params=params, ecw_method = 'ccsd',mf_method = 'b3lyp')
+                        dim_imp =None, dim_bath =None,dim_big=63, oep_params=params, ecw_method = 'ccsd',mf_method = 'hf')
 
     umat = theDMFET.embedding_potential()
-
+    exit()
     e_corr = theDMFET.correction_energy()
 
     e_tot = e_mf + e_corr
