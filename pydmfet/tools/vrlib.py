@@ -90,10 +90,6 @@ def op_ao2sub(op_ao, ao2sub):
     op_sub = reduce(np.dot, (ao2sub.T, op_ao, ao2sub))
     return op_sub
 
-def op_sub2ao(op_sub, ao2sub):
-
-    op_ao = reduce(np.dot, (ao2sub, op_sub, ao2sub.T))
-    return op_ao
 
 def rank(s,tol=None):
 

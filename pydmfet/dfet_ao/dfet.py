@@ -1,8 +1,8 @@
 import numpy as np
 import pydmfet
-from pydmfet.dfet_ao import oep
+from pydmfet.dfet_ao import scf,oep
 from pyscf.tools import cubegen
-from pydmfet.dfet_ao import scf
+from pydmfet import tools
 
 def bound_vnuc_ao(dfet, boundary_atoms, mol=None):
 
@@ -26,7 +26,7 @@ class DFET:
     def __init__(self, mf_full,mol_frag, mol_env, boundary_atoms=None, boundary_atoms2=None, \
 		 umat = None, oep_params = pydmfet.oep.OEPparams(), smear_sigma = 0.0,\
 		 ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
-		 plot_dens = False):
+		 plot_dens = True):
 
 	self.mf_full = mf_full
         self.mol = self.mf_full.mol
@@ -50,6 +50,9 @@ class DFET:
         self.oep_params = oep_params
 
 	self.dim = self.mol.nao_nr()
+	
+	if(self.umat is None):
+            self.umat = np.zeros((self.dim,self.dim))
 
 	self.plot_dens = plot_dens
 
@@ -83,9 +86,18 @@ class DFET:
 
         self.calc_umat()
 
+	ovlp = self.mol.intor_symmetric('int1e_ovlp')
+	inv_S = np.linalg.inv(ovlp)
+	#print(np.dot(ovlp,inv_S))
+	umat_ao = reduce(np.dot,(inv_S,self.umat,inv_S))
+
+	#tools.MatPrint(umat_ao,'S^-1*umat_ao*S^-1')
+	#tools.MatPrint(self.P_imp,'P_frag')
+
 	if(self.plot_dens):
             cubegen.density(self.mol, "frag_dens.cube", self.P_imp, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "env_dens.cube", self.P_bath, nx=100, ny=100, nz=100)
+	    cubegen.density(self.mol, "vemb.cube", umat_ao, nx=100, ny=100, nz=100)
 
         return self.umat
 

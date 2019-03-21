@@ -12,6 +12,11 @@ def init_density_partition(oep, umat=None, mol1=None, mol2=None, mf_method=None)
     if(mol2 is None): mol2 = oep.mol_env
     if(mf_method is None): mf_method = oep.mf_method
 
+    if(oep.use_sub_umat):
+        s=oep.s
+        ao2sub = oep.ao2sub
+        umat = reduce(np.dot,(s,ao2sub,umat,ao2sub.T,s))
+
     mf_frag = scf.EmbedSCF(mol1, umat+oep.vnuc_bound_frag, oep.smear_sigma)
     mf_frag.xc = mf_method
     mf_frag.scf()
@@ -25,13 +30,26 @@ def init_density_partition(oep, umat=None, mol1=None, mol2=None, mf_method=None)
     return (FRAG_1RDM, ENV_1RDM)
 
 
+def grad_umat_sub(diffP,s,ao2sub,dim):
+
+    sc = np.dot(s,ao2sub)
+    grad = np.zeros((dim,dim))
+    for i in range(dim):
+	for j in range(dim):
+	    tmp = np.dot(diffP,sc[:,i])
+	    grad[i,j] = np.dot(sc[:,j].T,tmp)
+
+    return grad
+
 class OEPao:
 
     def __init__(self, dfet, params):
 
 	self.params = params
-	self.dim = dfet.dim
 	self.umat = dfet.umat
+	self.dim = self.umat.shape[0]
+
+	self.s = dfet.mf_full.get_ovlp(dfet.mol)
 	self.smear_sigma = dfet.smear_sigma
 
 	self.mol_frag = dfet.mol_frag
@@ -47,6 +65,17 @@ class OEPao:
 
 	dim = self.dim
 	if(self.umat is None): self.umat = np.zeros([dim,dim])
+
+	self.use_sub_umat = False
+	self.ao2sub=None
+	if( hasattr(dfet, 'use_umat_ao')):
+	    if(dfet.use_umat_ao):
+		self.use_sub_umat = True
+		self.ao2sub = dfet.ao2sub[:,:self.dim]
+		#self.umat = reduce(np.dot,(s,self.ao2sub,self.umat_sub,self.ao2sub.T,s))
+
+
+
 
 
     def kernel(self):
@@ -82,14 +111,20 @@ class OEPao:
             P_bath_old = self.P_bath.copy()
 
             umat = self.oep_base(umat, True)
+	    umat_loc = umat
+
+	    if(self.use_sub_umat):
+        	s=self.s
+        	ao2sub = self.ao2sub
+        	umat_loc = reduce(np.dot,(s,ao2sub,umat,ao2sub.T,s))
 
 	    #########
-	    mf_frag = scf.EmbedSCF_nonscf(self.mol_frag, self.P_imp, umat+self.vnuc_bound_frag, self.smear_sigma)
+	    mf_frag = scf.EmbedSCF_nonscf(self.mol_frag, self.P_imp, umat_loc+self.vnuc_bound_frag, self.smear_sigma)
             mf_frag.xc = self.mf_method
             mf_frag.scf()
             self.P_imp = mf_frag.make_rdm1()
 
-            mf_env = scf.EmbedSCF_nonscf(self.mol_env, self.P_bath, umat+self.vnuc_bound_env, self.smear_sigma)
+            mf_env = scf.EmbedSCF_nonscf(self.mol_env, self.P_bath, umat_loc+self.vnuc_bound_env, self.smear_sigma)
             mf_env.xc = self.mf_method
             mf_env.scf()
             self.P_bath = mf_env.make_rdm1()
@@ -116,7 +151,7 @@ class OEPao:
     def oep_base(self, umat, nonscf = False):
 
         P_ref = self.P_ref
-        dim = self.dim
+        dim = umat.shape[0]
 
         x = tools.mat2vec(umat, dim)
 
@@ -153,6 +188,11 @@ class OEPao:
         umat = tools.vec2mat(x, dim)
         print "|umat| = ", np.linalg.norm(umat)
 
+	if(self.use_sub_umat):
+	    s=self.s
+	    ao2sub = self.ao2sub
+	    umat = reduce(np.dot,(s,ao2sub,umat,ao2sub.T,s))
+
         if(nonscf == False):  #normal SCF
 
             mf_frag = scf.EmbedSCF(self.mol_frag, umat+self.vnuc_bound_frag, self.smear_sigma)
@@ -184,6 +224,15 @@ class OEPao:
 
         diffP = FRAG_1RDM + ENV_1RDM - P_ref
         energy = FRAG_energy + ENV_energy - np.trace(np.dot(P_ref,umat))
+
+
+	if(self.use_sub_umat):
+	    diffP = grad_umat_sub(diffP,self.s,self.ao2sub,dim)
+
+	#diffP = 2.0 * diffP
+	#for i in range(diffP.shape[0]):
+	#    diffP[i,i]=diffP[i,i] / 2.0
+	
 
         grad = tools.mat2vec(diffP, dim)
         grad = -1.0 * grad

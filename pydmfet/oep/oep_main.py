@@ -161,7 +161,7 @@ class OEP:
 	    umat = self.oep_loop(self.umat)
 
 	    #tools.MatPrint(umat,"umat")
-	    umat = self.opt_umat_2(umat, tol=1e-9)
+	    #umat = self.opt_umat_2(umat, tol=1e-9)
 	    #tools.MatPrint(umat,"umat")
 
 	    self.umat = umat
@@ -174,7 +174,12 @@ class OEP:
 
 	self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
+	#tools.MatPrint(self.umat,"umat")
 #	self.umat = self.oep_old(self.umat)
+
+	#self.umat = self.opt_umat_2(self.umat, tol=1e-9)
+	#self.umat = self.opt_umat_homo_diff(self.umat,gtol=1e-6)
+	#self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
 	self.P_imp, self.P_bath = self.verify_scf(self.umat)
 
@@ -445,12 +450,26 @@ class OEP:
         #ENV_1RDM = mf_env.rdm1
 
 	print "scf energies:"
-        print FRAG_energy-np.trace(np.dot(FRAG_1RDM,umat)),\
-	      ENV_energy-np.trace(np.dot(ENV_1RDM,umat)), \
-	      FRAG_energy+ENV_energy - np.trace(np.dot(FRAG_1RDM+ENV_1RDM,umat))
+        print "EA = ",FRAG_energy-np.trace(np.dot(FRAG_1RDM,umat))
+	print "EB = ",ENV_energy-np.trace(np.dot(ENV_1RDM,umat))
 	#print np.trace(np.dot(FRAG_1RDM,umat)), np.trace(np.dot(ENV_1RDM,umat)),np.trace(np.dot(FRAG_1RDM+ENV_1RDM,umat))
 	#self.ints.submo_molden( frag_mo[:,:dim], frag_occ, self.loc2sub, 'frag_dens_scf.molden' )
         #self.ints.submo_molden( env_mo[:,:dim], env_occ, self.loc2sub, 'env_dens_scf.molden' )
+
+	deltaN = 0.001
+	mf_frag.mo_occ[Ne_frag/2] = deltaN
+	mu_A = (mf_frag.energy_tot() - FRAG_energy)/deltaN
+	mf_env.mo_occ[Ne_env/2] = deltaN
+        mu_B = (mf_env.energy_tot() - ENV_energy)/deltaN
+	print 'mu_A = ',mu_A
+	print 'mu_B = ',mu_B
+
+	mf_frag.mo_occ[Ne_frag/2-1] = mf_frag.mo_occ[Ne_frag/2-1] - deltaN
+	mu_A = (-mf_frag.energy_tot() + FRAG_energy)/deltaN
+	mf_env.mo_occ[Ne_env/2-1] = mf_env.mo_occ[Ne_env/2-1] - deltaN
+        mu_B = (-mf_env.energy_tot() + ENV_energy)/deltaN
+	print 'mu_A = ',mu_A
+        print 'mu_B = ',mu_B
 
 	if(self.P_imp is not None):
 	    print np.linalg.norm(FRAG_1RDM - self.P_imp)
@@ -633,6 +652,222 @@ class OEP:
 
 	return result
 
+
+
+################################################################
+#   build_null_space
+################################################################
+    def build_null_space(self,mf_frag,mf_env,Ne_frag,Ne_env,dim,tol=1e-9):
+
+        size = dim*(dim+1)/2
+        hess_frag = calc_hess(mf_frag.mo_coeff, mf_frag.mo_energy, mf_frag.mo_occ, size, Ne_frag/2, dim)
+        hess_env = calc_hess(mf_env.mo_coeff, mf_env.mo_energy, mf_env.mo_occ, size, Ne_env/2, dim)
+
+        #u_f, s_f, vh_f = np.linalg.svd(hess_frag)
+        #u_e, s_e, vh_e = np.linalg.svd(hess_env)
+        u_f, s_f, vh_f = mkl_svd(hess_frag)
+        u_e, s_e, vh_e = mkl_svd(hess_env)
+
+        rankf = tools.rank(s_f,tol)
+        ranke = tools.rank(s_e,tol)
+
+        print 'svd of hess'
+        print size-rankf, size-ranke
+        print s_f[rankf-4:rankf+4]
+        print s_e[ranke-4:ranke+4]
+
+        if (rankf >= size or ranke >= size):
+	    print 'null space not found!'
+            return None
+
+        x = np.zeros((size))
+        y = np.zeros((size))
+        v_f = vh_f.T
+        v_e = vh_e.T
+
+        #tools.MatPrint(v_f, 'v_f')
+        #tools.MatPrint(v_e, 'v_e')
+
+        v_fe = np.concatenate((v_f[:,rankf:], -v_e[:,ranke:]), axis=1)
+        v_fe_fort = np.require(v_fe, requirements=['A', 'O', 'W', 'F'])
+
+        #uu, ss, vvh = np.linalg.svd(v_fe)
+        uu, ss, vvh = mkl_svd(v_fe_fort, 2)
+        rankfe = tools.rank(ss,tol)
+        print 'null space shape:',v_fe.shape
+	print 'null space rank:', rankfe
+        #np.set_printoptions(threshold=np.inf)
+        #print ss
+
+        if (rankfe >= v_fe.shape[-1]):
+	    print 'null space not found!'
+            return None
+
+        print 'singular value:',ss[rankfe-1:rankfe+1]
+
+        vv = vvh[rankfe:,:].T
+        #zero = np.dot(v_fe, vv)
+        #print np.linalg.norm(zero),np.amax(np.absolute(zero)) 
+
+        vint = np.dot(v_f[:,rankf:],vv[:(size-rankf),:])
+        #vint1 = np.dot(v_e[:,ranke:],vv[(size-rankf):,:])
+        for i in range(vint.shape[-1]):
+            vint[:,i] = vint[:,i]/np.linalg.norm(vint[:,i])
+
+        print 'check orthogonality of vint:'
+        zero = np.dot(vint.T, vint) - np.eye(vint.shape[-1])
+        print np.linalg.norm(zero),np.amax(np.absolute(zero))
+
+	return vint
+
+
+#####################################
+    def opt_umat_homo_diff(self,umat,gtol=1e-6):
+
+        ops = self.ops
+        Ne_frag = self.Ne_frag
+        Ne_env = self.Ne_env
+        dim = self.dim
+
+        subTEI = ops["subTEI"]
+        subOEI1 = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"] + umat
+        subOEI2 = ops["subKin"]+ops["subVnuc2"]+ops["subVnuc_bound2"]+ops["subCoreJK"] + umat
+
+        coredm = self.core1PDM_ao
+        ao2sub = self.ao2sub[:,:dim]
+
+        #frag_coredm_guess = tools.fock2onedm(subOEI1, Ne_frag/2)[0]
+        frag_coredm_guess = self.P_imp
+        mf_frag = qcwrap.qc_scf(Ne_frag,dim,self.mf_method,mol=self.mol,oei=subOEI1,tei=subTEI,\
+                                dm0=frag_coredm_guess,coredm=0.0,ao2sub=ao2sub, smear_sigma = 0.0)
+        mf_frag.runscf()
+
+        #env_coredm_guess = tools.fock2onedm(subOEI2, Ne_env/2)[0]
+        env_coredm_guess = self.P_bath
+        mf_env = qcwrap.qc_scf(Ne_env,dim,self.mf_method,mol=self.mol,oei=subOEI2,tei=subTEI,\
+                               dm0=env_coredm_guess,coredm=coredm,ao2sub=ao2sub, smear_sigma = 0.0)
+        mf_env.runscf()
+
+        print np.linalg.norm(mf_frag.rdm1-self.P_imp)
+        print np.linalg.norm(mf_env.rdm1-self.P_bath)
+
+        diffP = mf_frag.rdm1 + mf_env.rdm1 - self.P_ref
+        print "|P_frag + P_env - P_ref| = ", np.linalg.norm(diffP)
+        print "max element of (P_frag + P_env - P_ref) = ", np.amax(np.absolute(diffP) )
+        self.P_imp = mf_frag.rdm1
+        self.P_bath = mf_env.rdm1
+
+	#build null space
+        vint = self.build_null_space(mf_frag,mf_env,Ne_frag,Ne_env,dim)
+        if vint is None:
+            return umat
+
+        #minimize |ehomo_A-ehomo_B|^2
+        x0 = tools.mat2vec(umat, dim)
+        n = vint.shape[-1]
+        c = np.zeros((n))
+        res = self.minimize_ehomo_2(c,x0,vint,gtol)
+        c = res.x
+        #print '|c| = ', np.linalg.norm(c)
+        for i in range(n):
+            x0 += c[i] * vint[:,i]
+
+        umat = tools.vec2mat(x0, dim)
+        #xmat = xmat - np.eye( xmat.shape[ 0 ] ) * np.average( np.diag( xmat ) )
+
+        #tools.MatPrint(umat,'umat')
+        #print '|umat| = ', np.linalg.norm(umat)
+
+        return umat
+
+
+    def minimize_ehomo_2(self,c,x0,vint,gtol):
+
+        _args = (x0,vint)
+        ftol = 1e-9
+        #gtol = 1e-6
+        maxit = 50
+
+        result = optimize.minimize(self.cost_ehomo_2, c, args=_args, method='L-BFGS-B', jac=True,\
+                                   options={'disp': True, 'maxiter': maxit,'ftol':ftol, 'gtol':gtol} )
+
+        return result
+
+
+    def cost_ehomo_2(self,c,x0,vint):
+
+        x = x0.copy()
+
+        n = len(c)
+        for i in range(n):
+            x += c[i] * vint[:,i]
+
+
+        ops = self.ops
+        Ne_frag = self.Ne_frag
+        Ne_env = self.Ne_env
+        dim = self.dim
+
+	umat = tools.vec2mat(x, dim)
+        subTEI = ops["subTEI"]
+        subOEI1 = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"] + umat
+        subOEI2 = ops["subKin"]+ops["subVnuc2"]+ops["subVnuc_bound2"]+ops["subCoreJK"] + umat
+
+        coredm = self.core1PDM_ao
+        ao2sub = self.ao2sub[:,:dim]
+
+        frag_coredm_guess = self.P_imp
+        mf_frag = qcwrap.qc_scf(Ne_frag,dim,self.mf_method,mol=self.mol,oei=subOEI1,tei=subTEI,\
+                                dm0=frag_coredm_guess,coredm=0.0,ao2sub=ao2sub, smear_sigma = 0.0)
+        mf_frag.runscf()
+
+        env_coredm_guess = self.P_bath
+        mf_env = qcwrap.qc_scf(Ne_env,dim,self.mf_method,mol=self.mol,oei=subOEI2,tei=subTEI,\
+                               dm0=env_coredm_guess,coredm=coredm,ao2sub=ao2sub, smear_sigma = 0.0)
+        mf_env.runscf()
+
+	diffP = mf_frag.rdm1 + mf_env.rdm1 - self.P_ref
+        print "|P_frag + P_env - P_ref| = ", np.linalg.norm(diffP)
+        print "max element of (P_frag + P_env - P_ref) = ", np.amax(np.absolute(diffP) )
+
+	ehomo_A = mf_frag.mo_energy[Ne_frag/2-1]
+	ehomo_B = mf_env.mo_energy[Ne_env/2-1]
+	delta_ehomo = ehomo_A-ehomo_B
+	print 'ehomo_A=',ehomo_A,'  ehomo_B=',ehomo_B, '  delta_ehomo=', delta_ehomo
+
+	elumo_A = mf_frag.mo_energy[Ne_frag/2]
+	elumo_B = mf_env.mo_energy[Ne_env/2]
+	delta_elumo = elumo_A-elumo_B
+	print 'elumo_A=',elumo_A,'  elumo_B=',elumo_B, '  delta_elumo=', delta_elumo
+
+	#objective function
+        f = delta_ehomo*delta_ehomo + delta_elumo*delta_elumo #+ (elumo_A-ehomo_A-0.3)**2
+
+
+	homo_A = mf_frag.mo_coeff[:,Ne_frag/2-1]
+	homo_B = mf_env.mo_coeff[:,Ne_env/2-1]
+	lumo_A = mf_frag.mo_coeff[:,Ne_frag/2]
+	lumo_B = mf_env.mo_coeff[:,Ne_env/2]
+	#gradient
+        g = np.zeros((n))
+        for i in range(n):
+	    tmp = tools.vec2mat(vint[:,i],dim)
+	    EA=np.dot(homo_A,np.dot(tmp,homo_A))
+	    EB=np.dot(homo_B,np.dot(tmp,homo_B))
+	    g[i] = 2.0*delta_ehomo*(EA-EB)
+
+	    EA=np.dot(lumo_A,np.dot(tmp,lumo_A))
+            EB=np.dot(lumo_B,np.dot(tmp,lumo_B))
+	    g[i] += 2.0*delta_elumo*(EA-EB)
+
+	    #EB=np.dot(homo_A,np.dot(tmp,homo_A))
+	    #g[i] += 2.0*(elumo_A-ehomo_A-0.3)*(EA-EB)
+
+        return (f,g)
+
+
+#####################################
+
     def opt_umat_2(self,umat, tol=1e-6):
 
 	print '|umat| = ', np.linalg.norm(umat)
@@ -670,66 +905,13 @@ class OEP:
 	self.P_imp = mf_frag.rdm1
 	self.P_bath = mf_env.rdm1
 
+	#build null space
+	vint = self.build_null_space(mf_frag,mf_env,Ne_frag,Ne_env,dim)
+	if vint is None:
+	    return umat
+
 	#minimize |umat|^2
         x0 = tools.mat2vec(umat, dim)
-        size = dim*(dim+1)/2
-        hess_frag = calc_hess(mf_frag.mo_coeff, mf_frag.mo_energy, mf_frag.mo_occ, size, Ne_frag/2, dim)
-        hess_env = calc_hess(mf_env.mo_coeff, mf_env.mo_energy, mf_env.mo_occ, size, Ne_env/2, dim)
-
-        #u_f, s_f, vh_f = np.linalg.svd(hess_frag)
-        #u_e, s_e, vh_e = np.linalg.svd(hess_env)
-        u_f, s_f, vh_f = mkl_svd(hess_frag)
-        u_e, s_e, vh_e = mkl_svd(hess_env)
-
-        rankf = tools.rank(s_f,tol)
-        ranke = tools.rank(s_e,tol)
-
-        print 'svd of hess'
-        print size-rankf, size-ranke
-        print s_f[rankf-4:rankf+4]
-        print s_e[ranke-4:ranke+4]
-
-        if (rankf >= size or ranke >= size):
-            return (FRAG_1RDM, ENV_1RDM)
-
-        x = np.zeros((size))
-        y = np.zeros((size))
-        v_f = vh_f.T
-        v_e = vh_e.T
-
-        #tools.MatPrint(v_f, 'v_f')
-        #tools.MatPrint(v_e, 'v_e')
-
-        v_fe = np.concatenate((v_f[:,rankf:], -v_e[:,ranke:]), axis=1)
-        v_fe_fort = np.require(v_fe, requirements=['A', 'O', 'W', 'F'])
-
-        #uu, ss, vvh = np.linalg.svd(v_fe)
-        uu, ss, vvh = mkl_svd(v_fe_fort, 2)
-        rankfe = tools.rank(ss,tol)
-        print v_fe.shape, rankfe
-        #np.set_printoptions(threshold=np.inf)
-        #print ss
-
-        if (rankfe >= v_fe.shape[-1]):
-            return (FRAG_1RDM, ENV_1RDM)
-
-	print ss[rankfe-1:rankfe+1]
-
-        vv = vvh[rankfe:,:].T
-        #zero = np.dot(v_fe, vv)
-        #print np.linalg.norm(zero),np.amax(np.absolute(zero)) 
-
-        vint = np.dot(v_f[:,rankf:],vv[:(size-rankf),:])
-	#vint1 = np.dot(v_e[:,ranke:],vv[(size-rankf):,:])
-        for i in range(vint.shape[-1]):
-            vint[:,i] = vint[:,i]/np.linalg.norm(vint[:,i])
-
-	print 'ortho of vint'
-        zero = np.dot(vint.T, vint) - np.eye(vint.shape[-1])
-        print np.linalg.norm(zero),np.amax(np.absolute(zero)) 
-
-	sys.stdout.flush()
-
         n = vint.shape[-1]
         c = np.zeros((n))
         res = self.minimize_umat_2(c,x0,vint)
@@ -745,7 +927,6 @@ class OEP:
         #tools.MatPrint(umat,'umat')
         print '|umat| = ', np.linalg.norm(umat)
 
-	sys.stdout.flush()
 	return umat
 
 

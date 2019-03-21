@@ -12,7 +12,7 @@ class DMFET:
 		 umat = None, P_frag_ao = None, P_env_ao = None, \
 		 dim_imp =None, dim_bath = None, dim_big = None, smear_sigma = 0.0, \
 		 sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
-		 plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False):
+		 plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False, use_umat_ao = False):
 
         self.ints = ints
 	self.mf_full = mf_full
@@ -35,6 +35,8 @@ class DMFET:
 	self.mol_env = mol_env
 
 	self.smear_sigma = smear_sigma
+
+	self.use_umat_ao = use_umat_ao
 
         self.dim_frag = np.sum(self.cluster)
         #self.dim_env = self.cluster.size - self.dim_frag
@@ -123,6 +125,7 @@ class DMFET:
 	    #################
 
 	self.ao2sub = np.dot(self.ints.ao2loc, self.loc2sub)
+	#tools.MatPrint(self.ao2sub,'ao2sub')
 
 	self.P_env_loc -= self.core1PDM_loc  #assume core does not have imp contribution
 
@@ -135,7 +138,6 @@ class DMFET:
         self.umat = umat
 	self.P_imp = None
 	self.P_bath = None
-
 
         dim = self.dim_sub
         loc2sub = self.loc2sub
@@ -152,6 +154,11 @@ class DMFET:
 	if(self.umat is not None):
 	    self.umat = tools.op_ao2sub(self.umat, self.ao2sub[:,:dim])
 	    print '|umat| = ', np.linalg.norm(self.umat)	
+	else:
+	    self.umat = np.random.rand(dim,dim)
+	    self.umat = 0.5*(self.umat+self.umat.T)
+	    self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
+	    #self.umat = np.zeros((dim,dim))
 
 	'''
 	#density partition
@@ -175,16 +182,36 @@ class DMFET:
         self.ints.sub_molden( self.loc2sub[:,:dim], 'env_dens_guess.molden', env_occ )
 	'''
 
-	self.ints.sub_molden( self.loc2sub, "ao2sub.molden")
+	#self.ints.sub_molden( self.loc2sub, "ao2sub.molden")
 
         self.oep_params = oep_params
+
 	self.ops = None
+
+	#test use
+	self.P_ref = None
+	self.vnuc_bound_frag = None
+        self.vnuc_bound_env  = None
+	if(self.use_umat_ao):
+	    self.P_ref = self.P_ref_ao
+            self.vnuc_bound_frag = 0.0
+            self.vnuc_bound_env  = 0.0
+	    if(self.umat is None):
+		self.umat = np.zeros((dim,dim))
+	    s = self.mf_full.get_ovlp(self.mol)
+            ao2sub = self.ao2sub[:,:self.dim_sub]
+	    self.P_imp = tools.dm_sub2ao(self.P_imp, ao2sub)
+	    self.P_bath = tools.dm_sub2ao(self.P_bath, ao2sub)
+	    return None
+	#end test
 
         self.ops = libgen.build_subops(self.impAtom,self.mol_frag,self.mol_env,\
 				       self.boundary_atoms,self.boundary_atoms2,\
 				       self.ints, self.loc2sub, self.core1PDM_loc, self.dim_sub, self.Kcoeff, self.Nelec_core)
 
 	self.total_scf_energy()
+
+
 
     def calc_umat(self):
       
@@ -204,11 +231,11 @@ class DMFET:
 	self.frag_mo = myoep.frag_mo
 	self.env_mo = myoep.env_mo
 
-	P_imp_loc = tools.dm_sub2loc(self.P_imp,self.loc2sub[:,:dim])
-	P_bath_loc = tools.dm_sub2loc(self.P_bath,self.loc2sub[:,:dim])
-	tools.MatPrint(P_imp_loc,"P_imp_loc")
-	tools.MatPrint(P_bath_loc+self.core1PDM_loc,"P_bath_loc+P_core_loc")
-	tools.MatPrint(P_imp_loc+P_bath_loc+self.core1PDM_loc-self.OneDM_loc,"P_sum_loc-P_tot_loc")
+	#P_imp_loc = tools.dm_sub2loc(self.P_imp,self.loc2sub[:,:dim])
+	#P_bath_loc = tools.dm_sub2loc(self.P_bath,self.loc2sub[:,:dim])
+	#tools.MatPrint(P_imp_loc,"P_imp_loc")
+	#tools.MatPrint(P_bath_loc+self.core1PDM_loc,"P_bath_loc+P_core_loc")
+	#tools.MatPrint(P_imp_loc+P_bath_loc+self.core1PDM_loc-self.OneDM_loc,"P_sum_loc-P_tot_loc")
 
 	#tools.MatPrint(self.P_imp,"P_imp")
 	#tools.MatPrint(self.P_bath,"P_bath")
@@ -236,6 +263,33 @@ class DMFET:
 	#print np.linalg.norm(P1-P2)
 	#tools.MatPrint(P1-P2,"P_imp_2011 - P_imp_split")
 	#tools.MatPrint(u1-u2,"umat_2011 - umat_split")
+	'''
+	ops = self.ops
+	JK_imp = self.ints.impJK_sub(self.P_imp, ops["subTEI"],self.Kcoeff)
+        JK_bath = self.ints.impJK_sub(self.P_bath, ops["subTEI"],self.Kcoeff)
+
+	ao2sub = self.ao2sub[:,:self.dim_sub]
+	mf1 = qcwrap.qc_scf(self.Ne_frag,self.dim_sub,self.mf_method,mol=self.mol_frag,oei=None,tei=None,dm0=self.P_imp,coredm=0.0,ao2sub=ao2sub)
+        vxc_imp_ao = qcwrap.pyscf_rks.get_vxc(mf1, self.mol_frag, tools.dm_sub2ao(self.P_imp, ao2sub))[2]
+        vxc_imp = tools.op_ao2sub(vxc_imp_ao, ao2sub)
+
+        env_dm = tools.dm_sub2ao(self.P_bath, ao2sub)
+        mf2 = qcwrap.qc_scf(self.Ne_env,self.dim_sub,self.mf_method,mol=self.mol_env,oei=None,tei=None,dm0=self.P_bath,coredm=0.0, ao2sub=ao2sub)
+        vxc_bath_ao = qcwrap.pyscf_rks.get_vxc(mf2, self.mol_env, env_dm)[2]
+        vxc_bath = tools.op_ao2sub(vxc_bath_ao, ao2sub)
+
+	dm = tools.dm_sub2ao(self.P_imp+self.P_bath, ao2sub)
+	mf = qcwrap.qc_scf(self.Ne_frag+self.Ne_env,self.dim_sub,self.mf_method,\
+	                   mol=self.mol,oei=None,tei=None,dm0=self.P_imp+self.P_bath,coredm=0.0, ao2sub=ao2sub)
+        vxc_ao = qcwrap.pyscf_rks.get_vxc(mf, self.mol, dm)[2]
+	vxc = tools.op_ao2sub(vxc_ao, ao2sub)
+
+	#Vint_A = ops["subVnuc2"] + JK_bath - vxc_imp + vxc + 1e5*self.P_bath
+	#Vint_B = ops["subVnuc1"] + JK_imp - vxc_bath + vxc + 1e5*self.P_imp
+
+	#tools.MatPrint(Vint_A,"Vint_A")
+	#tools.MatPrint(Vint_B,"Vint_B")
+	'''
 
     def embedding_potential(self):
 
@@ -256,21 +310,26 @@ class DMFET:
 	P_imp_ao = tools.dm_sub2ao(self.P_imp, ao2sub)
         P_bath_ao = tools.dm_sub2ao(self.P_bath, ao2sub)
 
-	umat_ao = tools.op_sub2ao(self.umat, ao2sub)
+	#tools.MatPrint(P_imp_ao,'P_frag')
+
+	umat_plot = reduce(np.dot, (ao2sub, self.umat, ao2sub.T))
+	#tools.MatPrint(umat_plot,"umat_plot")
 
 	if(self.plot_dens):
+	    cubegen.density(self.mol, "tot_dens.cube", self.P_ref_ao, nx=100, ny=100, nz=100)
 	    cubegen.density(self.mol, "frag_dens.cube", P_imp_ao, nx=100, ny=100, nz=100)
 	    cubegen.density(self.mol, "bath_dens.cube", P_bath_ao, nx=100, ny=100, nz=100)
 	    cubegen.density(self.mol, "core_dens.cube", self.core1PDM_ao, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "env_dens.cube", P_bath_ao + self.core1PDM_ao, nx=100, ny=100, nz=100)
-	    cubegen.density(self.mol, "vemb.cube", umat_ao, nx=100, ny=100, nz=100)
+	    cubegen.density(self.mol, "vemb_1.cube", umat_plot, nx=100, ny=100, nz=100)
 
 
 	diffP = P_imp_ao + P_bath_ao + self.core1PDM_ao - self.P_ref_ao
 	print '|diffP_ao| = ', np.linalg.norm(diffP), 'max(diffP_ao) = ', np.max(diffP)
  	
-        return self.umat
-
+        #return self.umat
+	s = self.mf_full.get_ovlp(self.mol)
+	return reduce(np.dot, (s,umat_plot,s))
 
 
     def correction_energy(self):
@@ -304,7 +363,7 @@ class DMFET:
 
     def ecw_energy(self, method, dim):
 
-	mf_energy, Vemb, Vxc = self.imp_mf_energy2(dim)
+	mf_energy, Vemb, Vxc = self.imp_mf_energy(dim)
 
 	Ne_frag = self.Ne_frag
         ops = self.ops
@@ -314,7 +373,7 @@ class DMFET:
 
         mf = qcwrap.qc_scf(Ne_frag, dim, 'hf', mol=self.mol_frag, oei=subOEI, tei=subTEI, dm0=self.P_imp)
         mf.runscf()
-	e_hf = mf.elec_energy
+	e_hf = mf.elec_energy# - np.trace(np.dot(mf.rdm1,Vemb))
 	if(self.plot_mo):
 	    self.ints.submo_molden(mf.mo_coeff, mf.mo_occ, self.loc2sub, "mo_frag.molden",self.mol_frag)
 
@@ -477,7 +536,7 @@ class DMFET:
         mf = qcwrap.qc_scf(Ne_frag, dim, self.mf_method, mol=self.mol_frag, oei=subOEI, tei=subTEI, dm0=self.P_imp, coredm=0.0, ao2sub=ao2sub)
 	#mf.init_guess =  'minao'
         mf.runscf()
-        energy = mf.elec_energy
+        energy = mf.elec_energy #- np.trace(np.dot(mf.rdm1,Vemb))
 
         print '|diffP| = ', np.linalg.norm(mf.rdm1 + self.P_bath - self.P_ref_sub)
         print "embeded imp scf (electron) energy = ",energy
@@ -532,6 +591,8 @@ class DMFET:
         print "embeded imp scf (electron) energy = ",energy
 
 	self.P_imp = mf.rdm1
+
+	print 'level shift energy contribution: ',np.trace(np.dot(energy_shift*proj,self.P_imp))
 
         return (energy, Vemb, Vxc)
 
@@ -882,8 +943,8 @@ class DMFET:
             JK_imp += tools.op_ao2sub(vxc_imp_ao, ao2sub)
 
 	    env_dm = coredm+tools.dm_sub2ao(P_bath_big, ao2sub)
-	    mf2 = qcwrap.qc_scf(self.Ne_env,dim_big,self.mf_method,mol=self.mol_env,oei=None,tei=None,dm0=JK_bath,coredm=coredm, ao2sub=ao2sub)
-            vxc_bath_ao = qcwrap.pyscf_rks.get_vxc(mf2, self.mol_env, env_dm, n_core_elec=self.Ne_env+self.Nelec_core)[2]
+	    mf2 = qcwrap.qc_scf(self.Ne_env,dim_big,self.mf_method,mol=self.mol_env,oei=None,tei=None,dm0=P_bath_big,coredm=coredm, ao2sub=ao2sub)
+            vxc_bath_ao = qcwrap.pyscf_rks.get_vxc(mf2, self.mol_env, env_dm, n_core_elec=self.Nelec_core)[2]
             JK_bath += tools.op_ao2sub(vxc_bath_ao, ao2sub)
 
 
@@ -903,8 +964,8 @@ class DMFET:
 
 	AAT = np.dot(v.T, v)
 	#tools.MatPrint(AAT,'AAT')
-	tmp = np.dot(np.linalg.inv(AAT), b.T)
-	#tmp = b.T
+	#tmp = np.dot(np.linalg.inv(AAT), b.T)
+	tmp = b.T
 	uT = np.dot(v,tmp)
 	u = uT.T
 
@@ -919,6 +980,7 @@ class DMFET:
 	umat = np.pad(self.umat, ((0,dim_ext),(0,dim_ext)), 'constant', constant_values=0 )
 	umat[dim_small:, :dim_small] = u
 	umat[:dim_small, dim_small:] = u.T
+
 
 	#umat1=umat.copy()
 	#umat1[dim_small:, :dim_small] = -ext_oei_bath
