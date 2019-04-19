@@ -28,7 +28,7 @@ def fock2mo(fock,NOcc):
 
 def vec2mat(x, dim):
 
-    mat = np.zeros((dim,dim),dtype=float)
+    mat = np.zeros((dim,dim),dtype=np.double)
     iu = np.triu_indices(dim)
     mat[iu] = x
     mat = np.tril(mat.T,-1) + mat
@@ -38,11 +38,46 @@ def vec2mat(x, dim):
 def mat2vec(mat, dim):
 
     size = dim*(dim+1)/2
-    x = np.zeros(size,dtype=float)
+    x = np.zeros(size,dtype=np.double)
     iu = np.triu_indices(dim)
     x = mat[iu]
     return x
 
+
+#for H chain minimal basis divided at center
+def mat2vec_hchain(mat,dim):
+
+    size = dim/2
+    k=1
+    while (dim-k > 0):
+	size += (dim - k)
+	k += 2
+
+    x = np.zeros(size,dtype=np.double)
+
+    k=0
+    for i in range(dim/2):
+	for j in range(i,dim-i):
+	    x[k] = mat[i,j]
+	    k+=1
+
+    return x
+
+def vec2mat_hchain(x,dim):
+
+    mat = np.zeros((dim,dim),dtype=np.double)
+    k=0
+    for i in range(dim/2):
+        for j in range(i,dim-i):
+            mat[i,j] = x[k]
+	    mat[dim-j-1,dim-i-1] = x[k]
+            k+=1
+
+    for j in range(dim-1):
+	for i in range(j+1,dim):
+	    mat[i,j] = mat[j,i]
+
+    return mat
 
 def dm_ao2loc(dm_ao, s, ao2loc):
 

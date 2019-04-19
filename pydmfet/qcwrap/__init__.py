@@ -1,5 +1,6 @@
 from pydmfet.qcwrap import pyscf_rks
 from pydmfet.qcwrap import pyscf_rhf
+#from pydmfet.qcwrap import pyscf_rks_ao
 
 def qc_scf(Ne, Norb, method, software = 'pyscf', **args):
 

@@ -43,23 +43,38 @@ class EmbedSCF(rks.RKS):
     energy_elec = energy_elec
 
 
+
+def get_occ(mf, mo_energy=None, mo_coeff=None):
+
+    if(mf.fixed_occ):
+        return mf._occ
+    else:
+        return pyscf_rks.get_occ(mf, mo_energy, mo_coeff)
+
 #restricted nonscf
 class EmbedSCF_nonscf(rks.RKS):
 
-    def __init__(self, mol, dm_fix, umat=0.0, smear_sigma=0.0):
+    def __init__(self, mol, dm_fix, umat=0.0, smear_sigma=0.0,fixed_occ=False,_occ=None):
 
         self.umat = umat
 	self.dm_fix = dm_fix
 	self.smear_sigma = smear_sigma
+	self.fixed_occ = fixed_occ
+	self._occ = _occ
 
         rks.RKS.__init__(self,mol)
 
     get_hcore = get_hcore
-    get_occ = pyscf_rks.get_occ
+    #get_occ = pyscf_rks.get_occ
+    get_occ = get_occ
     energy_elec = energy_elec
 
 
     def get_veff(self, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
+
+	if(self.direct_scf):
+	    print 'direct_scf == True'
+	    exit()
 
 	vxc = rks.get_veff(self, mol=mol, dm=self.dm_fix, dm_last=0, vhf_last=0, hermi=hermi)
 	

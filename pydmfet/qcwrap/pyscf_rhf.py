@@ -1,8 +1,64 @@
 import numpy as np
 from pydmfet import tools
 from pyscf import ao2mo, gto, scf, dft, lib
+from pydmfet.qcwrap import fermi
 import time
 
+def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
+
+    OEI = 0.5*(OEI.T + OEI)
+    eigenvals, eigenvecs = np.linalg.eigh( OEI )
+    idx = np.argmax(abs(eigenvecs), axis=0)
+    eigenvecs[:,eigenvecs[ idx, np.arange(len(eigenvals)) ]<0] *= -1
+
+    Nocc = Nelec/2  #closed shell
+
+    e_homo = eigenvals[Nocc-1]
+    e_lumo = eigenvals[Nocc]
+    print 'HOMO: ', e_homo, 'LUMO: ', e_lumo
+
+    e_fermi = e_homo
+    mo_occ = np.zeros((Norb))
+
+    if(smear_sigma < 1e-8): #T=0
+        mo_occ[:Nocc] = 1.0
+    else: #finite T
+        e_fermi, mo_occ = fermi.find_efermi(eigenvals, smear_sigma, Nocc, Norb)
+
+    mo_occ*=2.0 #closed shell
+
+    Ne_error = np.sum(mo_occ) - Nelec
+    if(Ne_error > 1e-8):
+        print 'Ne error = ', Ne_error
+    print "fermi energy: ", e_fermi
+    np.set_printoptions(precision=4)
+    flag = mo_occ > 1e-4
+    print mo_occ[flag]
+    np.set_printoptions()
+
+
+    RDM1 = reduce(np.dot, (eigenvecs, np.diag(mo_occ), eigenvecs.T))
+    RDM1 = (RDM1.T + RDM1)/2.0
+
+    energy = np.trace(np.dot(RDM1,OEI))
+
+    S = 0.0
+    if(smear_sigma >= 1e-8):
+        for i in range(Norb):
+            occ_i = mo_occ[i] / 2.0
+            if(occ_i > 1e-8 and occ_i < 1.0-1e-8):
+                S += occ_i * np.log(occ_i) + (1.0-occ_i) * np.log(1.0-occ_i)
+            else:
+                S += 0.0
+
+    print 'entropy correction: ',2.0*S*smear_sigma
+    energy += 2.0*S*smear_sigma
+    print 'e_tot = ', energy
+
+    return ( energy, RDM1, eigenvecs, eigenvals, mo_occ )
+
+
+# The following is deprecated!
 class scf_pyscf(): 
 
     '''
@@ -255,134 +311,3 @@ def scf(mol, OEI, TEI, Norb, Nelec, OneDM0=None, mf_method = 'HF' ):
     #tools.MatPrint(mf.mo_coeff,"mo_coeff")
     return (energy, RDM1, mo)
 '''
-
-def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
-
-    OEI = 0.5*(OEI.T + OEI)
-    eigenvals, eigenvecs = np.linalg.eigh( OEI )
-    idx = np.argmax(abs(eigenvecs), axis=0)
-    eigenvecs[:,eigenvecs[ idx, np.arange(len(eigenvals)) ]<0] *= -1
-
-    Nocc = Nelec/2  #closed shell
-
-    #idx = eigenvals.argsort()
-    #eigenvals = eigenvals[idx]
-    #eigenvecs = eigenvecs[:,idx]
-
-    e_homo = eigenvals[Nocc-1]
-    e_lumo = eigenvals[Nocc]
-    print 'homo-lumo gap = ', e_lumo - e_homo
-
-    e_fermi = e_homo
-    mo_occ = np.zeros((Norb))
-
-    if(smear_sigma < 1e-9): #T=0
-	mo_occ[:Nocc] = 1.0
-    else: #finite T
-	e_fermi, mo_occ = find_efermi(eigenvals, smear_sigma, Nocc, Norb)
-
-    ne = np.sum(mo_occ)
-    print 'ne-Nocc = ', ne - Nocc
-    print e_fermi
-    np.set_printoptions(precision=3)
-    flag = mo_occ > 1e-3
-    print mo_occ[flag]
-    np.set_printoptions()
-
-
-    RDM1 = reduce(np.dot, (eigenvecs, np.diag(mo_occ), eigenvecs.T))
-    RDM1 = RDM1.T + RDM1
-
-    energy = np.trace(np.dot(RDM1,OEI))
-    print energy
-
-    S = 0.0
-    if(smear_sigma >= 1e-9):
-        for i in range(Norb):
-	    occ_i = mo_occ[i]
-	    if(occ_i > 1e-16 and occ_i < 1.0-1e-16):
-		S += occ_i * np.log(occ_i) + (1.0-occ_i) * np.log(1.0-occ_i)
-	    else:
-	        S += 0.0
-
-    #print 2.0*S*smear_sigma
-
-    energy += 2.0*S*smear_sigma
-
-    return ( energy, RDM1, eigenvecs, eigenvals, mo_occ )
-
-
-def find_efermi(eigenvals, smear_sigma, NAlpha, Norb):
-
-    toll = 1.0e-10
-
-    e_homo = eigenvals[NAlpha-1]
-
-    step=max(2.0*smear_sigma,1.0)
-
-    emed = e_homo
-    emax = emed + step
-    emin = emed - step
-
-    attempts=0
-    maxit = 200
-    while True:
-	attempts += 1
-
-        fmax = fzero(eigenvals, emax, smear_sigma, NAlpha, Norb)[0]
-        fmed = fzero(eigenvals, emed, smear_sigma, NAlpha, Norb)[0]
-        fmin = fzero(eigenvals, emin, smear_sigma, NAlpha, Norb)[0]
-
-        if (fmax*fmin < 0.0):
-            break
-	elif(attempts > maxit):
-	    raise Exception("fail!")
-	else:
-	    emax += step
-	    emin -= step
-
-    attempts=0
-    mo_occ = None
-    while True:
-	attempts += 1
-        if(fmax*fmed > 0.0):
-	    emax = emed
-	    fmax = fmed
-        else:
-	    emin = emed
-	    fmin = fmed
-
-        if(attempts < 15 or abs(fmax-fmin) < 0.0):
-            emed=0.5*(emin+emax)
-        else:
-            emed=-fmin*(emax-emin)/(fmax-fmin)+emin
-    
-	fmed, mo_occ = fzero(eigenvals, emed, smear_sigma, NAlpha, Norb)
-
-	if(abs(fmed) < toll ):
-	    break
-
-	if(attempts > maxit):
-	    raise Exception("fail 2!")
-
-    return emed, mo_occ
-
-
-def fzero(eigenvals, efermi, smear_sigma, NAlpha, Norb):
-
-    mo_occ = np.zeros((Norb))
-    for i in range(Norb):
-        e_i = eigenvals[i]
-        expo = (e_i-efermi)/smear_sigma
-        if(expo > 40.0):
-            mo_occ[i] = 0.0
-        else:
-            mo_occ[i] = 1.0/(1.0 + np.exp(expo) )
-
-	if(mo_occ[i] >1.0): mo_occ[i] = 1.0
-	elif(mo_occ[i] <0.0): mo_occ[i] = 0.0
-
-
-    ne = np.sum(mo_occ)
-    zero = NAlpha - ne
-    return (zero, mo_occ)

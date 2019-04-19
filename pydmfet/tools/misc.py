@@ -1,6 +1,14 @@
 from pyscf import lo
 import numpy as np
 import copy
+from pyscf.tools import molden
+
+#generate molden file
+def mo_molden(mol,mo_coeff,filename):
+    with open( filename, 'w' ) as thefile:
+            molden.header( mol, thefile )
+            molden.orbital_coeff( mol, thefile, mo_coeff )
+
 
 #for dfet
 def add_ghost(atoms, ghost):

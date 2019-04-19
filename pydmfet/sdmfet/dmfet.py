@@ -146,19 +146,19 @@ class DMFET:
 
 	self.P_imp = np.dot(np.dot(self.loc2sub[:,:dim].T,self.P_frag_loc),self.loc2sub[:,:dim])
         self.P_bath = np.dot(np.dot(self.loc2sub[:,:dim].T,self.P_env_loc),self.loc2sub[:,:dim])
-        print '|diffP| = ', np.linalg.norm(self.P_imp + self.P_bath - self.P_ref_sub)
-        print np.linalg.norm(np.dot(self.P_imp,self.P_imp) - 2.0*self.P_imp)
-        print np.linalg.norm(np.dot(self.P_bath,self.P_bath) - 2.0*self.P_bath)
+        print '|diffP| = ',  np.linalg.norm(self.P_imp + self.P_bath - self.P_ref_sub)
+        print 'P_imp idem:', np.linalg.norm(np.dot(self.P_imp,self.P_imp) - 2.0*self.P_imp)
+        print 'P_bath idem:',np.linalg.norm(np.dot(self.P_bath,self.P_bath) - 2.0*self.P_bath)
 
 
 	if(self.umat is not None):
 	    self.umat = tools.op_ao2sub(self.umat, self.ao2sub[:,:dim])
 	    print '|umat| = ', np.linalg.norm(self.umat)	
 	else:
-	    self.umat = np.random.rand(dim,dim)
-	    self.umat = 0.5*(self.umat+self.umat.T)
-	    self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
-	    #self.umat = np.zeros((dim,dim))
+	    #self.umat = np.random.rand(dim,dim)
+	    #self.umat = 0.5*(self.umat+self.umat.T)
+	    #self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
+	    self.umat = np.zeros((dim,dim))
 
 	'''
 	#density partition
@@ -298,10 +298,11 @@ class DMFET:
 
 	#dim_big = self.dim_frag + self.dim_bath
 	dim_big = self.dim_big
+	'''
 	occ_mo_imp = self.frag_mo[:,:self.Ne_frag/2]
 	occ_mo_bath = self.env_mo[:,:self.Ne_env/2]
 	self.umat = self.pad_umat(occ_mo_imp, occ_mo_bath, self.dim_sub, dim_big, self.core1PDM_loc)
-
+	'''
 	#tools.MatPrint(self.P_imp,'self.P_imp')
 	#tools.MatPrint(self.P_bath,'self.P_bath')
 	#tools.MatPrint(self.P_ref_sub,'P_ref')
@@ -379,7 +380,8 @@ class DMFET:
 
 	exc = 0.0
 	if(Vxc is not None):
-	    exc = np.einsum('ij,ji', Vxc, mf.rdm1-self.P_imp)
+#	    exc = np.einsum('ij,ji', Vxc, mf.rdm1-self.P_imp)
+	    exc = np.einsum('ij,ji', Vxc, self.P_imp)
 	print 'exc = ', exc
 
 	if(method == 'hf'):
@@ -445,7 +447,7 @@ class DMFET:
             raise Exception("ecw_method not supported!")
 
 	energy -= mf_energy
-	#energy -= exc
+	energy -= exc
 
 	return energy
 
@@ -480,8 +482,8 @@ class DMFET:
 	#mf.init_guess =  'minao'
         mf.runscf()
 
-	print np.amax(np.absolute(mf.rdm1 - self.P_ref_sub))	
-	print np.linalg.norm(mf.rdm1 - self.P_ref_sub)
+	print 'max(P_tot - P_ref) = ', np.amax(np.absolute(mf.rdm1 - self.P_ref_sub))	
+	print '|P_tot - P_ref| = ',    np.linalg.norm(mf.rdm1 - self.P_ref_sub)
 
 	self.ints.submo_molden(mf.mo_coeff, mf.mo_occ, self.loc2sub, "total_system_mo.molden",self.mol)
 
@@ -581,7 +583,8 @@ class DMFET:
         #subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]+umat +0.5*1e4*self.P_bath
 	subTEI = ops["subTEI"]
 
-	mf = qcwrap.qc_scf(Ne_frag, dim, self.mf_method, mol=self.mol_frag, oei=subOEI, tei=subTEI, dm0=self.P_imp, coredm=0.0, ao2sub=ao2sub)
+	mf = qcwrap.qc_scf(Ne_frag, dim, self.mf_method, mol=self.mol_frag, oei=subOEI, tei=subTEI, dm0=self.P_imp, coredm=0.0, ao2sub=ao2sub,\
+			   smear_sigma = self.smear_sigma)
         mf.runscf()
 	energy = mf.elec_energy
 

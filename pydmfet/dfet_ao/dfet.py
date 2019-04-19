@@ -36,7 +36,7 @@ class DFET:
 	self.umat = umat
 	self.smear_sigma = smear_sigma
 
-	self.P_ref = self.mf_full.make_rdm1()
+	self.P_ref = None#self.mf_full.make_rdm1()
 	self.P_imp = None
 	self.P_bath = None
 
@@ -69,7 +69,11 @@ class DFET:
         mf.xc = self.mf_method
         mf.scf()
 	self.P_ref = mf.make_rdm1()
-
+	#tools.MatPrint(self.P_ref,"P_ref")
+	print "mo_energy:"
+	print mf.mo_energy
+	print "mo_occ:"
+	print mf.mo_occ
 
     bound_vnuc_ao = bound_vnuc_ao
 

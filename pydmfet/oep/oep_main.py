@@ -4,7 +4,7 @@ import numpy as np
 from scipy import optimize
 from pydmfet import qcwrap,tools,subspac, libgen
 import time,copy
-from pyscf import lib, scf, mp
+from pyscf import lib, scf, mp, lo
 from pyscf.tools import cubegen
 
 libhess = np.ctypeslib.load_library('libhess', os.path.dirname(__file__))
@@ -81,6 +81,7 @@ class OEP:
 	self.ks = embedobj.mf_full
 	self.ks_frag = None
 	self.ks_env = None
+	self.cluster = embedobj.cluster
 	self.mol = embedobj.mol
 	self.mol_frag = embedobj.mol_frag
 	self.mol_env = embedobj.mol_env
@@ -175,13 +176,13 @@ class OEP:
 	self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
 	#tools.MatPrint(self.umat,"umat")
-#	self.umat = self.oep_old(self.umat)
+	#self.umat = self.oep_old(self.umat)
 
 	#self.umat = self.opt_umat_2(self.umat, tol=1e-9)
 	#self.umat = self.opt_umat_homo_diff(self.umat,gtol=1e-6)
 	#self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
-	self.P_imp, self.P_bath = self.verify_scf(self.umat)
+	#self.P_imp, self.P_bath = self.verify_scf(self.umat)
 
 	print '|P_imp-P_imp_0|', np.linalg.norm(self.P_imp - self.P_imp0), np.amax(np.absolute(self.P_imp - self.P_imp0))
 	print '|P_bath-P_bath_0|', np.linalg.norm(self.P_bath - self.P_bath0), np.amax(np.absolute(self.P_bath - self.P_bath0))
@@ -207,9 +208,9 @@ class OEP:
 	return umat
 
 
-    def init_density_partition(self, method = 1):
+    def init_density_partition(self, method = 3):
 
-	print "entering oep_main.init_density_partition()"
+	print "Entering init_density_partition"
 
 	self.ks_frag = self.calc_energy_frag(self.umat, None, self.Ne_frag, self.dim)[5]
         self.ks_env = self.calc_energy_env(self.umat, None, self.Ne_env, self.dim)[5]
@@ -219,8 +220,40 @@ class OEP:
 	    self.P_bath = self.ks_env.rdm1
 	elif(method == 2):
 	    print "density partition from input"
-	    #self.P_imp = np.dot(np.dot(self.loc2sub[:,:self.dim].T,self.P_frag_loc),self.loc2sub[:,:self.dim])
-	    #self.P_bath = np.dot(np.dot(self.loc2sub[:,:self.dim].T,self.P_env_loc),self.loc2sub[:,:self.dim])
+	    self.P_imp = np.dot(np.dot(self.loc2sub[:,:self.dim].T,self.P_frag_loc),self.loc2sub[:,:self.dim])
+	    self.P_bath = np.dot(np.dot(self.loc2sub[:,:self.dim].T,self.P_env_loc),self.loc2sub[:,:self.dim])
+	elif(method == 3):
+	    print "Pipek-Mezey density partition"
+	    nocc = 0
+	    nbas = self.cluster.size
+	    for i in range(nbas):
+		if(abs(self.ks.mo_occ[i] - 2.0)<1e-8):
+		    nocc += 1
+	    mo_pipek = lo.pipek.PM(self.mol).kernel(self.ks.mo_coeff[:,:nocc], verbose=4)
+	    s = self.ks.get_ovlp(self.mol)
+	    self.P_imp[:,:] = 0.0
+	    self.P_bath[:,:] = 0.0
+	    Pi = np.zeros([nocc,nbas,nbas])
+	    pop = np.zeros(nocc)
+	    for i in range(nocc):
+		Pi[i,:,:] = 2.0*np.outer(mo_pipek[:,i],mo_pipek[:,i])
+		PiS = np.dot(Pi[i,:,:],s)
+		for j in range(nbas):
+		    if(self.cluster[j] == 1):
+			pop[i] += PiS[j,j]
+
+	    print "Mulliken pop:"
+	    print pop
+	    idx = pop.argsort()
+	    for i in range(nocc):
+		if(i<self.Ne_env/2):
+		    self.P_bath += tools.dm_ao2sub(Pi[idx[i],:,:], s, self.ao2sub[:,:self.dim])
+		else:
+		    self.P_imp += tools.dm_ao2sub(Pi[idx[i],:,:], s, self.ao2sub[:,:self.dim])
+	    for i in range(nocc,nbas):
+		if(self.ks.mo_occ[i] > 1e-8):
+		    P = self.ks.mo_occ[i]*np.outer(self.ks.mo_coeff[:,i],self.ks.mo_coeff[:,i])
+		    self.P_imp += tools.dm_ao2sub(P, s, self.ao2sub[:,:self.dim])
 	else:
 	    dim = self.dim
             dim_imp = self.dim_imp
@@ -238,6 +271,12 @@ class OEP:
 	diffP = self.P_imp + self.P_bath - self.P_ref
 	print "|P_imp + P_bath - P_ref| = ", np.linalg.norm(diffP)
 	print "max(P_imp + P_bath - P_ref)", np.amax(np.absolute(diffP))
+
+	P_imp_ao = tools.dm_sub2ao(self.P_imp, self.ao2sub[:,:self.dim])
+	P_bath_ao = tools.dm_sub2ao(self.P_bath, self.ao2sub[:,:self.dim])
+	cubegen.density(self.mol, "frag_dens_init.cube", P_imp_ao, nx=100, ny=100, nz=100)
+        cubegen.density(self.mol, "bath_dens_init.cube", P_bath_ao, nx=100, ny=100, nz=100)
+
 
 	'''
 	dim = self.dim
@@ -291,8 +330,31 @@ class OEP:
 	    print "diffP_max_imp, diffP_max_bath "
 	    print gmax_imp, gmax_bath
 
-	    sys.stdout.flush()	    
+	    if(it == maxit):
+		ao2sub = self.ao2sub[:,:self.dim]
+	        P_imp_ao = tools.dm_sub2ao(self.P_imp, ao2sub)
+	        P_bath_ao = tools.dm_sub2ao(self.P_bath, ao2sub)
+	        cubegen.density(self.mol, "frag_dens_new.cube", P_imp_ao, nx=100, ny=100, nz=100)
+	        cubegen.density(self.mol, "bath_dens_new.cube", P_bath_ao, nx=100, ny=100, nz=100)
+
+		P_imp_old_ao = tools.dm_sub2ao(P_imp_old, ao2sub)
+		P_bath_old_ao = tools.dm_sub2ao(P_bath_old, ao2sub)
+		cubegen.density(self.mol, "frag_dens_old.cube", P_imp_old_ao, nx=100, ny=100, nz=100)
+                cubegen.density(self.mol, "bath_dens_old.cube", P_bath_old_ao, nx=100, ny=100, nz=100)
+
+
+	    #sys.stdout.flush()
 	    if(gmax_imp < threshold and gmax_bath < threshold ):
+                ao2sub = self.ao2sub[:,:self.dim]
+                P_imp_ao = tools.dm_sub2ao(self.P_imp, ao2sub)
+                P_bath_ao = tools.dm_sub2ao(self.P_bath, ao2sub)
+                cubegen.density(self.mol, "frag_dens_new.cube", P_imp_ao, nx=100, ny=100, nz=100)
+                cubegen.density(self.mol, "bath_dens_new.cube", P_bath_ao, nx=100, ny=100, nz=100)
+
+                P_imp_old_ao = tools.dm_sub2ao(P_imp_old, ao2sub)
+                P_bath_old_ao = tools.dm_sub2ao(P_bath_old, ao2sub)
+                cubegen.density(self.mol, "frag_dens_old.cube", P_imp_old_ao, nx=100, ny=100, nz=100)
+                cubegen.density(self.mol, "bath_dens_old.cube", P_bath_old_ao, nx=100, ny=100, nz=100)
 		break
 
 	    P_imp_old = None
@@ -934,7 +996,7 @@ class OEP:
     def minimize_umat_2(self,c,x0,vint):
 	
 	_args = (x0,vint)
-	ftol = 1e-9
+	ftol = 1e-12
 	gtol = 1e-6
 	maxit = 50
 
@@ -1120,7 +1182,7 @@ class OEP:
 
     def l2_reg(self, x):
 
-	target = 2.5
+	target = 0.0
 
 	dim = self.dim
 	u = tools.vec2mat(x, dim)

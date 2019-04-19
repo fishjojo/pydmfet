@@ -1,6 +1,6 @@
 import numpy as np
 from pydmfet import tools
-from pydmfet.qcwrap import pyscf_rhf
+from pydmfet.qcwrap import fermi
 from pyscf import ao2mo, gto, scf, dft, lib
 from pyscf.scf import hf, rohf, uhf
 from pyscf.dft import rks
@@ -120,14 +120,14 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
 
     e_fermi = e_homo
 
-    if(smear_sigma > 1e-9):
-        e_fermi, mo_occ = pyscf_rhf.find_efermi(mo_energy, smear_sigma, Nocc, nmo)
+    if(smear_sigma > 1e-8):
+        e_fermi, mo_occ = fermi.find_efermi(mo_energy, smear_sigma, Nocc, nmo)
 
     mo_occ *= 2.0  #closed shell
 
     ne = np.sum(mo_occ)
     Ne_error = ne - mf.mol.nelectron
-    if(abs(Ne_error) > 1e-12):
+    if(abs(Ne_error) > 1e-8):
         print 'Ne error = ', Ne_error
     print e_fermi
     np.set_printoptions(precision=3)
@@ -407,15 +407,17 @@ def entropy_corr(mo_occ, smear_sigma=0.0):
 	return 0.0
 
     S = 0.0
-    if(smear_sigma >= 1e-9):
+    if(smear_sigma >= 1e-8):
 	nmo = mo_occ.size
         for i in range(nmo):
             occ_i = mo_occ[i]/2.0 #closed shell
-            if(occ_i > 1e-16 and occ_i < 1.0-1e-16):
+            if(occ_i > 1e-8 and occ_i < 1.0-1e-8):
                 S += occ_i * np.log(occ_i) + (1.0-occ_i) * np.log(1.0-occ_i)
             else:
                 S += 0.0
 
     energy = 2.0*S*smear_sigma
+    print 'entropy correction = ',energy
+
     return energy
 
