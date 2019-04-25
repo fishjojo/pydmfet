@@ -6,9 +6,8 @@ from pydmfet import qcwrap,tools,subspac, libgen
 import time,copy
 from pyscf import lib, scf, mp, lo
 from pyscf.tools import cubegen
+from pydmfet.libcpp import calc_hess, mkl_svd
 
-libhess = np.ctypeslib.load_library('libhess', os.path.dirname(__file__))
-libsvd = np.ctypeslib.load_library('libsvd', os.path.dirname(__file__))
 
 def init_umat(oep):
 
@@ -1388,55 +1387,3 @@ def oep_calc_dPdV(jCa,orb_Ea,size,NOcc,NOrb):
 
 	return hess
 
-
-def calc_hess(jCa,orb_Ea,mo_occ, size,NOcc,NOrb):
-
-    t0 = (time.clock(),time.time())
-    mo_coeff = np.reshape(jCa, (NOrb*NOrb), 'F')
-    hess = np.ndarray((size,size),dtype=float, order='F')
-
-    nthread  = lib.num_threads()
-
-    lumo_occ = mo_occ[NOcc]
-    if(lumo_occ < 1e-10):
-        libhess.calc_hess_dm_fast(hess.ctypes.data_as(ctypes.c_void_p), \
-			      mo_coeff.ctypes.data_as(ctypes.c_void_p), orb_Ea.ctypes.data_as(ctypes.c_void_p), \
-			      ctypes.c_int(size), ctypes.c_int(NOrb), ctypes.c_int(NOcc), ctypes.c_int(nthread))
-    else:
-	libhess.calc_hess_dm_fast_frac(hess.ctypes.data_as(ctypes.c_void_p), \
-                              mo_coeff.ctypes.data_as(ctypes.c_void_p), orb_Ea.ctypes.data_as(ctypes.c_void_p), \
-			      mo_occ.ctypes.data_as(ctypes.c_void_p),\
-                              ctypes.c_int(size), ctypes.c_int(NOrb), ctypes.c_int(NOcc), ctypes.c_int(nthread))
-
-
-    t1 = tools.timer("hessian construction", t0)
-
-    return hess
-
-
-def mkl_svd(A, algorithm = 1):
-
-    t0 = (time.clock(),time.time())
-
-    m = A.shape[0]
-    n = A.shape[1]
-
-    U = np.ndarray((m,m), dtype=float, order='F')
-    VT = np.ndarray((n,n), dtype=float, order='F')
-    sigma = np.ndarray((min(m,n)), dtype=float, order='F')
-
-    info = np.zeros((1),dtype = int)
-
-    libsvd.mkl_svd(A.ctypes.data_as(ctypes.c_void_p),\
-		   sigma.ctypes.data_as(ctypes.c_void_p),\
-		   U.ctypes.data_as(ctypes.c_void_p),\
-		   VT.ctypes.data_as(ctypes.c_void_p),\
-		   ctypes.c_int(m), ctypes.c_int(n), ctypes.c_int(algorithm), \
-		   info.ctypes.data_as(ctypes.c_void_p))
-
-    t1 = tools.timer("mkl_svd", t0)
-    if(info[0] != 0):
-	print 'mkl_svd info = ',info[0] 
-	raise Exception("mkl_svd failed!")
-
-    return (U,sigma,VT)

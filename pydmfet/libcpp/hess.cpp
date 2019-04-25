@@ -163,7 +163,7 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
 
 
 void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ, 
-			    int dim, int NBas, int NAlpha, int nthread)
+			    int dim, int NBas, int nthread, double tol=1e-8)
 {
    //clock_t startcputime = clock();
    //auto wcts = chrono::system_clock::now();
@@ -171,12 +171,10 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    int N2 = NBas*NBas;
    int NOrb = NBas;  //assume no linear dependence
 
-   int imax = NAlpha;
    int amax = NOrb;
-
-   for(int i=NAlpha; i<NOrb; i++){
-     if(mo_occ[i] > 1.0e-10)
-	imax++; 
+   int imax = 0;
+   for(int i=0; i<NOrb; i++){
+     if(mo_occ[i] > tol) { imax++; }
    }
 
    int NOa = imax;
@@ -220,9 +218,13 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
 	double occ_a = mo_occ[a];
 	if(a != i){
 	 double eps_ia = orb_Ea[i] - orb_Ea[a];
-	 double dia = occ_i/eps_ia;
-	 if(fabs(occ_a - occ_i) < 1e-4){
+	 double dia;
+	 if(fabs(eps_ia) < 1e-3){
+	    cout << "degenerate orbitals detected!!!!!"<<endl;
 	    dia = 0.0;
+	 }
+	 else{
+	    dia = occ_i/eps_ia;
 	 }
 	 int ioff = N2*index_ia;
 	 //VRaxpy(jt_dia+ioff, dia, jt+ioff, jt_dia+ioff, N2);
