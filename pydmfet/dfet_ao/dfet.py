@@ -23,7 +23,7 @@ def bound_vnuc_ao(dfet, boundary_atoms, mol=None):
 
 class DFET:
 
-    def __init__(self, mf_full,mol_frag, mol_env, boundary_atoms=None, boundary_atoms2=None, \
+    def __init__(self, mf_full,mol_frag, mol_env, Ne_frag, Ne_env, boundary_atoms=None, boundary_atoms2=None, \
 		 umat = None, oep_params = pydmfet.oep.OEPparams(), smear_sigma = 0.0,\
 		 ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
 		 plot_dens = True):
@@ -42,6 +42,9 @@ class DFET:
 
 	self.mol_frag = mol_frag
 	self.mol_env = mol_env
+
+	self.Ne_frag = Ne_frag
+	self.Ne_env = Ne_env
 
         self.ecw_method = ecw_method.lower()
 	self.mf_method = mf_method.lower()

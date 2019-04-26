@@ -163,7 +163,7 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
 
 
 void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ, 
-			    int dim, int NBas, int nthread, double tol=1e-8)
+			    int dim, int NBas, int NAlpha, int nthread, double smear=0.0, double tol=1e-8)
 {
    //clock_t startcputime = clock();
    //auto wcts = chrono::system_clock::now();
@@ -243,6 +243,44 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    delete [] jt;
    delete [] jt_dia;
 
+
+   //occupation number contribution
+   //
+   if(smear > 1e-8){
+     cout<<" Adding contributions from fluctuation of occupation numbers."<<endl;
+     double *jt_homo = new double [N2];
+     double *jt_lumo = new double [N2];
+     for(int i=0; i<N2; i++){
+	jt_homo[i] = 0.0;
+	jt_lumo[i] = 0.0;
+     } 
+
+     int i_homo = NAlpha - 1;
+     int i_lumo = i_homo + 1;
+     cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+i_homo*NBas, 1, jCa+i_homo*NBas, 1, jt_homo, NBas);
+     cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+i_lumo*NBas, 1, jCa+i_lumo*NBas, 1, jt_lumo, NBas);
+
+     for(int i=0; i<NOrb; i++){
+        double occ = mo_occ[i]/2.0;
+	if(occ<tol || 1.0-occ<tol) continue;
+
+	double *jt = new double [N2];
+	for(int j=0; j<N2; j++) jt[j] = 0.0;
+
+	cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+i*NBas, 1, jCa+i*NBas, 1, jt, NBas);
+	double factor = -2.0*occ*(1.0-occ)/smear;
+	cblas_dger(CblasColMajor, N2, N2, factor, jt, 1, jt, 1, jHfull, N2);
+
+	factor *= -0.5;
+	cblas_dger(CblasColMajor, N2, N2, factor, jt, 1, jt_homo, 1, jHfull, N2);
+	cblas_dger(CblasColMajor, N2, N2, factor, jt, 1, jt_lumo, 1, jHfull, N2);
+
+	delete [] jt;
+     }
+
+     delete [] jt_homo;
+     delete [] jt_lumo;
+   }
   
    //mkl_set_num_threads(1);
  #pragma omp parallel

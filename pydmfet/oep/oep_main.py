@@ -6,7 +6,7 @@ from pydmfet import qcwrap,tools,subspac, libgen
 import time,copy
 from pyscf import lib, scf, mp, lo
 from pyscf.tools import cubegen
-from pydmfet.libcpp import calc_hess, mkl_svd
+from pydmfet.libcpp import oep_hess, mkl_svd
 
 
 def init_umat(oep):
@@ -721,8 +721,8 @@ class OEP:
     def build_null_space(self,mf_frag,mf_env,Ne_frag,Ne_env,dim,tol=1e-9):
 
         size = dim*(dim+1)/2
-        hess_frag = calc_hess(mf_frag.mo_coeff, mf_frag.mo_energy, mf_frag.mo_occ, size, Ne_frag/2, dim)
-        hess_env = calc_hess(mf_env.mo_coeff, mf_env.mo_energy, mf_env.mo_occ, size, Ne_env/2, dim)
+        hess_frag = oep_hess(mf_frag.mo_coeff, mf_frag.mo_energy, mf_frag.mo_occ, size, dim, self.Ne_frag/2,self.smear_sigma)
+        hess_env = oep_hess(mf_env.mo_coeff, mf_env.mo_energy, mf_env.mo_occ, size, dim, self.Ne_env/2,self.smear_sigma)
 
         #u_f, s_f, vh_f = np.linalg.svd(hess_frag)
         #u_e, s_e, vh_e = np.linalg.svd(hess_env)
@@ -1313,10 +1313,10 @@ class OEP:
         subOEI2 = subKin + subVnuc2 + subVnuc_bound2 + subCoreJK + bathJK_sub + umat
 
         FRAG_energy, FRAG_1RDM, mo_coeff_frag, mo_energy_frag, mo_occ_frag = qcwrap.pyscf_rhf.scf_oei( subOEI1, dim, Ne_frag, self.smear_sigma)
-	hess_frag = calc_hess(mo_coeff_frag, mo_energy_frag, mo_occ_frag, size, Ne_frag/2, dim)
+	hess_frag = oep_hess(mo_coeff_frag, mo_energy_frag, mo_occ_frag, size, dim,self.Ne_frag/2,self.smear_sigma)
 
         ENV_energy, ENV_1RDM, mo_coeff_env, mo_energy_env, mo_occ_env = qcwrap.pyscf_rhf.scf_oei( subOEI2, dim, Ne_env, self.smear_sigma)
-	hess_env = calc_hess(mo_coeff_env, mo_energy_env, mo_occ_env, size, Ne_env/2, dim)
+	hess_env = oep_hess(mo_coeff_env, mo_energy_env, mo_occ_env, size, dim,self.Ne_env/2,self.smear_sigma)
 	
 	hess = hess_frag + hess_env
 	return hess

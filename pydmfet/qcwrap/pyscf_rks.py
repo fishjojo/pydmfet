@@ -129,7 +129,7 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
     Ne_error = ne - mf.mol.nelectron
     if(abs(Ne_error) > 1e-8):
         print 'Ne error = ', Ne_error
-    print e_fermi
+    print "e_fermi = ",e_fermi
     np.set_printoptions(precision=3)
     flag = mo_occ > 1e-3
     print mo_occ[flag]

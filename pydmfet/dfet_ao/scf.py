@@ -47,6 +47,8 @@ class EmbedSCF(rks.RKS):
 def get_occ(mf, mo_energy=None, mo_coeff=None):
 
     if(mf.fixed_occ):
+	print "mo_occ:"
+        print mf._occ
         return mf._occ
     else:
         return pyscf_rks.get_occ(mf, mo_energy, mo_coeff)

@@ -1,6 +1,5 @@
-from pydmfet.tools import vrlib, printlib, timelib
-from pydmfet.tools.vrlib import *
-from pydmfet.tools.printlib import *
-from pydmfet.tools.timelib import *
-from pydmfet.tools.misc import *
-from pydmfet.tools.umat import *
+from .vrlib import *
+from .printlib import *
+from .timelib import *
+from .misc import *
+from .umat import *
