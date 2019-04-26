@@ -158,13 +158,13 @@ class OEPao:
             mf_frag.xc = self.mf_method
             mf_frag.scf(dm0=self.P_imp)
             self.P_imp = mf_frag.make_rdm1()
-	    #self.frag_occ = mf_frag.mo_occ
+	    self.frag_occ = mf_frag.mo_occ
 
             mf_env = scf.EmbedSCF_nonscf(self.mol_env, self.P_bath, umat_loc+self.vnuc_bound_env, self.smear_sigma)
             mf_env.xc = self.mf_method
             mf_env.scf(dm0=self.P_bath)
             self.P_bath = mf_env.make_rdm1()
-	    #self.env_occ = mf_env.mo_occ
+	    self.env_occ = mf_env.mo_occ
 	    #########
 
 
@@ -187,7 +187,7 @@ class OEPao:
             P_imp_old = None
             P_bath_old = None
 
-
+	    '''
             mf_frag = scf.EmbedSCF_nonscf(self.mol_frag, self.P_imp, umat_loc+self.vnuc_bound_frag, self.smear_sigma)
             mf_frag.xc = self.mf_method
             mf_frag.scf()
@@ -203,6 +203,7 @@ class OEPao:
 	    diffP=(P_imp+P_bath-self.P_ref)
             gtol = np.amax(np.absolute(diffP))
             self.gtol_dyn = max(gtol/5.0,self.params.gtol)
+	    '''
 
         return umat
 
