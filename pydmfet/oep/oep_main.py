@@ -6,8 +6,8 @@ from pydmfet import qcwrap,tools,subspac, libgen
 import time,copy
 from pyscf import lib, scf, mp, lo
 from pyscf.tools import cubegen
-from pydmfet.libcpp import oep_hess, mkl_svd
-
+from pydmfet.libcpp import oep_hess, oep_hess_old, mkl_svd
+from pydmfet.opt import newton
 
 def init_umat(oep):
 
@@ -116,6 +116,8 @@ class OEP:
 	self.P_env_loc = embedobj.P_env_loc
 
         self.params = params
+	self.gtol_dyn = self.params.gtol
+
 
     def kernel(self):
 
@@ -169,8 +171,7 @@ class OEP:
 	elif(algorithm == 'leastsq'):
 	    self.umat = self.oep_leastsq(self.umat)
 
-	print 'sum (diag(umat)) = '
-	print np.sum( np.diag( self.umat ) )
+	print 'sum (diag(umat)) = ', np.sum( np.diag( self.umat ) )
 
 	self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
@@ -181,7 +182,7 @@ class OEP:
 	#self.umat = self.opt_umat_homo_diff(self.umat,gtol=1e-6)
 	#self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
-	#self.P_imp, self.P_bath = self.verify_scf(self.umat)
+	self.P_imp, self.P_bath = self.verify_scf(self.umat)
 
 	print '|P_imp-P_imp_0|', np.linalg.norm(self.P_imp - self.P_imp0), np.amax(np.absolute(self.P_imp - self.P_imp0))
 	print '|P_bath-P_bath_0|', np.linalg.norm(self.P_bath - self.P_bath0), np.amax(np.absolute(self.P_bath - self.P_bath0))
@@ -207,7 +208,7 @@ class OEP:
 	return umat
 
 
-    def init_density_partition(self, method = 3):
+    def init_density_partition(self, method = 1):
 
 	print "Entering init_density_partition"
 
@@ -305,6 +306,11 @@ class OEP:
 	self.P_imp0 = self.P_imp.copy()
         self.P_bath0 = self.P_bath.copy()
 
+	diffP=(self.P_imp+self.P_bath-self.P_ref)
+        gtol = np.amax(np.absolute(diffP))
+        self.gtol_dyn = max(gtol/5.0,self.params.gtol)
+
+
 	threshold = self.params.diffP_tol
 	maxit = self.params.outer_maxit
 	it = 0
@@ -358,6 +364,12 @@ class OEP:
 
 	    P_imp_old = None
 	    P_bath_old = None
+
+
+	    diffP=(self.P_imp+self.P_bath-self.P_ref)
+            gtol = np.amax(np.absolute(diffP))
+            self.gtol_dyn = max(gtol/5.0,self.params.gtol)
+
 	'''
 	#umat = umat - np.eye(umat.shape[ 0 ] ) * np.average( np.diag(umat ) )
 	#self.P_imp, self.P_bath = self.verify_scf(umat)
@@ -424,6 +436,7 @@ class OEP:
 
 	return umat
 
+
     def verify_scf(self, umat):
 	
 	print 'in verify_scf'
@@ -465,7 +478,7 @@ class OEP:
 	    frag_coredm_guess = self.P_imp
 
         mf_frag = qcwrap.qc_scf(Ne_frag,dim,self.mf_method,mol=self.mol_frag,oei=subOEI1,tei=subTEI,\
-				dm0=frag_coredm_guess,coredm=0.0,ao2sub=ao2sub, smear_sigma = 0.0)
+				dm0=frag_coredm_guess,coredm=0.0,ao2sub=ao2sub, smear_sigma = self.smear_sigma)
 	#mf_frag.init_guess =  'minao'
 	mf_frag.conv_check = False
         mf_frag.runscf()
@@ -483,7 +496,7 @@ class OEP:
 	    env_coredm_guess = self.P_bath
 
 	mf_env = qcwrap.qc_scf(Ne_env,dim,self.mf_method,mol=self.mol_env,oei=subOEI2,tei=subTEI,\
-			       dm0=env_coredm_guess,coredm=coredm,ao2sub=ao2sub, smear_sigma = 0.0)
+			       dm0=env_coredm_guess,coredm=coredm,ao2sub=ao2sub, smear_sigma = self.smear_sigma)
 	#mf_env.init_guess =  'minao'
 	mf_env.conv_check = False #temp
         mf_env.runscf()
@@ -516,6 +529,8 @@ class OEP:
 	#print np.trace(np.dot(FRAG_1RDM,umat)), np.trace(np.dot(ENV_1RDM,umat)),np.trace(np.dot(FRAG_1RDM+ENV_1RDM,umat))
 	#self.ints.submo_molden( frag_mo[:,:dim], frag_occ, self.loc2sub, 'frag_dens_scf.molden' )
         #self.ints.submo_molden( env_mo[:,:dim], env_occ, self.loc2sub, 'env_dens_scf.molden' )
+	W = FRAG_energy + ENV_energy - np.trace(np.dot(self.P_ref,umat))
+	print "W = ", W
 
 	deltaN = 0.001
 	mf_frag.mo_occ[Ne_frag/2] = deltaN
@@ -677,21 +692,40 @@ class OEP:
 	_args = tuple(_args)
 
 	opt_method = self.params.opt_method
-	result = None
+	#result = None
 	if( opt_method == 'BFGS' or opt_method == 'L-BFGS-B'):
 	    result = self.oep_bfgs(x, _args)
+	    x = result.x
 	elif( opt_method == 'trust-krylov' or opt_method == 'trust-ncg' or opt_method == 'trust-exact' or opt_method == 'Newton-CG'):
 	    result = self.oep_cg(x, _args)
+	    x = result.x
+	elif( opt_method == 'newton'):
+	    x = self.oep_newton(x, _args)
 
-        x = result.x
         umat = tools.vec2mat(x, dim)
 
         return umat
 
 
+    def oep_newton(self, x, _args):
+
+        ftol = self.params.ftol
+        #gtol = self.params.gtol
+        gtol = self.gtol_dyn
+        print 'gtol = ', gtol
+        maxit = self.params.maxit
+        svd_thresh = self.params.svd_thresh
+
+        x_new = newton(self.cost_hess_wuyang,x,args=_args,ftol=ftol,gtol=gtol,maxit=maxit,svd_thresh=svd_thresh)
+
+	return x_new
+
+
     def oep_cg(self, x, _args):
 
 	gtol = self.params.gtol
+	#gtol = self.gtol_dyn
+	print 'gtol = ', gtol
 	maxit = self.params.maxit
 	algorithm = self.params.opt_method
 
@@ -704,7 +738,9 @@ class OEP:
     def oep_bfgs(self, x, _args):
 
 	maxit = self.params.maxit
-        gtol = self.params.gtol
+        #gtol = self.params.gtol
+        gtol = self.gtol_dyn
+        print 'gtol = ', gtol
         ftol = self.params.ftol
 	algorithm = self.params.opt_method 
 
@@ -1316,10 +1352,78 @@ class OEP:
 	hess_frag = oep_hess(mo_coeff_frag, mo_energy_frag, mo_occ_frag, size, dim,self.Ne_frag/2,self.smear_sigma)
 
         ENV_energy, ENV_1RDM, mo_coeff_env, mo_energy_env, mo_occ_env = qcwrap.pyscf_rhf.scf_oei( subOEI2, dim, Ne_env, self.smear_sigma)
-	hess_env = oep_hess(mo_coeff_env, mo_energy_env, mo_occ_env, size, dim,self.Ne_env/2,self.smear_sigma)
+	hess_env = oep_hess(mo_coeff_env, mo_energy_env, mo_occ_env, size, dim,self.Ne_env/2, self.smear_sigma)
+
+	#hess_frag = oep_hess_old(mo_coeff_frag,mo_energy_frag,size,dim,Ne_frag/2)
+        #hess_env  = oep_hess_old(mo_coeff_env, mo_energy_env, size,dim,Ne_env/2)
 	
 	hess = hess_frag + hess_env
 	return hess
+
+
+
+    def cost_hess_wuyang(self, x, P_ref, dim, Ne_frag, Ne_env, impJK_sub, bathJK_sub, calc_hess=False):
+
+        size = dim*(dim+1)/2
+        umat = tools.vec2mat(x, dim)
+
+        print "|umat| = ", np.linalg.norm(umat)
+        #if(self.params.oep_print >= 3):
+        #    print "sum(diag(umat)) = ", np.sum(np.diag(umat))
+        #    tools.MatPrint(umat, 'umat')
+
+        FRAG_1RDM = np.zeros([dim,dim], dtype = float)
+        ENV_1RDM = np.zeros([dim,dim], dtype = float)
+        FRAG_energy = 0.0
+        ENV_energy = 0.0
+
+        ops = self.ops
+        subKin = ops["subKin"]
+        subVnuc1 = ops["subVnuc1"]
+        subVnuc2 = ops["subVnuc2"]
+        subVnuc_bound1 = ops["subVnuc_bound1"]
+        subVnuc_bound2 = ops["subVnuc_bound2"]
+        subCoreJK = ops["subCoreJK"]
+        subTEI = ops["subTEI"]
+
+        if(impJK_sub is not None):
+            subOEI1 = subKin + subVnuc1 + subVnuc_bound1 + impJK_sub + umat
+            subOEI2 = subKin + subVnuc2 + subVnuc_bound2 + subCoreJK + bathJK_sub + umat
+            FRAG_energy, FRAG_1RDM, frag_mo_coeff, frag_mo_energy, frag_mo_occ = \
+		qcwrap.pyscf_rhf.scf_oei( subOEI1, dim, Ne_frag, self.smear_sigma)
+            if(Ne_env > 0):
+                ENV_energy, ENV_1RDM, env_mo_coeff, env_mo_energy, env_mo_occ =\
+		    qcwrap.pyscf_rhf.scf_oei( subOEI2, dim, Ne_env, self.smear_sigma)
+
+            if(calc_hess):
+                #hess_frag = oep_hess(frag_mo_coeff, frag_mo_energy, frag_mo_occ, size, dim, Ne_frag/2, self.smear_sigma)
+                #hess_env  = oep_hess(env_mo_coeff, env_mo_energy, env_mo_occ, size, dim, Ne_env/2, self.smear_sigma)
+		hess_frag = oep_hess_old(frag_mo_coeff,frag_mo_energy,size,dim,Ne_frag/2)
+		hess_env  = oep_hess_old(env_mo_coeff, env_mo_energy, size,dim,Ne_env/2)
+                hess = hess_frag + hess_env
+        else:
+            raise Exception("NYI")
+
+        diffP = FRAG_1RDM + ENV_1RDM - P_ref
+        energy = FRAG_energy + ENV_energy - np.trace(np.dot(P_ref,umat))
+
+        grad = tools.mat2vec(diffP, dim)
+        #grad = tools.mat2vec_hchain(diffP, dim)
+        grad = -1.0 * grad
+
+        print "2-norm (grad),       max(grad):"
+        print np.linalg.norm(grad), ", ", np.amax(np.absolute(grad))
+
+        f = -energy
+        print 'W = ', f
+
+        #test
+        #f = np.linalg.norm(grad)
+
+        if(calc_hess):
+            return (f,grad,hess)
+        else:
+            return (f,grad)
 
 
 def oep_calc_dPdV(jCa,orb_Ea,size,NOcc,NOrb):

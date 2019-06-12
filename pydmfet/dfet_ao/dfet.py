@@ -78,6 +78,10 @@ class DFET:
 	print "mo_occ:"
 	print mf.mo_occ
 
+	if(self.plot_dens):
+            cubegen.density(self.mol, "tot_dens.cube", self.P_ref, nx=100, ny=100, nz=100)
+
+
     bound_vnuc_ao = bound_vnuc_ao
 
 

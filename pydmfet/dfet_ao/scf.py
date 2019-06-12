@@ -23,7 +23,7 @@ def energy_elec(ks, dm=None, h1e=None, vhf=None):
 
     tot_e, ecoul_exc = rks.energy_elec(ks,dm,h1e,vhf)
     if(hasattr(ks,'smear_sigma')):
-	tot_e += pyscf_rks.entropy_corr(ks.mo_occ, ks.smear_sigma)
+	tot_e += pyscf_rks.entropy_corr(ks,ks.mo_occ, ks.smear_sigma)
 
     return tot_e, ecoul_exc
 
@@ -35,8 +35,10 @@ class EmbedSCF(rks.RKS):
 
 	self.umat = umat
 	self.smear_sigma = smear_sigma	
+	self.e_fermi = 0.0
 
 	rks.RKS.__init__(self,mol)
+	self.Ne = self.mol.nelectron
 
     get_hcore = get_hcore
     get_occ = pyscf_rks.get_occ 
@@ -63,8 +65,10 @@ class EmbedSCF_nonscf(rks.RKS):
 	self.smear_sigma = smear_sigma
 	self.fixed_occ = fixed_occ
 	self._occ = _occ
+	self.e_fermi = 0.0
 
         rks.RKS.__init__(self,mol)
+	self.Ne = self.mol.nelectron
 
     get_hcore = get_hcore
     #get_occ = pyscf_rks.get_occ

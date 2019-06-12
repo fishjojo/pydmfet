@@ -117,6 +117,8 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
     e_homo = e_sort[Nocc-1]
     e_lumo = e_sort[Nocc]
     print 'HOMO:',e_homo, 'LUMO:', e_lumo
+    print "mo_energy:"
+    print e_sort[:Nocc+5]
 
     e_fermi = e_homo
 
@@ -130,6 +132,7 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
     if(abs(Ne_error) > 1e-8):
         print 'Ne error = ', Ne_error
     print "e_fermi = ",e_fermi
+    mf.e_fermi = e_fermi
     np.set_printoptions(precision=3)
     flag = mo_occ > 1e-3
     print mo_occ[flag]
@@ -198,6 +201,7 @@ class rhf_pyscf(hf.RHF):
 	self.smear_sigma = smear_sigma
         hf.RHF.__init__(self, mol)
 	self.level_shift = level_shift
+	self.e_fermi = 0.0
 
         if(self.tei is not None):
 	    self._eri = self.tei
@@ -212,7 +216,7 @@ class rhf_pyscf(hf.RHF):
 
         e1 = np.einsum('ji,ji', h1e.conj(), dm).real
         e_coul = np.einsum('ji,ji', vhf.conj(), dm).real * .5
-        es = entropy_corr(mo_occ, mf.smear_sigma)
+        es = entropy_corr(mf,mo_occ, mf.smear_sigma)
         tot_e = e1 + e_coul + es
 
         return tot_e, e_coul
@@ -241,6 +245,7 @@ class rks_pyscf(rks.RKS):
 	self.xc = self.method
 	#self.smear_sigma = smear_sigma
 	self.level_shift = level_shift
+	self.e_fermi = 0.0
 
 	'''
 	self.grids.atom_grid = {'H': (50,194), 'O': (50,194), 'F': (50,194)}
@@ -274,7 +279,7 @@ class rks_pyscf(rks.RKS):
         e1 = np.einsum('ij,ji', h1e, dm).real
 	es = 0.0
 	if (hasattr(mf,'smear_sigma')):
-            es = entropy_corr(mo_occ, mf.smear_sigma)
+            es = entropy_corr(mf,mo_occ, mf.smear_sigma)
         tot_e = e1 + vhf.ecoul + vhf.exc + es
     
         return tot_e, vhf.ecoul+vhf.exc
@@ -401,7 +406,7 @@ def prune_small_rho_grids_(ks, mol, dm, grids, n_core_elec = 0.0):
 
 
 
-def entropy_corr(mo_occ, smear_sigma=0.0):
+def entropy_corr(mf,mo_occ, smear_sigma=0.0):
 
     if mo_occ is None:
 	return 0.0
@@ -418,6 +423,10 @@ def entropy_corr(mo_occ, smear_sigma=0.0):
 
     energy = 2.0*S*smear_sigma
     print 'entropy correction = ',energy
+
+#    if(smear_sigma >= 1e-8):
+#        energy -= mf.e_fermi*mf.Ne
+#	print 'e_fermi*Ne = ', mf.e_fermi*mf.Ne
 
     return energy
 

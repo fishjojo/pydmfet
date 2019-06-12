@@ -53,8 +53,27 @@ class DMFET:
 
         #construct subspace
         self.OneDM_loc, mo_coeff = self.ints.build_1pdm_loc()
-
 	#tools.MatPrint(self.OneDM_loc,"self.OneDM_loc")
+
+	##########################
+	# SCF with local orbitals
+	##########################
+	ops_loc = libgen.build_locops(self.mol_frag, self.mol_env, self.ints, 0.0, self.Kcoeff, 0)
+        oei_loc = ops_loc["locKin"]+ops_loc["locVnuc1"]+ops_loc["locVnuc2"]
+        tei_loc = ops_loc["locTEI"]
+
+        mf = qcwrap.qc_scf(self.ints.Nelec, self.ints.NOrb, self.mf_method, mol=self.mol,\
+			   oei=oei_loc, tei=tei_loc, dm0=None, coredm=0.0,\
+			   ao2sub=self.ints.ao2loc, smear_sigma = self.smear_sigma)
+        mf.init_guess = 'minao'
+        mf.runscf()
+	energy = mf.elec_energy + self.ints.energy_nuc()
+        print('total scf energy = %.15g ' % energy)
+	##########################
+
+	self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, occ_imp, occ_bath = \
+	subspac.construct_subspace2(mf, self.mol_frag, self.ints, self.cluster,dim_imp,dim_bath,self.sub_threshold)
+
 
 	self.P_frag_loc = None
 	self.P_env_loc = None
@@ -67,8 +86,10 @@ class DMFET:
 	    self.P_frag_loc, self.P_env_loc = subspac.mulliken_partition_loc(self.cluster, self.OneDM_loc)
 
 
-        self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, occ_imp, occ_bath = \
-	subspac.construct_subspace(self.ints,self.mol_frag,self.mol_env,self.OneDM_loc, self.cluster, self.sub_threshold, dim_bath, dim_imp)
+        #self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, occ_imp, occ_bath = \
+	#    subspac.construct_subspace(self.ints,self.mol_frag,self.mol_env,self.OneDM_loc, self.cluster, self.sub_threshold, dim_bath, dim_imp)
+	
+
 
 	#test boys
 	#self.loc2sub = np.eye(10)
@@ -182,7 +203,7 @@ class DMFET:
         self.ints.sub_molden( self.loc2sub[:,:dim], 'env_dens_guess.molden', env_occ )
 	'''
 
-	#self.ints.sub_molden( self.loc2sub, "ao2sub.molden")
+	self.ints.sub_molden( self.loc2sub, "ao2sub.molden")
 
         self.oep_params = oep_params
 
@@ -298,6 +319,7 @@ class DMFET:
 
 	#dim_big = self.dim_frag + self.dim_bath
 	dim_big = self.dim_big
+	dim_big = self.dim_sub
 	'''
 	occ_mo_imp = self.frag_mo[:,:self.Ne_frag/2]
 	occ_mo_bath = self.env_mo[:,:self.Ne_env/2]
@@ -322,7 +344,7 @@ class DMFET:
 	    cubegen.density(self.mol, "bath_dens.cube", P_bath_ao, nx=100, ny=100, nz=100)
 	    cubegen.density(self.mol, "core_dens.cube", self.core1PDM_ao, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "env_dens.cube", P_bath_ao + self.core1PDM_ao, nx=100, ny=100, nz=100)
-	    cubegen.density(self.mol, "vemb_1.cube", umat_plot, nx=100, ny=100, nz=100)
+	    cubegen.density(self.mol, "vemb.cube", umat_plot, nx=100, ny=100, nz=100)
 
 
 	diffP = P_imp_ao + P_bath_ao + self.core1PDM_ao - self.P_ref_ao

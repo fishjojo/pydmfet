@@ -199,11 +199,11 @@ class OEPao:
             mf_env.scf()
             P_bath = mf_env.make_rdm1()
 	    self.env_occ = mf_env.mo_occ
-
-	    diffP=(P_imp+P_bath-self.P_ref)
+	    '''
+	    diffP=(self.P_imp+self.P_bath-self.P_ref)
             gtol = np.amax(np.absolute(diffP))
             self.gtol_dyn = max(gtol/5.0,self.params.gtol)
-	    '''
+	    
 
         return umat
 
@@ -237,12 +237,14 @@ class OEPao:
 
     def oep_newton(self, x, _args):
 
-	gtol = self.params.gtol
-	#gtol = self.gtol_dyn
+        ftol = self.params.ftol
+	#gtol = self.params.gtol
+	gtol = self.gtol_dyn
+	print 'gtol = ', gtol
         maxit = self.params.maxit
         svd_thresh = self.params.svd_thresh
 
-	res = newton(self.cost_hess_wuyang,x,args=_args,gtol=gtol,maxit=maxit,svd_thresh=svd_thresh)
+	res = newton(self.cost_hess_wuyang,x,args=_args,ftol=ftol,gtol=gtol,maxit=maxit,svd_thresh=svd_thresh)
 
 	return res
 
@@ -265,6 +267,7 @@ class OEPao:
         maxit = self.params.maxit
         #gtol = self.params.gtol
 	gtol = self.gtol_dyn
+	print 'gtol = ', gtol
         ftol = self.params.ftol
         algorithm = self.params.opt_method
 
@@ -416,7 +419,7 @@ class OEPao:
         print 'W = ', f
 
         #test
-	f = np.linalg.norm(grad)
+	#f = np.linalg.norm(grad)
 
 	if(calc_hess):
 	    return (f,grad,hess)

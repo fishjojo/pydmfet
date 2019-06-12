@@ -16,7 +16,7 @@ bas = 'sto-6g'
 
 for bondlength in bondlengths:
 
-    nat = 4
+    nat = 12
     mol = gto.Mole()
     mol.atom = []
     r = bondlength
@@ -59,7 +59,7 @@ for bondlength in bondlengths:
 	natoms = mol.natm
 
 	impAtom = np.zeros([natoms], dtype=int)
-	for i in range(2):
+	for i in range(4):
 	    impAtom[i] = 1
 
 	ghost_frag = 1-impAtom
@@ -101,8 +101,8 @@ for bondlength in bondlengths:
 	    if(impAtom[i] == 1):
 		impurities[aoslice[i,2]:aoslice[i,3]] = 1
 
-	Ne_frag = 2
-	Ne_env = 2	
+	Ne_frag = 4
+	Ne_env = 8
 
 	boundary_atoms = np.zeros((natoms))
 	boundary_atoms[4:8] = 1
@@ -112,12 +112,12 @@ for bondlength in bondlengths:
 	boundary_atoms = None
 	boundary_atoms2 =  None
 
-	umat = np.loadtxt('umat.txt')	
+	#umat = np.loadtxt('umat.txt')	
 	umat=None
 	P_frag=None
 	P_env=None
 	params = oep.OEPparams(algorithm = 'split', opt_method = 'newton', \
-                       ftol = 1e-7, gtol = 1e-5,diffP_tol=1e-5, outer_maxit = 20, maxit = 50,l2_lambda = 0.0, oep_print = 0,svd_thresh=1e-5)
+                       ftol = 1e-8, gtol = 1e-4,diffP_tol=1e-4, outer_maxit = 20, maxit = 100,l2_lambda = 0.0, oep_print = 0,svd_thresh=1e-5)
 #	theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
 #                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
 #                         dim_imp = nbas, dim_bath=nbas, dim_big =nbas, smear_sigma = 0.005, oep_params=params,ecw_method='hf', mf_method =mf.xc)

@@ -2,6 +2,38 @@ import time
 import numpy as np
 from pydmfet import tools
 
+
+def build_locops(mol_frag, mol_env, ints, core1PDM_loc, Kcoeff = 1.0, Ne_core=0):
+
+    t0 = (time.clock(), time.time())
+
+    locKin = ints.frag_kin_loc()
+
+    locVnuc1 = ints.frag_vnuc_loc(mol_frag)
+    locVnuc2 = ints.frag_vnuc_loc(mol_env)
+
+#    locVnuc_bound1 = 0.0
+#    locVnuc_bound2 = 0.0
+
+    locCoreJK = 0.0
+    if(Ne_core>0):
+        locCoreJK = ints.coreJK_loc(core1PDM_loc, Kcoeff)
+
+    locTEI = ints.tei_loc()
+
+    ops = {"locKin":locKin}
+    ops["locVnuc1"] = locVnuc1
+    ops["locVnuc2"] = locVnuc2
+#    ops["locVnuc_bound1"] = locVnuc_bound1
+#    ops["locVnuc_bound2"] = locVnuc_bound2
+    ops["locCoreJK"] = locCoreJK
+    ops["locTEI"] = locTEI
+
+    tools.timer("libgen.ops.build_locops",t0)
+
+    return ops
+
+
 def build_subops(impAtom, mol_frag, mol_env, boundary_atoms1, boundary_atoms2, ints, loc2sub, core1PDM_loc, dim, Kcoeff = 1.0, Ne_core=0):
 
     t0 = (time.clock(), time.time())
@@ -35,7 +67,7 @@ def build_subops(impAtom, mol_frag, mol_env, boundary_atoms1, boundary_atoms2, i
     ops["subCoreJK"] = subCoreJK
     ops["subTEI"] = subTEI
 
-    tools.timer("libgen.build_subops",t0)
+    tools.timer("libgen.ops.build_subops",t0)
     return ops
 
 

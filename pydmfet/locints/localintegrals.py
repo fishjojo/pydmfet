@@ -197,11 +197,24 @@ class LocalIntegrals:
         FOCKloc = self.activeOEI + JK_loc
         return FOCKloc
 
-    def loc_tei( self ):
-    
+
+    def tei_loc( self ):
+
         if ( self.ERIinMEM == False ):
-            print "localintegrals::loc_tei : ERI of the localized orbitals are not stored in memory."
-        return self.activeERI
+	    t0 = (time.clock(),time.time())
+            #print "LocalIntegrals.tei_loc : ERI of the localized orbitals are not stored in memory."
+	    if(self.mol.cart):
+                intor='int2e_cart'
+            else:
+                intor='int2e_sph'
+	    TEI_4 = ao2mo.outcore.full_iofree(self.mol, self.ao2loc, intor)
+            TEI_8 = ao2mo.restore(8, TEI_4, self.NOrb)
+            TEI_4 = None
+	    t1 = tools.timer("LocalIntegrals.tei_loc",t0)
+	    return TEI_8
+        else:
+            return self.activeERI
+
         
     def dmet_oei( self, loc2dmet, numActive ):
     
@@ -244,7 +257,7 @@ class LocalIntegrals:
             #TEIdmet = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.NOrb), loc2dmet[:,:numAct], compact=False).reshape(numAct, numAct, numAct, numAct)
 	    TEIdmet_8 = ao2mo.incore.full(ao2mo.restore(8, self.activeERI, self.NOrb), loc2dmet[:,:numAct])
 
-	t1 = tools.timer("locints.dmet_tei",t0)
+	t1 = tools.timer("LocalIntegrals.tei_sub",t0)
         return TEIdmet_8
         
     def frag_mol_ao(self, impAtom):
@@ -342,9 +355,9 @@ class LocalIntegrals:
     def build_1pdm_loc(self):
 
 	mo_coeff = None
-        NOcc = self.Nelec/2  #closed shell 
-        fock = self.loc_rhf_fock()
-        onedm,mo_coeff = tools.fock2onedm(fock, NOcc)
+        #NOcc = self.Nelec/2  #closed shell 
+        #fock = self.loc_rhf_fock()
+        #onedm,mo_coeff = tools.fock2onedm(fock, NOcc)
 
 	dm_loc = tools.dm_ao2loc(self.fullDMao, self.s1e_ao, self.ao2loc)
 	#print 'dm_loc - dm_ao = ',np.linalg.norm(onedm-dm_loc)

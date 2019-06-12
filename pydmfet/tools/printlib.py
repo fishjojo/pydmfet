@@ -1,6 +1,28 @@
 import numpy as np
 
 
+def VecPrint(vec, Title, NColPerLine = 5):
+
+    print " ",Title
+
+    NElem = vec.size
+    NRow = NElem/NColPerLine
+
+    indx = 0
+    for iRow in xrange(NRow):
+	for iCol in xrange(NColPerLine):
+	    print '{:12.6e}'.format(vec[indx]),
+	    indx += 1
+	print ""
+
+    if(NElem%NColPerLine >0):
+	NCol = NElem%NColPerLine
+	for iCol in xrange(NCol):
+	    print '{:12.6e}'.format(vec[indx]),
+            indx += 1
+        print ""
+
+
 def MatPrint(mat, Title, NRow=None, NCol=None, NLDA=None, NColPerLine = 6):
 
     if(NRow == None):

@@ -12,6 +12,9 @@ bondlengths = np.arange(0.74, 0.79, 0.1)
 energies = []
 
 bas = 'sto-6g'
+#bas = 'cc-pvdz'
+
+temp = 0.01
 
 for bondlength in bondlengths:
 
@@ -26,17 +29,21 @@ for bondlength in bondlengths:
     mol.basis = bas
     mol.build(max_memory = 4000,verbose=4)
 
-    mf = dft.UKS(mol)
-    #mf = rks_ao(mol,smear_sigma = 0.005)
-    #mf = dfet_ao.scf.EmbedSCF(mol, 0.0, smear_sigma = 0.005)
+    #mf = scf.RKS(mol)
+    mf = rks_ao(mol,smear_sigma = temp)
+    #mf = dfet_ao.scf.EmbedSCF(mol, 0.0, smear_sigma = temp)
     mf.xc = 'pbe,pbe'
     mf.max_cycle = 50
     mf.scf(dm0=DMguess)
-    exit()
 
-    P=mf.make_rdm1()
+    #P=mf.make_rdm1()
     #tools.MatPrint(P,"P_ref_ao")
-    cubegen.density(mol, "h20_dens.cube", P, nx=100, ny=100, nz=100)
+    #cubegen.density(mol, "dens_tot.cube", P, nx=100, ny=100, nz=100)
+
+#    with open( 'h20_mo.molden', 'w' ) as thefile:
+#        molden.header(mf.mol, thefile)
+#        molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff)
+#    exit()
 
     if ( False ):   
 #        ENUCL = mf.mol.energy_nuc()
@@ -54,9 +61,10 @@ for bondlength in bondlengths:
         print e_ccsd    #-4.96124910741
         
     else:
-#        myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+        #myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
         #myInts.loc_molden( 'hydrogen-loc.molden' )
         #myInts.TI_OK = True # Only s functions
+
 
 	nbas =  mol.nao_nr()
 	natoms = mol.natm
@@ -97,37 +105,40 @@ for bondlength in bondlengths:
 	'''
 
 
-
+	'''
 	aoslice = mol.aoslice_by_atom()
 	impurities = np.zeros([nbas], dtype = int)
 	for i in range(natoms):
 	    if(impAtom[i] == 1):
 		impurities[aoslice[i,2]:aoslice[i,3]] = 1
+	'''
 
 	Ne_frag = 10
+	Ne_env = 10
 	
 	boundary_atoms = np.zeros((natoms))
-	boundary_atoms[10:20] = 1
+	#boundary_atoms[10:20] = 1
 	boundary_atoms2 = np.zeros((natoms))
-	boundary_atoms2[0:10] = 1
+	#boundary_atoms2[0:10] = 1
 	
-	#boundary_atoms = None
-	#boundary_atoms2 =None
+	boundary_atoms = None
+	boundary_atoms2 =None
 
 	umat=None
 	#P_frag=0.5*mf.make_rdm1()
 	#P_env=0.5*mf.make_rdm1()
 	P_frag=None
 	P_env=None
-	params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
-                       ftol = 1e-12, gtol = 1e-5,diffP_tol=1e-5, outer_maxit = 1, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+	params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-8, gtol = 2e-4,diffP_tol=2e-4, outer_maxit = 50, maxit = 100,l2_lambda = 0.0, oep_print = 0,svd_thresh=1e-5)
 #	theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
 #                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
-#                         dim_imp = nbas, dim_bath=nbas, dim_big =nbas, smear_sigma = 0.005, oep_params=params,ecw_method='hf', mf_method =mf.xc)
+#                         dim_imp = nbas, dim_bath=nbas, dim_big =None, smear_sigma = temp, oep_params=params,ecw_method='hf', mf_method =mf.xc)
 
-	theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
-                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
-                     oep_params=params, smear_sigma=0.005, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+        theDMFET = dfet.DFET(mf, mol_frag, mol_env,Ne_frag,Ne_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat = umat,\
+                     oep_params=params, smear_sigma=temp, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
 
 	umat = theDMFET.embedding_potential()
 	#energy = theDMFET.correction_energy()

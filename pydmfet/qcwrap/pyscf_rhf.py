@@ -16,6 +16,8 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
     e_homo = eigenvals[Nocc-1]
     e_lumo = eigenvals[Nocc]
     print 'HOMO: ', e_homo, 'LUMO: ', e_lumo
+    print "mo_energy:"
+    print eigenvals[:Nocc+5]
 
     e_fermi = e_homo
     mo_occ = np.zeros((Norb))

@@ -22,9 +22,9 @@ for thestructure in range(17,18):
 
 
     #total system HF
-    mf = scf.RHF(mol)
-    #mf = dft.RKS(mol)
-    #mf.xc = 'b3lyp'
+    #mf = scf.RHF(mol)
+    mf = dft.RKS(mol)
+    mf.xc = 'pbe,pbe'
     mf.max_cycle = 100
     mf.verbose = 3
     DMguess = None
@@ -79,11 +79,12 @@ for thestructure in range(17,18):
     boundary_atoms =  None
 
     nbas = mol.nao_nr()
-    params = oep.OEPparams(algorithm = '2011', ftol = 1e-13, gtol = 1e-6,diffP_tol=1e-6, \
-                       outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+    params = oep.OEPparams(algorithm = 'split', opt_method = 'trust-ncg', \
+                        ftol = 1e-8, gtol = 1e-4,diffP_tol=1e-4, outer_maxit = 20, maxit = 100,\
+			l2_lambda = 0.0, oep_print = 0, svd_thresh=1e-6)
     theDMFET = sdmfet.DMFET(mf, mol_frag, mol_env, myInts, impurities, impAtom, Ne_frag,\
                         boundary_atoms=boundary_atoms, boundary_atoms2=None,\
-                        dim_imp =None, dim_bath =None,dim_big=63, oep_params=params, ecw_method = 'ccsd',mf_method = 'hf')
+                        dim_imp =None, dim_bath =None,dim_big=None, oep_params=params, ecw_method = 'ccsd',mf_method = mf.xc)
 
     umat = theDMFET.embedding_potential()
     exit()

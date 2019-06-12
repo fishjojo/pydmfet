@@ -1,2 +1,3 @@
-from pydmfet.subspac import buildsub
-from pydmfet.subspac.buildsub import *
+from . import buildsub,buildsub_2
+from .buildsub import *
+from .buildsub_2 import *
