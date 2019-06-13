@@ -1,24 +1,13 @@
-#!/usr/bin/env python
-
-"""PyDMFET: Python wrapper for DMFET
-
-"""
-
-DOCLINES = (__doc__ or '').split("\n")
-
-
 import os
+import re
 import sys
+import platform
 import subprocess
-import textwrap
-import warnings
-import sysconfig
+
+from setuptools import setup,find_packages, Extension
+from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
 
-if sys.version_info[:2] < (3, 5):
-    raise RuntimeError("Python version >= 3.5 required.")
-
-import builtins
 
 
 CLASSIFIERS = """\
@@ -40,7 +29,7 @@ MICRO = 0
 ISRELEASED = False
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
-# Return the git revision as a string
+
 def git_version():
     def _minimal_ext_cmd(cmd):
         # construct minimal environment
@@ -63,16 +52,6 @@ def git_version():
         GIT_REVISION = "Unknown"
 
     return GIT_REVISION
-
-# BEFORE importing setuptools, remove MANIFEST. Otherwise it may not be
-# properly updated when the contents of directories change (true for distutils,
-# not sure about setuptools).
-if os.path.exists('MANIFEST'):
-    os.remove('MANIFEST')
-
-
-builtins.__PYDMFET_SETUP__ = True
-
 
 
 def get_version_info():
@@ -113,11 +92,6 @@ if not release:
                        'isrelease': str(ISRELEASED)})
     finally:
         a.close()
-
-
-#placeholder for building doc
-
-###
 
 
 def check_submodules():
@@ -166,79 +140,59 @@ class sdist_checked(sdist):
             sdist.run(self)
 
 
-
-def parse_setuppy_commands():
-
-    args = sys.argv[1:]
-
-    if not args:
-        # User forgot to give an argument probably, let setuptools handle that.
-        return True
-
-    info_commands = ['--help-commands', '--name', '--version', '-V',
-                     '--fullname', '--author', '--author-email',
-                     '--maintainer', '--maintainer-email', '--contact',
-                     '--contact-email', '--url', '--license', '--description',
-                     '--long-description', '--platforms', '--classifiers',
-                     '--keywords', '--provides', '--requires', '--obsoletes']
-
-    for command in info_commands:
-        if command in args:
-            return False
+class CMakeExtension(Extension):
+    def __init__(self, name, sourcedir=''):
+        Extension.__init__(self, name, sources=[])
+        self.sourcedir = os.path.abspath(sourcedir)
 
 
-    if 'install' in args:
-        print(textwrap.dedent("""
-            Note: if you need reliable uninstall behavior, then install
-            with pip instead of using `setup.py install`:
-              - `pip install .`       (from a git repo or downloaded source
-                                       release)
-            """))
-        return True
+class CMakeBuild(build_ext):
+    def run(self):
+        try:
+            out = subprocess.check_output(['cmake', '--version'])
+        except OSError:
+            raise RuntimeError("CMake must be installed to build the following extensions: " +
+                               ", ".join(e.name for e in self.extensions))
 
+        for ext in self.extensions:
+            self.build_extension(ext)
 
-    # If we got here, we didn't detect what setup.py command was given
-    warnings.warn("Unrecognized setuptools command ('{}'), proceeding with "
-                  "generating Cython sources and expanding templates".format(
-                  ' '.join(sys.argv[1:])))
-    return True
+    def build_extension(self, ext):
+        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
+        cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
+                      '-DPYTHON_EXECUTABLE=' + sys.executable,
+		      '-DCMAKE_C_COMPILER=' + 'icc',
+		      '-DCMAKE_CXX_COMPILER=' + 'icpc',
+		      '-DVERSION_INFO=' + self.distribution.get_version()]
 
+        cfg = 'Debug' if self.debug else 'Release'
+        build_args = ['--config', cfg]
 
-def configuration(parent_package='', top_path=None):
-    from scipy._build_utils.system_info import get_info, NotFoundError
-    from numpy.distutils.misc_util import Configuration
+        if platform.system() == "Windows":
+            cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), extdir)]
+            if sys.maxsize > 2**32:
+                cmake_args += ['-A', 'x64']
+            build_args += ['--', '/m']
+        else:
+            cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
+            build_args += ['--', '-j4']
 
-    lapack_opt = get_info('lapack_opt')
-
-    if not lapack_opt:
-        msg = 'No lapack/blas resources found.'
-        if sys.platform == "darwin":
-            msg = ('No lapack/blas resources found. '
-                   'Note: Accelerate is no longer supported.')
-        raise NotFoundError(msg)
-
-    config = Configuration(None, parent_package, top_path)
-    config.set_options(ignore_setup_xxx_py=True,
-                       assume_default_configuration=True,
-                       delegate_options_to_subpackages=True,
-                       quiet=True)
-
-    config.add_subpackage('pydmfet')
-    config.add_data_files(('pydmfet', '*.txt'))
-
-    config.get_version('pydmfet/version.py')
-
-    return config
-
-
+        env = os.environ.copy()
+        #env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
+        #                                                      self.distribution.get_version())
+        if not os.path.exists(self.build_temp):
+            os.makedirs(self.build_temp)
+        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
+        subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
 
 def setup_package():
 
     write_version_py()
 
+
     try:
         import numpy
-	import scipy
+        import scipy
     except ImportError:  # We do not have numpy installed
         build_requires = ['numpy>=1.13.3', 'scipy>=1.2.1']
     else:
@@ -248,58 +202,33 @@ def setup_package():
         build_requires = (['numpy>=1.13.3', 'scipy>=1.2.1'] if 'bdist_wheel' in sys.argv[1:]
                           else [])
 
-
     metadata = dict(
         name = "pydmfet",
         maintainer = "Xing Zhang",
         maintainer_email = "xingz@princeton.edu",
-        description = DOCLINES[0],
-        long_description = "\n".join(DOCLINES[2:]),
-        #url = "",
+        description = "sDMFET",
+        long_description = "",
         author = "Xing Zhang",
-        #download_url = "",
         project_urls={
             "Bug Tracker": "https://github.com/fishjojo/pydmfet/issues",
             "Source Code": "https://github.com/fishjojo/pydmfet/pydmfet",
         },
         license = 'BSD',
         classifiers=[_f for _f in CLASSIFIERS.split('\n') if _f],
+	packages=find_packages(exclude=['*test*', '*example*',
+                                        '*setup.py']),
         platforms = ["Linux", "Mac OS-X", "Unix"],
-        test_suite='nose.collector',
-        cmdclass={"sdist": sdist_checked},
+        #test_suite='nose.collector',
+	ext_modules=[CMakeExtension('pydmfet.libcpp.libhess'),
+		     CMakeExtension('pydmfet.libcpp.libsvd')],
+        cmdclass={"sdist": sdist_checked,
+		  "build_ext": CMakeBuild},
         python_requires='>=2.7',
         zip_safe=False,
     )
 
-    if "--force" in sys.argv:
-        run_build = True
-        sys.argv.remove('--force')
-    else:
-        # Raise errors for unsupported commands, improve help output, etc.
-        run_build = parse_setuppy_commands()
 
-    os.environ['ACCELERATE'] = 'None'
-
-
-    from setuptools import setup
-
-    if run_build:
-        from numpy.distutils.core import setup
-
-        # Customize extension building
-        cmdclass['build_ext'] = get_build_ext_override()
-
-        cwd = os.path.abspath(os.path.dirname(__file__))
-        if not os.path.exists(os.path.join(cwd, 'PKG-INFO')):
-            # Generate Cython sources, unless building from source release
-            generate_cython()
-
-	metadata['configuration'] = configuration
-    else:
-        metadata['version'] = get_version_info()[0]
-
-
-
+    metadata['version'] = get_version_info()[0]
 
     setup(**metadata)
 
@@ -307,3 +236,4 @@ def setup_package():
 if __name__ == "__main__":
 
     setup_package()
+

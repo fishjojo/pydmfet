@@ -7,6 +7,8 @@
 #include <vector>
 //#include <rank_revealing_algorithms_intel_mkl.h>
 
+//#include <pybind11/pybind11.h>
+
 using namespace std;
 
 extern "C" {
@@ -439,3 +441,14 @@ void make_degen_factor(double* jt, vector<vector<int>> sub, double* jCa, double*
 }
 
 }
+
+/*
+namespace py = pybind11;
+
+PYBIND11_MODULE(libhess, m) {
+
+    m.def("calc_hess_dm_fast_frac", &calc_hess_dm_fast_frac);
+    m.def("calc_hess_dm_fast", &calc_hess_dm_fast);
+
+}
+*/

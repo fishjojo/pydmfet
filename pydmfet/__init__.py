@@ -1,18 +1,32 @@
-'''
-This is a python wrapper for s-DMFET and s-PFET
-Author: Xing Zhang
-'''
 
-__version__ = '0.1'  #test version
 
-import os
-from distutils.version import LooseVersion
-import scipy
-if LooseVersion(scipy.__version__) < LooseVersion('1.0.0'):
-    raise SystemError("You're using an old version of Scipy (%s). "
-                      "It is recommended to upgrade scipy to 1.0.0 or newer to support pydmfet." %
-                      scipy.__version__)
 
-__path__.append(os.path.join(os.path.dirname(__file__), 'tools'))
+##try:
+#    __PYDMFET_SETUP__
+#except NameError:
+#    __PYDMFET_SETUP__ = False
 
-del(os, LooseVersion, scipy)
+__PYDMFET_SETUP__ = False
+
+if __PYDMFET_SETUP__:
+    import sys as _sys
+    _sys.stderr.write('Running from pydmfet source directory.\n')
+    del _sys
+else:
+#    try:
+#        from pydmfet.__config__ import show as show_config
+#    except ImportError:
+#        msg = """Error importing pydmfet: you cannot import pydmfet while
+#        being in pydmfet source director."""
+#        raise ImportError(msg)
+
+    from pydmfet.version import version as __version__
+    from distutils.version import LooseVersion
+    import scipy
+    if LooseVersion(scipy.__version__) < LooseVersion('1.2.1'):
+        import warnings
+        warnings.warn("Scipy 1.2.1 or above is required for this version of "
+                      "pydmfet (detected version %s)" % scipy.__version__,
+                      UserWarning)
+
+    del (LooseVersion,scipy)
