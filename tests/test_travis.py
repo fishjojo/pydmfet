@@ -2,7 +2,7 @@ import pydmfet
 
 def main():
 
-    print "test travis"
+    print ("test travis")
 
     return 0
 
