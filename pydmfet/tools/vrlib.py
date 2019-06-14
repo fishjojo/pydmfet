@@ -1,4 +1,5 @@
 import numpy as np
+from functools import reduce
 
 def fock2onedm(fock, NOcc):
 
@@ -10,8 +11,8 @@ def fock2onedm(fock, NOcc):
 
     OneDM = 0.5*(OneDM + OneDM.T)
 
-    print "mo energy:"
-    print eigenvals
+    print ("mo energy:")
+    print (eigenvals)
     return (OneDM,eigenvecs)
 
 def fock2mo(fock,NOcc):
@@ -37,7 +38,7 @@ def vec2mat(x, dim):
 
 def mat2vec(mat, dim):
 
-    size = dim*(dim+1)/2
+    size = dim*(dim+1)//2
     x = np.zeros(size,dtype=np.double)
     iu = np.triu_indices(dim)
     x = mat[iu]
@@ -47,19 +48,19 @@ def mat2vec(mat, dim):
 #for H chain minimal basis divided at center
 def mat2vec_hchain(mat,dim):
 
-    size = dim/2
+    size = dim//2
     k=1
     while (dim-k > 0):
-	size += (dim - k)
-	k += 2
+        size += (dim - k)
+        k += 2
 
     x = np.zeros(size,dtype=np.double)
 
     k=0
-    for i in range(dim/2):
-	for j in range(i,dim-i):
-	    x[k] = mat[i,j]
-	    k+=1
+    for i in range(dim//2):
+        for j in range(i,dim-i):
+            x[k] = mat[i,j]
+            k+=1
 
     return x
 
@@ -67,15 +68,15 @@ def vec2mat_hchain(x,dim):
 
     mat = np.zeros((dim,dim),dtype=np.double)
     k=0
-    for i in range(dim/2):
+    for i in range(dim//2):
         for j in range(i,dim-i):
             mat[i,j] = x[k]
-	    mat[dim-j-1,dim-i-1] = x[k]
+            mat[dim-j-1,dim-i-1] = x[k]
             k+=1
 
     for j in range(dim-1):
-	for i in range(j+1,dim):
-	    mat[i,j] = mat[j,i]
+        for i in range(j+1,dim):
+            mat[i,j] = mat[j,i]
 
     return mat
 
@@ -129,13 +130,13 @@ def op_ao2sub(op_ao, ao2sub):
 def rank(s,tol=None):
 
     if tol is None:
-	tol = s.max()*len(s)*np.finfo(s.dtype).eps
+        tol = s.max()*len(s)*np.finfo(s.dtype).eps
 
     rank = 0
     for i in range(len(s)):
 
-	if s[i] > tol:
-	    rank += 1
+        if s[i] > tol:
+            rank += 1
 
     return rank
 

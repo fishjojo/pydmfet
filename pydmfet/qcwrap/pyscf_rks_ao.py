@@ -18,7 +18,7 @@ def entropy_corr(mo_occ, smear_sigma):
                 S += 0.0
 
     energy = 2.0*S*smear_sigma
-    print 'entropy correction: ',energy
+    print ('entropy correction: ',energy)
     return energy
 
 
@@ -27,7 +27,7 @@ def energy_elec(ks, dm=None, h1e=None, vhf=None):
     tot_e,e_hxc = rks.energy_elec(ks, dm=dm, h1e=h1e, vhf=vhf)
 
     if(ks.smear_sigma > 1e-8 ):
-	tot_e += entropy_corr(ks.mo_occ, ks.smear_sigma)
+        tot_e += entropy_corr(ks.mo_occ, ks.smear_sigma)
 
     return tot_e, e_hxc
 
@@ -49,7 +49,7 @@ def get_occ(mf, mo_energy=None, mo_coeff=None, smear_sigma = None):
 
     e_homo = e_sort[Nocc-1]
     e_lumo = e_sort[Nocc]
-    print 'HOMO: ',e_homo, 'LUMO: ', e_lumo
+    print ('HOMO: ',e_homo, 'LUMO: ', e_lumo)
 
     e_fermi = e_homo
 
@@ -61,8 +61,8 @@ def get_occ(mf, mo_energy=None, mo_coeff=None, smear_sigma = None):
     ne = numpy.sum(mo_occ)
     Ne_error = ne - mf.mol.nelectron
     if(abs(Ne_error) > 1e-8):
-        print 'Ne error = ', Ne_error
-    print "fermi energy: ", e_fermi
+        print ('Ne error = ', Ne_error)
+    print ("fermi energy: ", e_fermi)
     numpy.set_printoptions(precision=4)
     flag = mo_occ > 1e-4
     print mo_occ[flag]
@@ -80,7 +80,7 @@ class rks_ao(rks.RKS):
 
     def __init__(self, mol, smear_sigma = 0.0):
 
-	self.smear_sigma = smear_sigma
+        self.smear_sigma = smear_sigma
         rks.RKS.__init__(self, mol)
 
     energy_elec = energy_elec

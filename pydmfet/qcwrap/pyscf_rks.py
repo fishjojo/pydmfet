@@ -22,7 +22,7 @@ def _scf_common_init(mf, Ne, Norb, mol0=None, oei=None, tei=None, ovlp=1, dm0=No
         mf.elec_energy = 0.0
         mf.rdm1 = None
 
-	mol = mol0
+        mol = mol0
         if(mol is None):
             #what molecule does not matter
             mol = gto.Mole()
@@ -35,7 +35,7 @@ def _scf_common_init(mf, Ne, Norb, mol0=None, oei=None, tei=None, ovlp=1, dm0=No
         if(mf.tei is not None):
             mol.incore_anyway = True
 
-	return mol
+        return mol
 
 def init_guess_by_minao(mf, mol=None, ao2sub = None):
     if mol is None: mol = mf.mol
@@ -51,9 +51,9 @@ def get_ovlp(mf, mol = None):
 
     s = 0.0
     if(isinstance(mf.ovlp, np.ndarray)):
-	s = mf.ovlp 
+        s = mf.ovlp 
     elif(mf.ovlp == 1):
-	s = np.eye( mf.Norb )
+        s = np.eye( mf.Norb )
     else:
         s = hf.get_ovlp(mol)
 
@@ -66,9 +66,9 @@ def get_hcore(mf, mol = None):
 
     h = 0.0
     if(mf.oei is not None):
-	h = mf.oei
+        h = mf.oei
     else:
-	h = hf.get_hcore(mol)
+        h = hf.get_hcore(mol)
 
     return h
 
@@ -77,7 +77,7 @@ def energy_tot(mf, dm=None, h1e=None, vhf=None, mo_occ = None):
 
     e_tot = 0.0
     if(mo_occ is None):
-	e_tot = mf.energy_elec(dm, h1e, vhf)[0]
+        e_tot = mf.energy_elec(dm, h1e, vhf)[0]
     else:
         e_tot = mf.energy_elec(dm, h1e, vhf, mo_occ)[0]# + mf.energy_nuc()
     return e_tot.real
@@ -86,7 +86,7 @@ def runscf(mf):
 
     mf.kernel(mf.dm_guess)
     if ( mf.converged == False ):
-	print "scf not converged!"
+        print ("scf not converged!")
         #raise Exception("scf not converged!")
 
     rdm1 = mf.make_rdm1()
@@ -100,15 +100,15 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
 
     smear_sigma = 0.0
     if hasattr(mf, 'smear_sigma'): 
-	smear_sigma = mf.smear_sigma
+        smear_sigma = mf.smear_sigma
 
     nmo = mo_energy.size
     mo_occ = np.zeros(nmo)
     Nocc = mf.mol.nelectron // 2
 
     if(nmo == Nocc): #no virtual
-	mo_occ[:] = 2.0
-	return mo_occ
+        mo_occ[:] = 2.0
+        return mo_occ
 
     e_idx = np.argsort(mo_energy)
     e_sort = mo_energy[e_idx]
@@ -116,9 +116,9 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
 
     e_homo = e_sort[Nocc-1]
     e_lumo = e_sort[Nocc]
-    print 'HOMO:',e_homo, 'LUMO:', e_lumo
-    print "mo_energy:"
-    print e_sort[:Nocc+5]
+    print ('HOMO:',e_homo, 'LUMO:', e_lumo)
+    print ("mo_energy:")
+    print (e_sort[:Nocc+5])
 
     e_fermi = e_homo
 
@@ -130,12 +130,12 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
     ne = np.sum(mo_occ)
     Ne_error = ne - mf.mol.nelectron
     if(abs(Ne_error) > 1e-8):
-        print 'Ne error = ', Ne_error
-    print "e_fermi = ",e_fermi
+        print ('Ne error = ', Ne_error)
+    print ("e_fermi = ",e_fermi)
     mf.e_fermi = e_fermi
     np.set_printoptions(precision=3)
     flag = mo_occ > 1e-3
-    print mo_occ[flag]
+    print (mo_occ[flag])
     np.set_printoptions()
 
     return mo_occ
@@ -146,11 +146,11 @@ class rohf_pyscf(rohf.ROHF):
     def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
                  coredm=0.0, ao2sub=1.0):
 
-	mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
-	rohf.ROHF.__init__(self, mol)
+        mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
+        rohf.ROHF.__init__(self, mol)
 
-	if(self.tei is not None):
-	    self._eri = self.tei
+        if(self.tei is not None):
+            self._eri = self.tei
         #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
     get_ovlp = get_ovlp
@@ -158,9 +158,9 @@ class rohf_pyscf(rohf.ROHF):
     energy_tot = energy_tot
 
     def init_guess_by_minao(self, mol=None):
-	if mol is None: mol = self.mol
-	dm = init_guess_by_minao(self,mol)
-	return np.array((dm*.5, dm*.5))
+        if mol is None: mol = self.mol
+        dm = init_guess_by_minao(self,mol)
+        return np.array((dm*.5, dm*.5))
 
 
 class uhf_pyscf(uhf.UHF):
@@ -168,11 +168,11 @@ class uhf_pyscf(uhf.UHF):
     def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
                  coredm=0.0, ao2sub=1.0):
 
-	mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
-	uhf.UHF.__init__(self, mol)
+        mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
+        uhf.UHF.__init__(self, mol)
 
-	if(self.tei is not None):
-	    self._eri = self.tei
+        if(self.tei is not None):
+            self._eri = self.tei
         #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
     get_hcore = get_hcore
@@ -181,11 +181,11 @@ class uhf_pyscf(uhf.UHF):
 
     def convert_from_rhf(self, mf):
 
-	self.mo_occ = np.array((mf.mo_occ>0, mf.mo_occ==2), dtype=np.double)
+        self.mo_occ = np.array((mf.mo_occ>0, mf.mo_occ==2), dtype=np.double)
         self.mo_energy = (mf.mo_energy, mf.mo_energy)
         self.mo_coeff = (mf.mo_coeff, mf.mo_coeff)
-	self.converged = mf.converged
-	self.e_tot = mf.e_tot
+        self.converged = mf.converged
+        self.e_tot = mf.e_tot
 
 class rhf_pyscf(hf.RHF):
 
@@ -195,16 +195,16 @@ class rhf_pyscf(hf.RHF):
     '''
 
     def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
-		 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
+                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
 
         mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
-	self.smear_sigma = smear_sigma
+        self.smear_sigma = smear_sigma
         hf.RHF.__init__(self, mol)
-	self.level_shift = level_shift
-	self.e_fermi = 0.0
+        self.level_shift = level_shift
+        self.e_fermi = 0.0
 
         if(self.tei is not None):
-	    self._eri = self.tei
+            self._eri = self.tei
         #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
     def energy_elec(mf, dm=None, h1e=None, vhf=None, mo_occ=None):
@@ -212,7 +212,7 @@ class rhf_pyscf(hf.RHF):
         if dm is None: dm = mf.make_rdm1()
         if h1e is None: h1e = mf.get_hcore()
         if vhf is None: vhf = mf.get_veff(mf.mol, dm)
-	if mo_occ is None: mo_occ = mf.mo_occ
+        if mo_occ is None: mo_occ = mf.mo_occ
 
         e1 = np.einsum('ji,ji', h1e.conj(), dm).real
         e_coul = np.einsum('ji,ji', vhf.conj(), dm).real * .5
@@ -232,32 +232,31 @@ class rhf_pyscf(hf.RHF):
 class rks_pyscf(rks.RKS): 
 
     '''
-	subspace rks
-	wrapper for dft.rks module of pyscf
+        subspace rks
+        wrapper for dft.rks module of pyscf
     '''
 
     def __init__(self, Ne, Norb, mf_method, mol=None, oei=None, tei=None, ovlp=1, dm0=None,\
-		 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
+                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
 
-	mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method)
-	self.smear_sigma = smear_sigma
-	rks.RKS.__init__(self, mol)
-	self.xc = self.method
-	#self.smear_sigma = smear_sigma
-	self.level_shift = level_shift
-	self.e_fermi = 0.0
+        mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method)
+        self.smear_sigma = smear_sigma
+        rks.RKS.__init__(self, mol)
+        self.xc = self.method
+        self.level_shift = level_shift
+        self.e_fermi = 0.0
 
-	'''
-	self.grids.atom_grid = {'H': (50,194), 'O': (50,194), 'F': (50,194)}
+        '''
+        self.grids.atom_grid = {'H': (50,194), 'O': (50,194), 'F': (50,194)}
         self.grids.prune = dft.gen_grid.sg1_prune
         self.grids.radi_method = dft.radi.gauss_chebyshev
         self.grids.atomic_radii = dft.radi.SG1RADII
         self.grids.radii_adjust = None
         #self.small_rho_cutoff = 1e-9
-	'''
+        '''
 
-	if(self.tei is not None):
-	    self._eri = self.tei
+        if(self.tei is not None):
+            self._eri = self.tei
         #    self._eri = ao2mo.restore(8, self.tei, self.Norb)
 
 
@@ -274,11 +273,11 @@ class rks_pyscf(rks.RKS):
         if h1e is None: h1e = mf.get_hcore()
         if vhf is None or getattr(vhf, 'ecoul', None) is None:
             vhf = mf.get_veff(mf.mol, dm)
-	if mo_occ is None: mo_occ = mf.mo_occ
+        if mo_occ is None: mo_occ = mf.mo_occ
     
         e1 = np.einsum('ij,ji', h1e, dm).real
-	es = 0.0
-	if (hasattr(mf,'smear_sigma')):
+        es = 0.0
+        if (hasattr(mf,'smear_sigma')):
             es = entropy_corr(mf,mo_occ, mf.smear_sigma)
         tot_e = e1 + vhf.ecoul + vhf.exc + es
     
@@ -287,39 +286,39 @@ class rks_pyscf(rks.RKS):
 
     def get_veff(self, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
 
-	#t0 = (time.clock(), time.time())
+        #t0 = (time.clock(), time.time())
 
-	if mol is None: mol = self.mol
+        if mol is None: mol = self.mol
         if dm is None: dm = self.make_rdm1()
 
-	ao2sub = self.ao2sub
-	coredm = self.coredm
+        ao2sub = self.ao2sub
+        coredm = self.coredm
 
-	use_mo = False
-	n_core_elec = 0.0
-	if (isinstance(coredm, np.ndarray) and coredm.ndim == 2):
-	    s1e_ao = mol.intor_symmetric('int1e_ovlp')
-	    n_core_elec = np.trace(np.dot(coredm, s1e_ao))
-	    use_mo = False
-	else:
-	    use_mo = True
+        use_mo = False
+        n_core_elec = 0.0
+        if (isinstance(coredm, np.ndarray) and coredm.ndim == 2):
+            s1e_ao = mol.intor_symmetric('int1e_ovlp')
+            n_core_elec = np.trace(np.dot(coredm, s1e_ao))
+            use_mo = False
+        else:
+            use_mo = True
 
-	use_mo = False #debug
-	dm_ao = coredm + tools.dm_sub2ao(np.asarray(dm), ao2sub)
-	
-	if (hasattr(dm, 'mo_coeff') and use_mo):
+        use_mo = False #debug
+        dm_ao = coredm + tools.dm_sub2ao(np.asarray(dm), ao2sub)
+        
+        if (hasattr(dm, 'mo_coeff') and use_mo):
             mo_coeff_sub = dm.mo_coeff
             mo_occ_sub = dm.mo_occ
 
-	    mo_coeff_ao = tools.mo_sub2ao(mo_coeff_sub, ao2sub)
-	    mo_occ_ao = mo_occ_sub
-	    dm_ao = lib.tag_array(dm_ao, mo_coeff=mo_coeff_ao, mo_occ=mo_occ_ao)
-	
-	n, exc, vxc_ao, hyb = get_vxc(self, mol, dm_ao, n_core_elec = n_core_elec)
-	vxc = tools.op_ao2sub(vxc_ao, ao2sub)
+            mo_coeff_ao = tools.mo_sub2ao(mo_coeff_sub, ao2sub)
+            mo_occ_ao = mo_occ_sub
+            dm_ao = lib.tag_array(dm_ao, mo_coeff=mo_coeff_ao, mo_occ=mo_occ_ao)
+        
+        n, exc, vxc_ao, hyb = get_vxc(self, mol, dm_ao, n_core_elec = n_core_elec)
+        vxc = tools.op_ao2sub(vxc_ao, ao2sub)
 
-	vj = None
-	vk = None
+        vj = None
+        vk = None
         if abs(hyb) < 1e-10:
             if (self._eri is None and self.direct_scf and
                 getattr(vhf_last, 'vj', None) is not None):
@@ -343,11 +342,11 @@ class rks_pyscf(rks.RKS):
 
         ecoul = np.einsum('ij,ji', dm, vj) * .5
 
-	vxc = lib.tag_array(vxc, ecoul=ecoul, exc=exc, vj=vj, vk=vk)
+        vxc = lib.tag_array(vxc, ecoul=ecoul, exc=exc, vj=vj, vk=vk)
 
-	#t1 = tools.timer("get_veff",t0)
+        #t1 = tools.timer("get_veff",t0)
 
-	return vxc
+        return vxc
 
 
 
@@ -361,9 +360,9 @@ def get_vxc(ks, mol, dm, n_core_elec=0.0, hermi=1):
         ks.grids.build(with_non0tab=True)
         if ks.small_rho_cutoff > 1e-20 and ground_state:
             # Filter grids the first time setup grids
-	    #t0 = (time.clock(), time.time())
+            #t0 = (time.clock(), time.time())
             ks.grids = prune_small_rho_grids_(ks, mol, dm, ks.grids,n_core_elec=n_core_elec)
-	    #t1 = tools.timer("prune grid",t0)
+            #t1 = tools.timer("prune grid",t0)
 
     if hermi == 2:  # because rho = 0
         n, exc, vxc = 0, 0, 0
@@ -398,7 +397,7 @@ def prune_small_rho_grids_(ks, mol, dm, grids, n_core_elec = 0.0):
     if abs(n-mol.nelectron-n_core_elec) < error_tol:
         rho *= grids.weights
         idx = abs(rho) > ks.small_rho_cutoff / grids.weights.size
-	print 'No. of dropped grids = ', grids.weights.size - np.count_nonzero(idx)
+        print ('No. of dropped grids = ', grids.weights.size - np.count_nonzero(idx))
         grids.coords  = np.asarray(grids.coords [idx], order='C')
         grids.weights = np.asarray(grids.weights[idx], order='C')
         grids.non0tab = grids.make_mask(mol, grids.coords)
@@ -409,11 +408,11 @@ def prune_small_rho_grids_(ks, mol, dm, grids, n_core_elec = 0.0):
 def entropy_corr(mf,mo_occ, smear_sigma=0.0):
 
     if mo_occ is None:
-	return 0.0
+        return 0.0
 
     S = 0.0
     if(smear_sigma >= 1e-8):
-	nmo = mo_occ.size
+        nmo = mo_occ.size
         for i in range(nmo):
             occ_i = mo_occ[i]/2.0 #closed shell
             if(occ_i > 1e-8 and occ_i < 1.0-1e-8):
@@ -422,11 +421,7 @@ def entropy_corr(mf,mo_occ, smear_sigma=0.0):
                 S += 0.0
 
     energy = 2.0*S*smear_sigma
-    print 'entropy correction = ',energy
-
-#    if(smear_sigma >= 1e-8):
-#        energy -= mf.e_fermi*mf.Ne
-#	print 'e_fermi*Ne = ', mf.e_fermi*mf.Ne
+    print ('entropy correction = ',energy)
 
     return energy
 

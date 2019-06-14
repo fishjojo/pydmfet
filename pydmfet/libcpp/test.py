@@ -41,7 +41,7 @@ if __name__ == "__main__":
     nbas = 107
     jCa =  np.random.rand(nbas*nbas)
     orb_Ea = np.random.rand(nbas)
-    size = nbas*(nbas+1)/2
+    size = nbas*(nbas+1)//2
     NOcc = 16
 
     calc_hess(jCa,orb_Ea,size,NOcc,nbas) 

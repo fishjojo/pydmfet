@@ -1,8 +1,11 @@
+from __future__ import print_function
 from pydmfet import locints, sdmfet,oep,tools
 from pyscf import gto, scf,dft, ao2mo
 import numpy as np
 from pyscf.tools import molden
 import FHF_4H2O_struct
+
+
 
 basis_frag = 'ccpvdz'
 basis_env = 'ccpvdz'
@@ -30,7 +33,7 @@ for thestructure in range(17,18):
     DMguess = None
     mf.scf(dm0=DMguess)
     e_mf = mf.e_tot
-    print "e_mf = ", e_mf
+    print ("e_mf = ", e_mf)
 
     myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
     #myInts.loc_molden( 'loc.molden' )
@@ -62,7 +65,7 @@ for thestructure in range(17,18):
     impurities = np.zeros([mol.nao_nr()], dtype = int)
     for i in range(natoms):
         if(impAtom[i] == 1):
-	    impurities[aoslice[i,2]:aoslice[i,3]] = 1
+            impurities[aoslice[i,2]:aoslice[i,3]] = 1
 #    for i in range(mol.nao_nr()):
 #	impurities[i] = 1
 
@@ -93,7 +96,7 @@ for thestructure in range(17,18):
     e_tot = e_mf + e_corr
 
     e_tot_list.append(e_tot)
-    print "e_tot = ", e_tot
+    print ("e_tot = ", e_tot)
 
 
-print e_tot_list
+print (e_tot_list)

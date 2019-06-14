@@ -4,11 +4,15 @@ import sys
 import platform
 import subprocess
 
-from setuptools import setup,find_packages, Extension
+from setuptools import find_packages, Extension
 from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
 
 
+if sys.version_info[:2] < (3, 5):
+    raise RuntimeError("Python version >= 3.5 required.")
+
+import builtins
 
 CLASSIFIERS = """\
 Development Status :: 5 - Production/Stable
@@ -16,7 +20,9 @@ Intended Audience :: Science/Research
 License :: OSI Approved :: BSD License
 Programming Language :: C
 Programming Language :: Python
-Programming Language :: Python :: 2.7
+Programming Language :: Python :: 3.5
+Programming Language :: Python :: 3.6
+Programming Language :: Python :: 3.7
 Topic :: Scientific/Engineering
 Operating System :: POSIX
 Operating System :: Unix
@@ -53,6 +59,8 @@ def git_version():
 
     return GIT_REVISION
 
+
+builtins.__PYDMFET_SETUP__ = True
 
 def get_version_info():
     FULLVERSION = VERSION
@@ -161,9 +169,9 @@ class CMakeBuild(build_ext):
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
         cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
                       '-DPYTHON_EXECUTABLE=' + sys.executable,
-		      '-DCMAKE_C_COMPILER=' + 'icc',
-		      '-DCMAKE_CXX_COMPILER=' + 'icpc',
-		      '-DVERSION_INFO=' + self.distribution.get_version()]
+                      '-DCMAKE_C_COMPILER=' + 'icc',
+                      '-DCMAKE_CXX_COMPILER=' + 'icpc',
+                      '-DVERSION_INFO=' + self.distribution.get_version()]
 
         cfg = 'Debug' if self.debug else 'Release'
         build_args = ['--config', cfg]
@@ -184,6 +192,34 @@ class CMakeBuild(build_ext):
             os.makedirs(self.build_temp)
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
+
+
+def configuration(parent_package='', top_path=None):
+    from scipy._build_utils.system_info import get_info, NotFoundError
+    from numpy.distutils.misc_util import Configuration
+
+    lapack_opt = get_info('lapack_opt')
+
+    if not lapack_opt:
+        msg = 'No lapack/blas resources found.'
+        if sys.platform == "darwin":
+            msg = ('No lapack/blas resources found. '
+                   'Note: Accelerate is no longer supported.')
+        raise NotFoundError(msg)
+
+    config = Configuration(None, parent_package, top_path)
+    config.set_options(ignore_setup_xxx_py=True,
+                       assume_default_configuration=True,
+                       delegate_options_to_subpackages=True,
+                       quiet=True)
+
+    config.add_subpackage('pydmfet')
+    config.add_data_files(('pydmfet', '*.txt'))
+
+    config.get_version('pydmfet/version.py')
+
+    return config
+
 
 def setup_package():
 
@@ -215,20 +251,26 @@ def setup_package():
         },
         license = 'BSD',
         classifiers=[_f for _f in CLASSIFIERS.split('\n') if _f],
-	packages=find_packages(exclude=['*test*', '*example*',
+        packages=find_packages(exclude=['*test*', '*example*',
                                         '*setup.py']),
         platforms = ["Linux", "Mac OS-X", "Unix"],
         #test_suite='nose.collector',
-	ext_modules=[CMakeExtension('pydmfet.libcpp.libhess'),
-		     CMakeExtension('pydmfet.libcpp.libsvd')],
+        ext_modules=[CMakeExtension('pydmfet.libcpp.libhess'),
+                     CMakeExtension('pydmfet.libcpp.libsvd')],
         cmdclass={"sdist": sdist_checked,
-		  "build_ext": CMakeBuild},
-        python_requires='>=2.7',
+                  "build_ext": CMakeBuild},
+        python_requires='>=3.5',
         zip_safe=False,
     )
 
+    run_build = True
 
-    metadata['version'] = get_version_info()[0]
+    from setuptools import setup
+    if run_build:
+    #    from numpy.distutils.core import setup
+        metadata['configuration'] = configuration
+    else:
+        metadata['version'] = get_version_info()[0]
 
     setup(**metadata)
 

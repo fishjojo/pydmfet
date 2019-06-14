@@ -29,7 +29,7 @@ def mkl_svd(A, algorithm = 1):
 
     t1 = tools.timer("mkl_svd", t0)
     if(info[0] != 0):
-        print 'mkl_svd info = ',info[0]
+        print ('mkl_svd info = ',info[0])
         raise Exception("mkl_svd failed!")
 
     return (U,sigma,VT)
@@ -51,21 +51,21 @@ def invert_mat_sigular_thresh(mat,thresh):
         else:
             break
 
-    print " rank = ", irank
-    print " singular value | inverse singular value"
+    print (" rank = ", irank)
+    print (" singular value | inverse singular value")
     for i in range(4):
          print (" %.3e   |   %.3e" % (sigma[i], D[i]))
 
-    print "     .       |       ."
-    print "     .       |       ."
-    print "     .       |       ."
+    print ("     .       |       .")
+    print ("     .       |       .")
+    print ("     .       |       .")
     print (" %.3e   |   %.3e" %(sigma[irank-2], D[irank-2]))
     print (" %.3e   |   %.3e" %(sigma[irank-1], D[irank-1]))
-    print " -------------------------"
+    print (" -------------------------")
     if(irank < dim):
-	print (" %.3e   |   %.3e" %(sigma[irank], D[irank]))
+        print (" %.3e   |   %.3e" %(sigma[irank], D[irank]))
     if(irank < dim-1):
-	print (" %.3e   |   %.3e" %(sigma[irank+1], D[irank+1]))
+        print (" %.3e   |   %.3e" %(sigma[irank+1], D[irank+1]))
 
     v = vt.T
     for i in range(irank):

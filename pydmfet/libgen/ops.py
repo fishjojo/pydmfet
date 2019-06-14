@@ -48,7 +48,7 @@ def build_subops(impAtom, mol_frag, mol_env, boundary_atoms1, boundary_atoms2, i
     subVnuc_bound1 = 0.0
     subVnuc_bound2 = 0.0
     if(boundary_atoms1 is not None):
-	subVnuc_bound1 += ints.bound_vnuc_sub(boundary_atoms1, loc2sub, dim )
+        subVnuc_bound1 += ints.bound_vnuc_sub(boundary_atoms1, loc2sub, dim )
     if(boundary_atoms2 is not None):
         subVnuc_bound2 += ints.bound_vnuc_sub(boundary_atoms2, loc2sub, dim )
 
@@ -97,7 +97,7 @@ def coreJK_sub(ints, loc2sub, numActive, coreDMloc, Ne_core, Kcoeff = 1.0):
     t0 = (time.clock(), time.time())
     sub_coreJK = None
     if(Ne_core == 0):
-	sub_coreJK = 0.0	
+        sub_coreJK = 0.0        
     else:
         loc_coreJK = ints.coreJK_loc(coreDMloc, Kcoeff)
         sub_coreJK = tools.op_loc2sub(loc_coreJK, loc2sub[:,:numActive])

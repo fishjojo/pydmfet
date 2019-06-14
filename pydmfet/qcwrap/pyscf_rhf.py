@@ -3,6 +3,7 @@ from pydmfet import tools
 from pyscf import ao2mo, gto, scf, dft, lib
 from pydmfet.qcwrap import fermi
 import time
+from functools import reduce
 
 def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
 
@@ -11,13 +12,13 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
     idx = np.argmax(abs(eigenvecs), axis=0)
     eigenvecs[:,eigenvecs[ idx, np.arange(len(eigenvals)) ]<0] *= -1
 
-    Nocc = Nelec/2  #closed shell
+    Nocc = Nelec//2  #closed shell
 
     e_homo = eigenvals[Nocc-1]
     e_lumo = eigenvals[Nocc]
-    print 'HOMO: ', e_homo, 'LUMO: ', e_lumo
-    print "mo_energy:"
-    print eigenvals[:Nocc+5]
+    print ('HOMO: ', e_homo, 'LUMO: ', e_lumo)
+    print ("mo_energy:")
+    print (eigenvals[:Nocc+5])
 
     e_fermi = e_homo
     mo_occ = np.zeros((Norb))
@@ -31,11 +32,11 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
 
     Ne_error = np.sum(mo_occ) - Nelec
     if(Ne_error > 1e-8):
-        print 'Ne error = ', Ne_error
-    print "fermi energy: ", e_fermi
+        print ('Ne error = ', Ne_error)
+    print ("fermi energy: ", e_fermi)
     np.set_printoptions(precision=4)
     flag = mo_occ > 1e-4
-    print mo_occ[flag]
+    print (mo_occ[flag])
     np.set_printoptions()
 
 
@@ -53,9 +54,9 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
             else:
                 S += 0.0
 
-    print 'entropy correction: ',2.0*S*smear_sigma
+    print ('entropy correction: ',2.0*S*smear_sigma)
     energy += 2.0*S*smear_sigma
-    print 'e_tot = ', energy
+    print ('e_tot = ', energy)
 
     return ( energy, RDM1, eigenvecs, eigenvals, mo_occ )
 
@@ -64,87 +65,87 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
 class scf_pyscf(): 
 
     '''
-	subspace scf
-	wrapper for scf module of pyscf
+        subspace scf
+        wrapper for scf module of pyscf
     '''
 
     def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, coredm=0, ao2sub=None, mf_method='HF'):
 
-	self.mol = mol
-	self.Ne = Ne
-	self.Norb = Norb
-	self.method = mf_method
+        self.mol = mol
+        self.Ne = Ne
+        self.Norb = Norb
+        self.method = mf_method
 
-	self.oei = oei
-	self.tei = tei
-	self.ovlp = ovlp 
-	self.dm0 = dm0
-	self.coredm = coredm
-	self.ao2sub = ao2sub
-	self.method = mf_method.lower()
+        self.oei = oei
+        self.tei = tei
+        self.ovlp = ovlp 
+        self.dm0 = dm0
+        self.coredm = coredm
+        self.ao2sub = ao2sub
+        self.method = mf_method.lower()
 
-	self.mf = None
+        self.mf = None
 
-	if(self.mol is None):
-	    #what molecule does not matter
-	    self.mol = gto.Mole()
-	    self.mol.build( verbose=0 )
-	    self.mol.atom.append(('C', (0, 0, 0)))
+        if(self.mol is None):
+            #what molecule does not matter
+            self.mol = gto.Mole()
+            self.mol.build( verbose=0 )
+            self.mol.atom.append(('C', (0, 0, 0)))
 
-	#adjust number of electrons
-	self.mol.nelectron = Ne
+        #adjust number of electrons
+        self.mol.nelectron = Ne
 
-	if(self.tei is not None):
+        if(self.tei is not None):
             self.mol.incore_anyway = True
 
-	if(self.method == 'hf'):
-	    self.mf = scf.RHF(self.mol)
-	    self.prep_rhf()
-	else:
-	    self.mf = scf.RKS(self.mol)
-	    self.mf.xc = self.method
-	    self.prep_rhf()
-	    self.prep_rks()
+        if(self.method == 'hf'):
+            self.mf = scf.RHF(self.mol)
+            self.prep_rhf()
+        else:
+            self.mf = scf.RKS(self.mol)
+            self.mf.xc = self.method
+            self.prep_rhf()
+            self.prep_rks()
 
-	self.elec_energy = 0.0
-	self.rdm1 = None
-	self.mo_coeff = None
-	self.mo_energy = None
-	self.mo_occ = None
+        self.elec_energy = 0.0
+        self.rdm1 = None
+        self.mo_coeff = None
+        self.mo_energy = None
+        self.mo_occ = None
 
     def prep_rhf(self):
 
-	if(self.ovlp == 1):
-	    self.mf.get_ovlp = lambda *args: np.eye( self.Norb )
-	if(self.oei is not None):
-	    self.mf.get_hcore = lambda *args: self.oei
-	if(self.tei is not None):
-	    self.mf._eri = ao2mo.restore(8, self.tei, self.Norb)
+        if(self.ovlp == 1):
+            self.mf.get_ovlp = lambda *args: np.eye( self.Norb )
+        if(self.oei is not None):
+            self.mf.get_hcore = lambda *args: self.oei
+        if(self.tei is not None):
+            self.mf._eri = ao2mo.restore(8, self.tei, self.Norb)
 
 
     def prep_rks(self):
 
-	if(self.ao2sub is None):
-	    return
+        if(self.ao2sub is None):
+            return
 
-	#overload dft.rks.get_veff if necessary
-	self.mf.get_veff = get_veff_rks_decorator(self.ao2sub, self.coredm)
+        #overload dft.rks.get_veff if necessary
+        self.mf.get_veff = get_veff_rks_decorator(self.ao2sub, self.coredm)
 
 
     def kernel(self):
 
-	self.mf.kernel(self.dm0)
-	if ( self.mf.converged == False ):
-	    raise Exception("scf not converged!")
+        self.mf.kernel(self.dm0)
+        if ( self.mf.converged == False ):
+            raise Exception("scf not converged!")
 
 
-	rdm1 = self.mf.make_rdm1()
+        rdm1 = self.mf.make_rdm1()
         self.rdm1 = 0.5*(rdm1.T + rdm1)
-	self.elec_energy = self.mf.energy_elec(self.rdm1)[0]
+        self.elec_energy = self.mf.energy_elec(self.rdm1)[0]
 
-	self.mo_coeff = self.mf.mo_coeff
-	self.mo_energy = self.mf.mo_energy
-	self.mo_occ = self.mf.mo_occ
+        self.mo_coeff = self.mf.mo_coeff
+        self.mo_energy = self.mf.mo_energy
+        self.mo_occ = self.mf.mo_occ
 
 
 
@@ -153,25 +154,25 @@ def get_veff_rks_decorator(ao2sub, coredm):
 
     def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
 
-	if mol is None: mol = ks.mol
+        if mol is None: mol = ks.mol
         if dm is None: dm = ks.make_rdm1()
 
-	dm_sub = np.asarray(dm) + coredm
-	dm_ao = tools.dm_sub2ao(dm_sub, ao2sub)
+        dm_sub = np.asarray(dm) + coredm
+        dm_ao = tools.dm_sub2ao(dm_sub, ao2sub)
 
-	if hasattr(dm, 'mo_coeff'):
+        if hasattr(dm, 'mo_coeff'):
             mo_coeff_sub = dm.mo_coeff
             mo_occ_sub = dm.mo_occ
 
-	    mo_coeff_ao = tools.mo_sub2ao(mo_coeff_sub, ao2sub)
-	    mo_occ_ao = mo_occ_sub
-	    dm_ao = lib.tag_array(dm_ao, mo_coeff=mo_coeff_ao, mo_occ=mo_occ_ao)
+            mo_coeff_ao = tools.mo_sub2ao(mo_coeff_sub, ao2sub)
+            mo_occ_ao = mo_occ_sub
+            dm_ao = lib.tag_array(dm_ao, mo_coeff=mo_coeff_ao, mo_occ=mo_occ_ao)
 
-	n, exc, vxc_ao, hyb = get_vxc(ks, mol, dm_ao)
-	vxc = tools.op_ao2sub(vxc_ao, ao2sub)
+        n, exc, vxc_ao, hyb = get_vxc(ks, mol, dm_ao)
+        vxc = tools.op_ao2sub(vxc_ao, ao2sub)
 
-	vj = None
-	vk = None
+        vj = None
+        vk = None
         if abs(hyb) < 1e-10:
             if (ks._eri is None and ks.direct_scf and
                 getattr(vhf_last, 'vj', None) is not None):
@@ -195,9 +196,9 @@ def get_veff_rks_decorator(ao2sub, coredm):
 
         ecoul = np.einsum('ij,ji', dm, vj) * .5
 
-	vxc = lib.tag_array(vxc, ecoul=ecoul, exc=exc, vj=vj, vk=vk)
+        vxc = lib.tag_array(vxc, ecoul=ecoul, exc=exc, vj=vj, vk=vk)
 
-	return vxc
+        return vxc
 
     return get_veff
 
@@ -212,9 +213,9 @@ def get_vxc(ks, mol, dm, hermi=1):
         ks.grids.build(with_non0tab=True)
         if ks.small_rho_cutoff > 1e-20 and ground_state:
             # Filter grids the first time setup grids
-	    t0 = (time.clock(), time.time())
+            t0 = (time.clock(), time.time())
             ks.grids = dft.rks.prune_small_rho_grids_(ks, mol, dm, ks.grids)
-	    t1 = tools.timer("prune grid",t0)
+            t1 = tools.timer("prune grid",t0)
 
     if hermi == 2:  # because rho = 0
         n, exc, vxc = 0, 0, 0
@@ -250,12 +251,12 @@ def rhf(mol, OEI, TEI, Norb, Nelec, OneDM0=None ):
     mf.kernel(OneDM0)
 
     if ( mf.converged == False ):
-	#RDM1 = mf.make_rdm1()
-	#cdiis = pyscf_scf.diis.SCF_DIIS()
-	#mf.diis = cdiis
-	#mf.max_cycle = 200
-	#mf.kernel(RDM1)
-	if ( mf.converged == False ):
+        #RDM1 = mf.make_rdm1()
+        #cdiis = pyscf_scf.diis.SCF_DIIS()
+        #mf.diis = cdiis
+        #mf.max_cycle = 200
+        #mf.kernel(RDM1)
+        if ( mf.converged == False ):
             raise Exception(" rhf not converged!")
 
     return mf
@@ -289,9 +290,9 @@ def scf(mol, OEI, TEI, Norb, Nelec, OneDM0=None, mf_method = 'HF' ):
 
     # Get the mean-field solution
     if(mf_method.lower() == 'hf'):
-	mf = rhf(mol, OEI, TEI, Norb, Nelec, OneDM0 )
+        mf = rhf(mol, OEI, TEI, Norb, Nelec, OneDM0 )
     else:
-	mf = rks(mol, OEI, TEI, Norb, Nelec, mf_method ,OneDM0 )
+        mf = rks(mol, OEI, TEI, Norb, Nelec, mf_method ,OneDM0 )
 
     RDM1 = mf.make_rdm1()
     RDM1 = 0.5*(RDM1.T + RDM1)

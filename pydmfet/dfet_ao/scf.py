@@ -23,7 +23,7 @@ def energy_elec(ks, dm=None, h1e=None, vhf=None):
 
     tot_e, ecoul_exc = rks.energy_elec(ks,dm,h1e,vhf)
     if(hasattr(ks,'smear_sigma')):
-	tot_e += pyscf_rks.entropy_corr(ks,ks.mo_occ, ks.smear_sigma)
+        tot_e += pyscf_rks.entropy_corr(ks,ks.mo_occ, ks.smear_sigma)
 
     return tot_e, ecoul_exc
 
@@ -33,12 +33,12 @@ class EmbedSCF(rks.RKS):
 
     def __init__(self, mol, umat=0.0, smear_sigma=0.0):
 
-	self.umat = umat
-	self.smear_sigma = smear_sigma	
-	self.e_fermi = 0.0
+        self.umat = umat
+        self.smear_sigma = smear_sigma  
+        self.e_fermi = 0.0
 
-	rks.RKS.__init__(self,mol)
-	self.Ne = self.mol.nelectron
+        rks.RKS.__init__(self,mol)
+        self.Ne = self.mol.nelectron
 
     get_hcore = get_hcore
     get_occ = pyscf_rks.get_occ 
@@ -49,8 +49,8 @@ class EmbedSCF(rks.RKS):
 def get_occ(mf, mo_energy=None, mo_coeff=None):
 
     if(mf.fixed_occ):
-	print "mo_occ:"
-        print mf._occ
+        print ("mo_occ:")
+        print (mf._occ)
         return mf._occ
     else:
         return pyscf_rks.get_occ(mf, mo_energy, mo_coeff)
@@ -61,14 +61,14 @@ class EmbedSCF_nonscf(rks.RKS):
     def __init__(self, mol, dm_fix, umat=0.0, smear_sigma=0.0,fixed_occ=False,_occ=None):
 
         self.umat = umat
-	self.dm_fix = dm_fix
-	self.smear_sigma = smear_sigma
-	self.fixed_occ = fixed_occ
-	self._occ = _occ
-	self.e_fermi = 0.0
+        self.dm_fix = dm_fix
+        self.smear_sigma = smear_sigma
+        self.fixed_occ = fixed_occ
+        self._occ = _occ
+        self.e_fermi = 0.0
 
         rks.RKS.__init__(self,mol)
-	self.Ne = self.mol.nelectron
+        self.Ne = self.mol.nelectron
 
     get_hcore = get_hcore
     #get_occ = pyscf_rks.get_occ
@@ -78,22 +78,22 @@ class EmbedSCF_nonscf(rks.RKS):
 
     def get_veff(self, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
 
-	if(self.direct_scf):
-	    print 'direct_scf == True'
-	    exit()
+        if(self.direct_scf):
+            print ('direct_scf == True')
+            exit()
 
-	vxc = rks.get_veff(self, mol=mol, dm=self.dm_fix, dm_last=0, vhf_last=0, hermi=hermi)
-	
-	if dm is None:
-	    dm = self.make_rdm1()
+        vxc = rks.get_veff(self, mol=mol, dm=self.dm_fix, dm_last=0, vhf_last=0, hermi=hermi)
+        
+        if dm is None:
+            dm = self.make_rdm1()
 
-	vj = vxc.vj
-	vk = vxc.vk
-	ecoul = np.einsum('ij,ji', dm, vj)
-	exc = np.einsum('ij,ji', dm, np.asarray(vxc) )
-	exc -= ecoul
+        vj = vxc.vj
+        vk = vxc.vk
+        ecoul = np.einsum('ij,ji', dm, vj)
+        exc = np.einsum('ij,ji', dm, np.asarray(vxc) )
+        exc -= ecoul
 
-	vxc = lib.tag_array(np.asarray(vxc), ecoul=ecoul, exc=exc, vj=vj, vk=vk)
+        vxc = lib.tag_array(np.asarray(vxc), ecoul=ecoul, exc=exc, vj=vj, vk=vk)
 
-	return vxc
+        return vxc
 
