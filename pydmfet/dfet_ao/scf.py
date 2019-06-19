@@ -1,6 +1,7 @@
 from pyscf import lib
 from pyscf.dft import rks
 from pydmfet.qcwrap import pyscf_rks
+from pydmfet.qcwrap.fermi import entropy_corr
 import numpy as np
 
 
@@ -23,7 +24,7 @@ def energy_elec(ks, dm=None, h1e=None, vhf=None):
 
     tot_e, ecoul_exc = rks.energy_elec(ks,dm,h1e,vhf)
     if(hasattr(ks,'smear_sigma')):
-        tot_e += pyscf_rks.entropy_corr(ks,ks.mo_occ, ks.smear_sigma)
+        tot_e += entropy_corr(ks.mo_occ, ks.smear_sigma)
 
     return tot_e, ecoul_exc
 

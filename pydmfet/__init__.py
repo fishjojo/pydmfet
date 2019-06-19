@@ -9,7 +9,7 @@ except NameError:
 
 if __PYDMFET_SETUP__:
     import sys as _sys
-    _sys.stderr.write('Running from pydmfet source directory is not allowed.\n')
+    _sys.stderr.write('Running from pydmfet source directory.\n')
     del _sys
 else:
     '''

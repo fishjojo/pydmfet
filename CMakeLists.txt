@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 2.8.12)
 project(pydmfet)
 include(GNUInstallDirs)
 
+set(BLA_VENDOR Intel10_64lp)
+find_package(BLAS REQUIRED)
+find_package(OpenMP REQUIRED)
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -qopenmp -xhost")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -qopenmp -xhost")
 

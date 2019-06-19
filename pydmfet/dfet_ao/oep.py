@@ -266,8 +266,8 @@ class OEPao:
     def oep_bfgs(self, x, _args):
 
         maxit = self.params.maxit
-        #gtol = self.params.gtol
-        gtol = self.gtol_dyn
+        gtol = self.params.gtol
+        #gtol = self.gtol_dyn
         print ('gtol = ', gtol)
         ftol = self.params.ftol
         algorithm = self.params.opt_method

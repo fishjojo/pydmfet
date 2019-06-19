@@ -1,26 +1,6 @@
 import numpy
 from pyscf.dft import rks
-from pydmfet.qcwrap import fermi
-
-def entropy_corr(mo_occ, smear_sigma):
-
-    if mo_occ is None:
-        return 0.0
-
-    S = 0.0
-    if(smear_sigma >= 1e-8):
-        nmo = mo_occ.size
-        for i in range(nmo):
-            occ_i = mo_occ[i]/2.0 #closed shell
-            if(occ_i > 1e-8 and occ_i < 1.0-1e-8):
-                S += occ_i * numpy.log(occ_i) + (1.0-occ_i) * numpy.log(1.0-occ_i)
-            else:
-                S += 0.0
-
-    energy = 2.0*S*smear_sigma
-    print ('entropy correction: ',energy)
-    return energy
-
+from .fermi import find_efermi, entropy_corr
 
 def energy_elec(ks, dm=None, h1e=None, vhf=None):
 
@@ -54,7 +34,7 @@ def get_occ(mf, mo_energy=None, mo_coeff=None, smear_sigma = None):
     e_fermi = e_homo
 
     if(smear_sigma > 1e-8):
-        e_fermi, mo_occ = fermi.find_efermi(mo_energy, smear_sigma, Nocc, nmo)
+        e_fermi, mo_occ = find_efermi(mo_energy, smear_sigma, Nocc, nmo)
 
     mo_occ *= 2.0  #closed shell
 
@@ -65,7 +45,7 @@ def get_occ(mf, mo_energy=None, mo_coeff=None, smear_sigma = None):
     print ("fermi energy: ", e_fermi)
     numpy.set_printoptions(precision=4)
     flag = mo_occ > 1e-4
-    print mo_occ[flag]
+    print (mo_occ[flag])
     numpy.set_printoptions()
 
     return mo_occ

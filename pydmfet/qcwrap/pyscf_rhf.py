@@ -1,5 +1,6 @@
 import numpy as np
 from pydmfet import tools
+from .fermi import find_efermi, entropy_corr
 from pyscf import ao2mo, gto, scf, dft, lib
 from pydmfet.qcwrap import fermi
 import time
@@ -26,7 +27,7 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
     if(smear_sigma < 1e-8): #T=0
         mo_occ[:Nocc] = 1.0
     else: #finite T
-        e_fermi, mo_occ = fermi.find_efermi(eigenvals, smear_sigma, Nocc, Norb)
+        e_fermi, mo_occ = find_efermi(eigenvals, smear_sigma, Nocc, Norb)
 
     mo_occ*=2.0 #closed shell
 
@@ -45,17 +46,10 @@ def scf_oei( OEI, Norb, Nelec, smear_sigma = 0.0):
 
     energy = np.trace(np.dot(RDM1,OEI))
 
-    S = 0.0
-    if(smear_sigma >= 1e-8):
-        for i in range(Norb):
-            occ_i = mo_occ[i] / 2.0
-            if(occ_i > 1e-8 and occ_i < 1.0-1e-8):
-                S += occ_i * np.log(occ_i) + (1.0-occ_i) * np.log(1.0-occ_i)
-            else:
-                S += 0.0
+    es = entropy_corr(mo_occ, smear_sigma)
+    print ('entropy correction: ', es)
 
-    print ('entropy correction: ',2.0*S*smear_sigma)
-    energy += 2.0*S*smear_sigma
+    energy += es
     print ('e_tot = ', energy)
 
     return ( energy, RDM1, eigenvecs, eigenvals, mo_occ )

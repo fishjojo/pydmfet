@@ -1,6 +1,6 @@
 import numpy as np
 from pydmfet import tools
-from pydmfet.qcwrap import fermi
+from .fermi import find_efermi, entropy_corr
 from pyscf import ao2mo, gto, scf, dft, lib
 from pyscf.scf import hf, rohf, uhf
 from pyscf.dft import rks
@@ -123,7 +123,7 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
     e_fermi = e_homo
 
     if(smear_sigma > 1e-8):
-        e_fermi, mo_occ = fermi.find_efermi(mo_energy, smear_sigma, Nocc, nmo)
+        e_fermi, mo_occ = find_efermi(mo_energy, smear_sigma, Nocc, nmo)
 
     mo_occ *= 2.0  #closed shell
 
@@ -216,7 +216,7 @@ class rhf_pyscf(hf.RHF):
 
         e1 = np.einsum('ji,ji', h1e.conj(), dm).real
         e_coul = np.einsum('ji,ji', vhf.conj(), dm).real * .5
-        es = entropy_corr(mf,mo_occ, mf.smear_sigma)
+        es = entropy_corr(mo_occ, mf.smear_sigma)
         tot_e = e1 + e_coul + es
 
         return tot_e, e_coul
@@ -278,7 +278,7 @@ class rks_pyscf(rks.RKS):
         e1 = np.einsum('ij,ji', h1e, dm).real
         es = 0.0
         if (hasattr(mf,'smear_sigma')):
-            es = entropy_corr(mf,mo_occ, mf.smear_sigma)
+            es = entropy_corr(mo_occ, mf.smear_sigma)
         tot_e = e1 + vhf.ecoul + vhf.exc + es
     
         return tot_e, vhf.ecoul+vhf.exc
@@ -404,24 +404,4 @@ def prune_small_rho_grids_(ks, mol, dm, grids, n_core_elec = 0.0):
     return grids
 
 
-
-def entropy_corr(mf,mo_occ, smear_sigma=0.0):
-
-    if mo_occ is None:
-        return 0.0
-
-    S = 0.0
-    if(smear_sigma >= 1e-8):
-        nmo = mo_occ.size
-        for i in range(nmo):
-            occ_i = mo_occ[i]/2.0 #closed shell
-            if(occ_i > 1e-8 and occ_i < 1.0-1e-8):
-                S += occ_i * np.log(occ_i) + (1.0-occ_i) * np.log(1.0-occ_i)
-            else:
-                S += 0.0
-
-    energy = 2.0*S*smear_sigma
-    print ('entropy correction = ',energy)
-
-    return energy
 
