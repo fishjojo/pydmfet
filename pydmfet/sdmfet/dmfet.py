@@ -146,6 +146,9 @@ class DMFET:
             print ("dim_big = ", self.dim_big)
             #################
 
+        #debug
+        self.dim_big = self.dim_sub
+
         self.ao2sub = np.dot(self.ints.ao2loc, self.loc2sub)
         #tools.MatPrint(self.ao2sub,'ao2sub')
 
@@ -320,7 +323,6 @@ class DMFET:
 
         #dim_big = self.dim_frag + self.dim_bath
         dim_big = self.dim_big
-        dim_big = self.dim_sub
         '''
         occ_mo_imp = self.frag_mo[:,:self.Ne_frag//2]
         occ_mo_bath = self.env_mo[:,:self.Ne_env//2]

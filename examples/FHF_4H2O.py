@@ -87,10 +87,9 @@ for thestructure in range(17,18):
 			l2_lambda = 0.0, oep_print = 0, svd_thresh=1e-6)
     theDMFET = sdmfet.DMFET(mf, mol_frag, mol_env, myInts, impurities, impAtom, Ne_frag,\
                         boundary_atoms=boundary_atoms, boundary_atoms2=None,\
-                        dim_imp =None, dim_bath =None,dim_big=None, oep_params=params, ecw_method = 'ccsd',mf_method = mf.xc)
+                        dim_imp =None, dim_bath =None,dim_big=None, oep_params=params, ecw_method = 'hf',mf_method = mf.xc)
 
     umat = theDMFET.embedding_potential()
-    exit()
     e_corr = theDMFET.correction_energy()
 
     e_tot = e_mf + e_corr

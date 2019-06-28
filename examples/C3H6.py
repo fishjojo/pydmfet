@@ -1,4 +1,5 @@
 from pydmfet import locints, sdmfet,oep,tools,dfet_ao
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
 from pyscf import gto, scf, ao2mo
 import numpy as np
 from pyscf.tools import molden
@@ -19,7 +20,7 @@ mol.build(max_memory = 4000, verbose=4)
 
 
 #mf = scf.UKS(mol)
-mf = dfet_ao.scf.EmbedSCF(mol, 0.0, smear_sigma = temp)
+mf = rks_ao(mol,smear_sigma = temp)
 mf.xc = "pbe,pbe"
 mf.max_cycle = 50
 
@@ -67,15 +68,14 @@ boundary_atoms2 = np.zeros([natoms])
 boundary_atoms[5] = 1
 boundary_atoms2[5] = -1
 
-#umat = np.loadtxt('umat.gz')
 
-umat = read_umat(72,"C3H6.u")
+#umat = read_umat(72,"C3H6.u")
 
 params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
-                       ftol = 1e-8, gtol = 2e-5,diffP_tol=1e-4, outer_maxit = 20, maxit = 100,l2_lambda = 0.0, oep_print = 0)
+                       ftol = 1e-8, gtol = 1e-5,diffP_tol=1e-4, outer_maxit = 20, maxit = 50,l2_lambda = 0.0, oep_print = 0)
 
 theDMFET = dfet.DFET(mf, mol_frag, mol_env,Ne_frag,Ne_env,\
-                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat=umat,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat=None,\
                      oep_params=params, smear_sigma=temp, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
 
 '''
