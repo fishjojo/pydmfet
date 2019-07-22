@@ -2,16 +2,14 @@ import os,sys
 import ctypes
 import numpy as np
 from scipy import optimize
+from pydmfet import qcwrap,tools,subspac, libgen
+import time,copy
 from pyscf import lib, scf, mp, lo
 from pyscf.tools import cubegen
-import time,copy
-from pydmfet import qcwrap,tools,subspac, libgen
 from pydmfet.libcpp import oep_hess, oep_hess_old, mkl_svd
 from pydmfet.opt import newton
-from pydmfet.oep import OEPparams, ObjFunc_WuYang
-from pydmfet.oep.oep_optimize import OEP_Optimize
 
-def init_umat_invks(oep):
+def init_umat(oep):
 
     dim = oep.dim
     Ne = oep.Ne_frag + oep.Ne_env
@@ -75,83 +73,41 @@ def wy_oep_cost(x, P_ref, dim, Ne, subOEI, subTEI,coredm,ao2sub,mf_method,mol):
 
     return (-energy,grad)
 
-
-def init_umat(oep, dim, umat_init_method = "zero"):
-
-    if umat_init_method.upper() == "ZERO":
-        zero_mat = np.zeros([dim,dim], dtype = float)
-        if isinstance(oep.P_ref, np.ndarray):
-            return zero_mat
-        else:
-            return [zero_mat,zero_mat]
-    else:
-        raise NotImplementedError("umat init method: %s, is not implemented" % umat_init_method)
-
 class OEP:
 
     def __init__(self, embedobj, params):
 
-        if not isinstance(params, OEPparams):
-            raise TypeError("%s is not an instance of pydmfet.oep.OEPparams" % params)
-        self.params   = params
-
-        self.mol_full = getattr(embedobj, 'mol_full', None)
-        self.mol_frag = getattr(embedobj, 'mol_frag', None)
-        self.mol_env  = getattr(embedobj, 'mol_env', None)
-
-        self.Ne_frag  = getattr(embedobj, 'Ne_frag', None)
-        self.Ne_env   = getattr(embedobj, 'Ne_env', None)
-
-        self.mf_full  = getattr(embedobj, 'mf_full', None)
-        self.mf_frag  = None
-        self.mf_env   = None
-
-        self.P_ref    = getattr(embedobj, 'P_ref', None)
-        if self.P_ref is None:
-            raise RuntimeError("reference density not defined")
-
-        self.dim      = 0
-        if isinstance(self.P_ref, np.ndarray):
-            self.dim  = self.P_ref.shape[0]
-        else:
-            self.dim  = self.P_ref[0].shape[0]
-
-        self.P_imp    = getattr(embedobj, 'P_imp', None)
-        self.P_bath   = getattr(embedobj, 'P_bath', None)
-        if self.P_imp is None or self.P_bath is None:
-            raise RuntimeError("initial density partition not defined")
-
-
-        self.umat     = getattr(embedobj, 'umat', None)
-        if self.umat is None:
-            self.umat = init_umat(self, dim, params.umat_init_method)
-
-        self.ao_bas_tab_frag = getattr(embedobj, 'ao_bas_tab_frag', None)
-
-        #v2m function, can use symmetry if required
-        self.v2m      = tools.vec2mat 
-        self.sym_tab  = getattr(embedobj, 'sym_tab', None)
-
-        #attributes associated with scf calculations
-        self.use_suborb  = getattr(embedobj, 'use_suborb', False)
-        self.mf_method   = getattr(embedobj, 'mf_method', 'lda,vwn')
-        self.smear_sigma = getattr(embedobj, 'smear_sigma', 0.0)
-        self.ops         = getattr(embedobj, 'ops', None)
-        self.ao2sub      = getattr(embedobj, 'ao2sub', None)
-        self.core1PDM_ao = getattr(embedobj, 'core1PDM_ao', None)
-
-        '''
+        self.ks = embedobj.mf_full
+        self.ks_frag = None
+        self.ks_env = None
+        self.cluster = embedobj.cluster
+        self.mol = embedobj.mol
+        self.mol_frag = embedobj.mol_frag
+        self.mol_env = embedobj.mol_env
+        self.P_ref = embedobj.P_ref_sub
+        self.umat = embedobj.umat
+        self.dim = embedobj.dim_sub
         self.dim_imp = embedobj.dim_imp
         #self.dim_imp_virt = embedobj.dim_imp_virt
         self.dim_bath = embedobj.dim_bath
-
+        self.Ne_frag = embedobj.Ne_frag
+        self.Ne_env = embedobj.Ne_env
         self.loc2sub = embedobj.loc2sub
+        self.ao2sub = embedobj.ao2sub
         self.impAtom = embedobj.impAtom
+        self.boundary_atoms = embedobj.boundary_atoms
+        self.core1PDM_loc = embedobj.core1PDM_loc
+        self.core1PDM_ao = embedobj.core1PDM_ao
         self.ints = embedobj.ints
+        self.ops = embedobj.ops
+        self.mf_method = embedobj.mf_method
+        self.P_imp = embedobj.P_imp
+        self.P_bath = embedobj.P_bath
         self.impJK_sub = None
         self.bathJK_sub = None
 
         self.Kcoeff = embedobj.Kcoeff
+        self.smear_sigma = embedobj.smear_sigma
 
         self.frag_mo = None
         self.env_mo = None
@@ -159,96 +115,95 @@ class OEP:
         self.P_frag_loc = embedobj.P_frag_loc
         self.P_env_loc = embedobj.P_env_loc
 
+        self.params = params
         self.gtol_dyn = self.params.gtol
-        '''
+
 
     def kernel(self):
 
         dim = self.dim
-        params = self.params
 
-        P_imp_0  = copy.copy(self.P_imp)
-        P_bath_0 = copy.copy(self.P_bath)
 
-        algorithm = params.algorithm
+        #debug
+#       Ne_frag = copy.copy(self.Ne_frag)
+#       P_ref = copy.copy(self.P_ref)
+#        self.Ne_frag = 0
+#        self.P_ref = self.P_bath
+        if(self.umat is None):
+            self.umat = np.zeros([dim,dim],dtype=float)
+
+        algorithm = self.params.algorithm
         if(algorithm == '2011'):
+            self.init_density_partition()
+            self.P_imp0 = self.P_imp
+            self.P_bath0 = self.P_bath
+            #self.umat = init_umat(self)
             self.umat = self.oep_old(self.umat)
-        elif(algorithm.lower() == 'split'):
-            self.umat = self.oep_loop(self.umat)
-        elif(algorithm.lower() == 'leastsq'):
+        elif(algorithm == 'split'):
+            '''
+            maxit = 10
+            it = 0
+            umat = self.umat
+            while it<maxit:
+                it += 1
+
+                umat = self.oep_loop(umat)
+                if(it > 1):
+                    du = abs(np.linalg.norm(umat) - np.linalg.norm(umat_old))
+                    print '|umat-umat_old| = ', du
+                    if(du < 1e-2): 
+                        break
+                    if(it==maxit):
+                        print 'umat not converge'
+                        break
+
+                umat_old = umat.copy()
+                umat = self.opt_umat_2(umat, tol=1e-6)
+            '''
+            umat = self.oep_loop(self.umat)
+
+            #tools.MatPrint(umat,"umat")
+            #umat = self.opt_umat_2(umat, tol=1e-9)
+            #tools.MatPrint(umat,"umat")
+
+            self.umat = umat
+
+        elif(algorithm == 'leastsq'):
             self.umat = self.oep_leastsq(self.umat)
 
-        #print ('sum (diag(umat)) = ', np.sum( np.diag( self.umat )) )
+        print ('sum (diag(umat)) = ', np.sum( np.diag( self.umat )) )
+
+        self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
+
+        #tools.MatPrint(self.umat,"umat")
+        #self.umat = self.oep_old(self.umat)
+
+        #self.umat = self.opt_umat_2(self.umat, tol=1e-9)
+        #self.umat = self.opt_umat_homo_diff(self.umat,gtol=1e-6)
         #self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
 
         self.P_imp, self.P_bath = self.verify_scf(self.umat)
 
-        print ('|P_imp-P_imp_0| = ', tools.mat_diff_norm(self.P_imp, P_imp_0)) 
-        print ('max(P_imp-P_imp_0) = ', tools.mat_diff_max(self.P_imp, P_imp_0))
+        print ('|P_imp-P_imp_0|', np.linalg.norm(self.P_imp - self.P_imp0), np.amax(np.absolute(self.P_imp - self.P_imp0)) )
+        print ('|P_bath-P_bath_0|', np.linalg.norm(self.P_bath - self.P_bath0), np.amax(np.absolute(self.P_bath - self.P_bath0)) )
 
-        print ('|P_bath-P_bath_0| = ', tools.mat_diff_norm(self.P_bath, P_bath_0)) 
-        print ('max(P_bath-P_bath_0) = ', tools.mat_diff_max(self.P_bath, P_bath_0))
-
+        #tools.MatPrint(self.P_imp,"P_imp")
+        #tools.MatPrint(self.P_bath,"P_bath")
+        #tools.MatPrint(self.umat,"umat")
         return self
 
 
-    def oep_old(self, umat0):
+    def oep_old(self, _umat):
 
         '''
-        Extended Wu-Yang method
-        JCP, 134, 154110 (2011)
+        extended Wu-Yang 2011
         '''
 
-        t0 = (time.clock(),time.time())
-       
-        params = self.params
-        dim = self.dim
-        sym_tab = self.sym_tab
+        umat = _umat.copy()
+#       if(self.P_imp is None):
+#           self.init_density_partition()
 
-        x0 = self.v2m(umat0, dim, False, sym_tab)
-        func = ObjFunc_WuYang 
-        scf_solver = qcwrap.qc_scf 
-
-        if self.use_suborb:
-            #sdmfet
-            ops = self.ops
-            kin = ops["subKin"]
-            vnuc_frag = ops["subVnuc1"]
-            vnuc_env  = ops["subVnuc2"]
-            vnuc_bound_frag = ops["subVnuc_bound1"]
-            vnuc_bound_env  = ops["subVnuc_bound2"]
-            coreJK = ops["subCoreJK"]
-            tei = ops["subTEI"]
-
-            oei_frag = kin + vnuc_frag + vnuc_bound_frag
-            oei_env  = kin + vnuc_env + vnuc_bound_env + coreJK
-
-            dm0_frag = None
-            dm0_env  = None
-
-            ao2sub = self.ao2sub[:,:dim]
-
-            scf_args_frag = {'mol':self.mol_frag, 'Ne':self.Ne_frag, 'Norb':dim, 'method':self.mf_method,\
-                             'oei':oei_frag, 'tei':tei, 'dm0':dm0_frag, 'coredm':0.0, \
-                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,} 
-
-            scf_args_env  = {'mol':self.mol_env, 'Ne':self.Ne_env, 'Norb':dim, 'method':self.mf_method,\
-                             'oei':oei_env, 'tei':tei, 'dm0':dm0_env, 'coredm':self.core1PDM_ao, \
-                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
-
-        else:
-            #dmfet
-            raise NotImplementedError("dmfet NYI")
-
-
-        func_args = (self.v2m, sym_tab, scf_solver, self.P_ref, dim, self.use_suborb, scf_args_frag, scf_args_env,) 
- 
-        optimizer = OEP_Optimize(params.opt_method, params.options, x0, func, func_args)
-        x = optimizer.kernel() 
-
-        umat = self.v2m(x, dim, True, sym_tab)
-
-        t1 = tools.timer("embedding potential optimization (extended Wu-Yang)", t0)
+        umat = self.oep_base(umat, False)
 
         return umat
 
@@ -270,7 +225,7 @@ class OEP:
         elif(method == 3):
             print ("Pipek-Mezey density partition")
             nocc = 0
-            nbas = self.ao_bas_tab_frag.size
+            nbas = self.cluster.size
             for i in range(nbas):
                 if(abs(self.ks.mo_occ[i] - 2.0)<1e-8):
                     nocc += 1
@@ -284,7 +239,7 @@ class OEP:
                 Pi[i,:,:] = 2.0*np.outer(mo_pipek[:,i],mo_pipek[:,i])
                 PiS = np.dot(Pi[i,:,:],s)
                 for j in range(nbas):
-                    if(self.ao_bas_tab_frag[j] == 1):
+                    if(self.cluster[j] == 1):
                         pop[i] += PiS[j,j]
 
             print ("Mulliken pop.:")
@@ -492,6 +447,9 @@ class OEP:
         subTEI = ops["subTEI"]
         subOEI1 = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]
         subOEI2 = ops["subKin"]+ops["subVnuc2"]+ops["subVnuc_bound2"]+ops["subCoreJK"]
+        if(umat is not None):
+            subOEI1 = subOEI1 + umat
+            subOEI2 = subOEI2 + umat
 
 
         coredm = self.core1PDM_ao
@@ -518,12 +476,11 @@ class OEP:
         else:
             frag_coredm_guess = self.P_imp
 
-        mf_frag = qcwrap.qc_scf(True, mol=self.mol_frag, Ne=Ne_frag, Norb=dim, method=self.mf_method,\
-                                vext_1e=umat, oei=subOEI1, tei=subTEI,\
-                                dm0=frag_coredm_guess, coredm=0.0, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
+        mf_frag = qcwrap.qc_scf(Ne_frag,dim,self.mf_method,mol=self.mol_frag,oei=subOEI1,tei=subTEI,\
+                                dm0=frag_coredm_guess,coredm=0.0,ao2sub=ao2sub, smear_sigma = self.smear_sigma)
         #mf_frag.init_guess =  'minao'
         mf_frag.conv_check = False
-        mf_frag.kernel()
+        mf_frag.runscf()
         FRAG_energy = mf_frag.elec_energy
         FRAG_1RDM = mf_frag.rdm1
         frag_mo = mf_frag.mo_coeff
@@ -537,12 +494,11 @@ class OEP:
         else:
             env_coredm_guess = self.P_bath
 
-        mf_env = qcwrap.qc_scf(True, mol=self.mol_env, Ne=Ne_env, Norb=dim, method=self.mf_method, \
-                               vext_1e=umat, oei=subOEI2, tei=subTEI,\
-                               dm0=env_coredm_guess, coredm=coredm, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
+        mf_env = qcwrap.qc_scf(Ne_env,dim,self.mf_method,mol=self.mol_env,oei=subOEI2,tei=subTEI,\
+                               dm0=env_coredm_guess,coredm=coredm,ao2sub=ao2sub, smear_sigma = self.smear_sigma)
         #mf_env.init_guess =  'minao'
         mf_env.conv_check = False #temp
-        mf_env.kernel()
+        mf_env.runscf()
         ENV_energy = mf_env.elec_energy
         ENV_1RDM = mf_env.rdm1
         env_mo = mf_env.mo_coeff
@@ -1255,6 +1211,30 @@ class OEP:
 
         return (f, grad)
 
+
+
+    def l2_reg(self, x):
+
+        target = 0.0
+
+        dim = self.dim
+        u = tools.vec2mat(x, dim)
+        u_norm = np.linalg.norm(u)
+        f = self.params.l2_lambda * ((u_norm - target)**2)
+
+        if(u_norm <1e-5):
+            g = x*0.0
+        else:
+            g = x*(2.0*self.params.l2_lambda/u_norm)
+
+        index = 0
+        for j in range(dim):
+            g[index] = g[index]/2.0
+            index += dim-j
+
+        g *= 2.0*(u_norm-target)
+
+        return (f,g)
 
 
 

@@ -16,7 +16,7 @@ energies = []
 bas = 'sto-6g'
 #bas = 'cc-pvdz'
 
-temp = 0.01
+temp = 0.005
 
 for bondlength in bondlengths:
 
@@ -126,19 +126,19 @@ for bondlength in bondlengths:
         boundary_atoms = None
         boundary_atoms2 =None
 
-        umat = read_umat(20,"hydrogen.u")
+        #umat = read_umat(20,"hydrogen.u")
         #P_frag=0.5*mf.make_rdm1()
         #P_env=0.5*mf.make_rdm1()
         P_frag=None
         P_env=None
-        params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
-                       ftol = 1e-8, gtol = 2e-5,diffP_tol=2e-5, outer_maxit = 50, maxit = 100,l2_lambda = 0.0, oep_print = 0,svd_thresh=1e-5)
+        params = oep.OEPparams(algorithm = 'split', opt_method = 'trust-ncg', \
+                       ftol = 1e-8, gtol = 1e-4,diffP_tol=1e-4, outer_maxit = 50, maxit = 100,l2_lambda = 0.0, oep_print = 0,svd_thresh=1e-5)
 #       theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
 #                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
 #                         dim_imp = nbas, dim_bath=nbas, dim_big =None, smear_sigma = temp, oep_params=params,ecw_method='hf', mf_method =mf.xc)
 
         theDMFET = dfet.DFET(mf, mol_frag, mol_env,Ne_frag,Ne_env,\
-                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat = umat,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat = None,\
                      oep_params=params, smear_sigma=temp, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
 
 

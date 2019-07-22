@@ -6,11 +6,12 @@ from pyscf.scf import hf, rohf, uhf
 from pyscf.dft import rks
 import time
 
-def _scf_common_init(mf, Ne, Norb, mol0=None, oei=None, tei=None, ovlp=1, dm0=None, coredm=0.0, ao2sub=1.0, mf_method='LDA'):
+def _scf_common_init(mf, Ne, Norb, mol0=None, vext_1e=None, oei=None, tei=None, ovlp=1, dm0=None, coredm=0.0, ao2sub=1.0, mf_method='lda,vwn'):
 
         mf.Ne = Ne
         mf.Norb = Norb
 
+        mf.vext_1e = vext_1e
         mf.oei = oei
         mf.tei = tei
         mf.ovlp = ovlp
@@ -70,6 +71,9 @@ def get_hcore(mf, mol = None):
     else:
         h = hf.get_hcore(mol)
 
+    if mf.vext_1e is not None:
+        h = h + mf.vext_1e
+
     return h
 
 
@@ -82,15 +86,23 @@ def energy_tot(mf, dm=None, h1e=None, vhf=None, mo_occ = None):
         e_tot = mf.energy_elec(dm, h1e, vhf, mo_occ)[0]# + mf.energy_nuc()
     return e_tot.real
 
-def runscf(mf):
 
-    mf.kernel(mf.dm_guess)
-    if ( mf.converged == False ):
-        print ("scf not converged!")
-        #raise Exception("scf not converged!")
+def kernel(mf, dm0=None, **kwargs):
 
-    rdm1 = mf.make_rdm1()
-    mf.rdm1 = 0.5*(rdm1.T + rdm1)
+    if dm0 is None:
+        dm0 = mf.dm_guess
+
+    mf.converged, mf.e_tot, \
+                mf.mo_energy, mf.mo_coeff, mf.mo_occ = \
+                hf.kernel(mf, mf.conv_tol, mf.conv_tol_grad,
+                          dm0=dm0, callback=mf.callback,
+                          conv_check=mf.conv_check, **kwargs)
+
+    if (mf.converged == False ):
+        #print ("scf did not converge")
+        raise RuntimeError("scf did not converge")
+
+    mf.rdm1 = mf.make_rdm1()
     mf.elec_energy = mf.energy_elec(mf.rdm1)[0]
 
 
@@ -143,10 +155,10 @@ def get_occ(mf, mo_energy=None, mo_coeff=None):
 
 class rohf_pyscf(rohf.ROHF):
 
-    def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
+    def __init__(self, Ne, Norb, mol=None, vext_1e=None, oei=None, tei=None, ovlp=1, dm0=None, \
                  coredm=0.0, ao2sub=1.0):
 
-        mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
+        mol = _scf_common_init(self, Ne, Norb, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
         rohf.ROHF.__init__(self, mol)
 
         if(self.tei is not None):
@@ -165,10 +177,10 @@ class rohf_pyscf(rohf.ROHF):
 
 class uhf_pyscf(uhf.UHF):
 
-    def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
+    def __init__(self, Ne, Norb, mol=None, vext_1e=None, oei=None, tei=None, ovlp=1, dm0=None, \
                  coredm=0.0, ao2sub=1.0):
 
-        mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
+        mol = _scf_common_init(self, Ne, Norb, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
         uhf.UHF.__init__(self, mol)
 
         if(self.tei is not None):
@@ -194,10 +206,10 @@ class rhf_pyscf(hf.RHF):
         wrapper for scf.hf module of pyscf
     '''
 
-    def __init__(self, Ne, Norb, mol=None, oei=None, tei=None, ovlp=1, dm0=None, \
+    def __init__(self, Ne, Norb, mol=None, vext_1e = None, oei=None, tei=None, ovlp=1, dm0=None, \
                  coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
 
-        mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='HF')
+        mol = _scf_common_init(self, Ne, Norb, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='hf')
         self.smear_sigma = smear_sigma
         hf.RHF.__init__(self, mol)
         self.level_shift = level_shift
@@ -225,7 +237,7 @@ class rhf_pyscf(hf.RHF):
     get_ovlp = get_ovlp
     get_hcore = get_hcore
     energy_tot = energy_tot
-    runscf = runscf
+    kernel = kernel
     get_occ = get_occ
     init_guess_by_minao = init_guess_by_minao
 
@@ -236,10 +248,10 @@ class rks_pyscf(rks.RKS):
         wrapper for dft.rks module of pyscf
     '''
 
-    def __init__(self, Ne, Norb, mf_method, mol=None, oei=None, tei=None, ovlp=1, dm0=None,\
+    def __init__(self, Ne, Norb, mf_method, mol=None, vext_1e = None, oei=None, tei=None, ovlp=1, dm0=None,\
                  coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
 
-        mol = _scf_common_init(self, Ne, Norb, mol, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method)
+        mol = _scf_common_init(self, Ne, Norb, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method)
         self.smear_sigma = smear_sigma
         rks.RKS.__init__(self, mol)
         self.xc = self.method
@@ -262,7 +274,7 @@ class rks_pyscf(rks.RKS):
 
     get_ovlp = get_ovlp
     get_hcore = get_hcore
-    runscf = runscf
+    kernel = kernel
     energy_tot = energy_tot
     get_occ = get_occ
     init_guess_by_minao = init_guess_by_minao

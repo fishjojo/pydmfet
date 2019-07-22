@@ -93,7 +93,7 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     else:
         raise RuntimeError("something is wrong!")
 
-    if isinstance(dm_last, numpy.ndarray): dm_last += ks.coredm 
+    if isinstance(dm_last, numpy.ndarray): dm_last = dm_last + ks.coredm 
 
     vxc = rks.get_veff(ks, mol, dm, dm_last, vhf_last, hermi)
 

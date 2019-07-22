@@ -8,7 +8,7 @@ from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
 
 class proj_embed:
 
-    def __init__(self, mf_full, cluster, Ne_env = None, loc_method = 'PM', pop_method = 'meta_lowdin', pm_exponent=2, mu = 1e7):
+    def __init__(self, mf_full, cluster, Ne_env = None, loc_method = 'PM', pop_method = 'meta_lowdin', pm_exponent=2, mu = 1e5):
 
         self.mf_full = mf_full
         self.mol = mf_full.mol
@@ -45,11 +45,14 @@ class proj_embed:
             norb = mol.nelectron // 2
 
         mo_lo = None
-        if(loc_method == 'PM'):
+        if(loc_method.upper() == 'PM'):
             pm = lo.pipek.PM(mol)
             pm.pop_method = pop_method
             pm.exponent = pm_exponent
             mo_lo = pm.kernel(mf.mo_coeff[:,:norb], verbose=4)
+        elif(loc_method.upper() == 'BOYS'):
+            boys = lo.boys.Boys(mol)
+            mo_lo = boys.kernel(mf.mo_coeff[:,:norb], verbose=4)
         else:
             raise NotImplementedError('loc_method %s' % loc_method)
 

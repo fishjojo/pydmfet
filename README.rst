@@ -13,4 +13,5 @@ PyDMFET depends on PySCF, Wannier90, Numpy and Scipy.
 Citing PyDMFET
 ==============
 The following paper should be cited in publications utilizing the PyDMFET package:
+
 DOI: 10.1021/acs.jctc.8b00990

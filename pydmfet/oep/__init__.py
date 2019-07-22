@@ -1,5 +1,6 @@
-from pydmfet.oep import oep_main, oep_params
-from pydmfet.oep.oep_params import *
+from .oep_params import *
+from .func_wuyang import *
+from . import oep_main
 
 def OEP(embedobj,params,*args):
 

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <math.h>
 #include <vector>
+#include <iomanip>
 //#include <rank_revealing_algorithms_intel_mkl.h>
 
 //#include <pybind11/pybind11.h>
@@ -15,6 +16,9 @@ extern "C" {
 
 int degen_subspac(vector<vector<int>> &sub, double* occ, double* mo_energy, int norb, double tol =1e-8);
 void make_degen_factor(double* jt, vector<vector<int>> sub, double* jCa, double* occ, int nsub, int norb, int NBas );
+void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ,
+                            int dim, int NBas, int NAlpha, int nthread, double smear=0.0, double tol=1e-8);
+
 
 void VRadd(double* C, double* A, double* B, int N)
 {
@@ -169,7 +173,7 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
 
 
 void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ, 
-			    int dim, int NBas, int NAlpha, int nthread, double smear=0.0, double tol=1e-8)
+			    int dim, int NBas, int NAlpha, int nthread, double smear, double tol)
 {
    //clock_t startcputime = clock();
    //auto wcts = chrono::system_clock::now();
@@ -277,7 +281,8 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
 	   cout<<endl;
 	}
      }
-     //nsub = 0;
+
+     nsub = 0; cout<<"ignore degenerate orbital contribution"<<endl;
 
      //orbital energy part
      for(int i=0; i<NOrb; i++){
@@ -307,7 +312,6 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
 
 	delete [] jt;
      }
-
 
      //chemical potential part
      for(int i=0; i<NOrb; i++){

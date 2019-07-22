@@ -30,8 +30,7 @@ for thestructure in range(17,18):
     mf.xc = 'pbe,pbe'
     mf.max_cycle = 100
     mf.verbose = 3
-    DMguess = None
-    mf.scf(dm0=DMguess)
+    mf.scf(dm0=None)
     e_mf = mf.e_tot
     print ("e_mf = ", e_mf)
 
@@ -66,30 +65,22 @@ for thestructure in range(17,18):
     for i in range(natoms):
         if(impAtom[i] == 1):
             impurities[aoslice[i,2]:aoslice[i,3]] = 1
-#    for i in range(mol.nao_nr()):
-#	impurities[i] = 1
 
-#    for i in range(natoms):
-#        print aoslice[i,2],aoslice[i,3]
+
+    params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
+    params.options['maxit'] = 3
+    params.options['ftol']  = 1e-8
+    params.options['gtol']  = 1e-4
+    params.options['svd_thresh'] = 1e-6  
 
 
     Ne_frag = 20
-    boundary_atoms = np.zeros([natoms], dtype=int)
-    #boundary_atoms[5] = 1
-    #boundary_atoms[8]=1
-    #boundary_atoms[9]=1
-    #boundary_atoms[12]=1
-    boundary_atoms =  None
-
-    nbas = mol.nao_nr()
-    params = oep.OEPparams(algorithm = 'split', opt_method = 'trust-ncg', \
-                        ftol = 1e-8, gtol = 1e-4,diffP_tol=1e-4, outer_maxit = 20, maxit = 100,\
-			l2_lambda = 0.0, oep_print = 0, svd_thresh=1e-6)
     theDMFET = sdmfet.DMFET(mf, mol_frag, mol_env, myInts, impurities, impAtom, Ne_frag,\
-                        boundary_atoms=boundary_atoms, boundary_atoms2=None,\
+                        boundary_atoms=None, boundary_atoms2=None,\
                         dim_imp =None, dim_bath =None,dim_big=None, oep_params=params, ecw_method = 'hf',mf_method = mf.xc)
 
     umat = theDMFET.embedding_potential()
+    exit()
     e_corr = theDMFET.correction_energy()
 
     e_tot = e_mf + e_corr

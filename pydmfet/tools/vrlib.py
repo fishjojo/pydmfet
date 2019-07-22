@@ -1,15 +1,40 @@
 import numpy as np
 from functools import reduce
 
+def mat_diff_norm(P1,P2):
+
+    if isinstance(P1,np.ndarray) and isinstance(P2,np.ndarray):
+        return np.linalg.norm(P1 - P2)
+    elif isinstance(P1,float) or isinstance(P2,float):
+        return np.linalg.norm(P1 - P2)
+    else:
+        #list of matrices
+        res = []
+
+        for i in range(len(P1)):
+            res.append(np.linalg.norm(P1[i] - P2[i]))
+        return res
+
+def mat_diff_max(P1,P2):
+
+    if isinstance(P1,np.ndarray) and isinstance(P2,np.ndarray):
+        return np.amax(np.absolute(P1 - P2))
+    elif isinstance(P1,float) or isinstance(P2,float):
+        return np.amax(np.absolute(P1 - P2))
+    else:
+        #list of matrices
+        res = []
+
+        for i in range(len(P1)):
+            res.append(np.amax(np.absolute(P1[i] - P2[i])))
+        return res
+
+
 def fock2onedm(fock, NOcc):
 
-    eigenvals, eigenvecs = np.linalg.eigh(fock) # Does not guarantee sorted eigenvectors!
-    idx = eigenvals.argsort()
-    eigenvals = eigenvals[idx]
-    eigenvecs = eigenvecs[:,idx]
-    OneDM = 2 * np.dot( eigenvecs[:,:NOcc] , eigenvecs[:,:NOcc].T )
-
-    OneDM = 0.5*(OneDM + OneDM.T)
+    eigenvals, eigenvecs = np.linalg.eigh(fock)
+    OneDM = 2.0 * np.dot( eigenvecs[:,:NOcc] , eigenvecs[:,:NOcc].T )
+    OneDM = 0.5 * (OneDM + OneDM.T)
 
     print ("mo energy:")
     print (eigenvals)
@@ -27,15 +52,50 @@ def fock2mo(fock,NOcc):
     return (mo_coeff, mo_energy, mo_occ)
 
 
-def vec2mat(x, dim):
+def vec2mat(data, dim, is_v2m=True, sym_tab = None):
 
-    mat = np.zeros((dim,dim),dtype=np.double)
-    iu = np.triu_indices(dim)
-    mat[iu] = x
-    mat = np.tril(mat.T,-1) + mat
+    res = None
 
-    return mat
+    if not (sym_tab is None):
+        ind_dict = dict()
+        for i in range(dim):
+            for j in range(i,dim):
+                ind = sym_tab[i,j]
+                ind2 = (i,j,)
+                if not (ind in ind_dict):
+                    ind_dict.update({ind:[ind2]})
+                else:
+                    ind_dict[ind].append(ind2)
 
+        if is_v2m:
+            res = np.zeros((dim,dim),dtype=np.double)
+            for ind,ind2 in ind_dict.items():
+                for i,value in enumerate(ind2):
+                    res[value[0],value[1]] = data[ind]
+            res = np.tril(res.T,-1) + res
+        else:
+            nelem = len(ind_dict)
+            res = np.zeros(nelem, dtype = np.double)
+            for ind,ind2 in ind_dict.items():
+                res[ind] = data[ind2[0][0], ind2[0][1]]
+
+        return res
+
+
+    if is_v2m:
+        res = np.zeros((dim,dim),dtype=np.double)
+        iu = np.triu_indices(dim)
+        res[iu] = data
+        res = np.tril(res.T,-1) + res
+    else:
+        size = dim*(dim+1)//2
+        res = np.zeros(size,dtype=np.double)
+        iu = np.triu_indices(dim)
+        res = data[iu]
+
+    return res
+
+'''
 def mat2vec(mat, dim):
 
     size = dim*(dim+1)//2
@@ -43,7 +103,7 @@ def mat2vec(mat, dim):
     iu = np.triu_indices(dim)
     x = mat[iu]
     return x
-
+'''
 
 #for H chain minimal basis divided at center
 def mat2vec_hchain(mat,dim):

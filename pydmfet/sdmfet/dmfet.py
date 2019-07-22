@@ -15,10 +15,12 @@ class DMFET:
                  sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
                  plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False, use_umat_ao = False):
 
+        self.use_suborb = True
         self.ints = ints
         self.mf_full = mf_full
         self.mol = self.mf_full.mol
         self.cluster = cluster
+        self.ao_bas_tab_frag = self.cluster
         self.impAtom = impAtom
         self.Ne_frag = Ne_frag
         self.Ne_frag_orig = copy.copy(self.Ne_frag)
@@ -63,11 +65,11 @@ class DMFET:
         oei_loc = ops_loc["locKin"]+ops_loc["locVnuc1"]+ops_loc["locVnuc2"]
         tei_loc = ops_loc["locTEI"]
 
-        mf = qcwrap.qc_scf(self.ints.Nelec, self.ints.NOrb, self.mf_method, mol=self.mol,\
+        mf = qcwrap.qc_scf(True, mol=self.mol, Ne=self.ints.Nelec, Norb=self.ints.NOrb, method=self.mf_method, \
                            oei=oei_loc, tei=tei_loc, dm0=None, coredm=0.0,\
                            ao2sub=self.ints.ao2loc, smear_sigma = self.smear_sigma)
         mf.init_guess = 'minao'
-        mf.runscf()
+        mf.kernel()
         energy = mf.elec_energy + self.ints.energy_nuc()
         print('total scf energy = %.15g ' % energy)
         ##########################
@@ -235,6 +237,7 @@ class DMFET:
                                        self.ints, self.loc2sub, self.core1PDM_loc, self.dim_sub, self.Kcoeff, self.Nelec_core)
 
         self.total_scf_energy()
+        self.P_ref = self.P_ref_sub
 
 
 
@@ -503,9 +506,10 @@ class DMFET:
         
         #dm_guess = tools.fock2onedm(subOEI, Ne//2)[0]
         dm_guess = self.P_ref_sub
-        mf = qcwrap.qc_scf(Ne,Norb,self.mf_method,mol=self.mol,oei=subOEI,tei=subTEI, dm0=dm_guess, coredm=coredm,ao2sub=ao2sub, smear_sigma = self.smear_sigma)
+        mf = qcwrap.qc_scf(True, mol=self.mol, Ne=Ne, Norb=Norb, method=self.mf_method, \
+                           oei=subOEI, tei=subTEI, dm0=dm_guess, coredm=coredm, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
         #mf.init_guess =  'minao'
-        mf.runscf()
+        mf.kernel()
 
         print ('max(P_tot - P_ref) = ', np.amax(np.absolute(mf.rdm1 - self.P_ref_sub)) )
         print ('|P_tot - P_ref| = ',    np.linalg.norm(mf.rdm1 - self.P_ref_sub))
@@ -966,12 +970,14 @@ class DMFET:
         ao2sub = self.ao2sub[:,:dim_big]
         coredm = self.core1PDM_ao
         if(self.mf_method != 'hf'):
-            mf1 = qcwrap.qc_scf(self.Ne_frag,dim_big,self.mf_method,mol=self.mol_frag,oei=None,tei=None,dm0=P_imp_big,coredm=0.0,ao2sub=ao2sub)
+            mf1 = qcwrap.qc_scf(True, mol=self.mol_frag, Ne=self.Ne_frag, Norb=dim_big, method=self.mf_method, \
+                                oei=None,tei=None,dm0=P_imp_big,coredm=0.0,ao2sub=ao2sub)
             vxc_imp_ao = qcwrap.pyscf_rks.get_vxc(mf1, self.mol_frag, tools.dm_sub2ao(P_imp_big, ao2sub))[2]
             JK_imp += tools.op_ao2sub(vxc_imp_ao, ao2sub)
 
             env_dm = coredm+tools.dm_sub2ao(P_bath_big, ao2sub)
-            mf2 = qcwrap.qc_scf(self.Ne_env,dim_big,self.mf_method,mol=self.mol_env,oei=None,tei=None,dm0=P_bath_big,coredm=coredm, ao2sub=ao2sub)
+            mf2 = qcwrap.qc_scf(True, mol=self.mol_env, Ne=self.Ne_env, Norb=dim_big, method=self.mf_method, \
+                                oei=None,tei=None,dm0=P_bath_big,coredm=coredm, ao2sub=ao2sub)
             vxc_bath_ao = qcwrap.pyscf_rks.get_vxc(mf2, self.mol_env, env_dm, n_core_elec=self.Nelec_core)[2]
             JK_bath += tools.op_ao2sub(vxc_bath_ao, ao2sub)
 
@@ -1017,14 +1023,16 @@ class DMFET:
         #print "u-u1=",np.linalg.norm(umat-umat1)
 
         #debug
-        subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]+umat
+        subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc_bound1"]
         #energy, onedm, mo = qcwrap.pyscf_rhf.scf( subOEI, ops["subTEI"], dim_big, self.Ne_frag, P_imp_big, self.mf_method)
-        mf1 = qcwrap.qc_scf(self.Ne_frag,dim_big,self.mf_method,mol=self.mol_frag,oei=subOEI,tei=ops["subTEI"],dm0=P_imp_big,coredm=0.0,ao2sub=ao2sub)
+        mf1 = qcwrap.qc_scf(True, mol=self.mol_frag, Ne=self.Ne_frag, Norb=dim_big, method=self.mf_method,\
+                            vext_1e = umat, oei=subOEI,tei=ops["subTEI"],dm0=P_imp_big,coredm=0.0,ao2sub=ao2sub)
         mf1.runscf()
 
-        subOEI = ops["subKin"]+ops["subVnuc2"]+ops["subVnuc_bound2"]+ops["subCoreJK"]+umat
+        subOEI = ops["subKin"]+ops["subVnuc2"]+ops["subVnuc_bound2"]+ops["subCoreJK"]
         #energy2, onedm2, mo2 = qcwrap.pyscf_rhf.scf( subOEI, ops["subTEI"], dim_big, self.Ne_env, P_bath_big, self.mf_method)
-        mf2 = qcwrap.qc_scf(self.Ne_env,dim_big,self.mf_method,mol=self.mol_env,oei=subOEI,tei=ops["subTEI"],dm0=P_bath_big,coredm=coredm,ao2sub=ao2sub)
+        mf2 = qcwrap.qc_scf(True, mol=self.mol_env, Ne=self.Ne_env, Norb=dim_big, method=self.mf_method,\
+                            vext_1e = umat, oei=subOEI,tei=ops["subTEI"],dm0=P_bath_big,coredm=coredm,ao2sub=ao2sub)
         #mf2.conv_check = False #temp
 
         #subOEI = ops["subKin"]+ops["subVnuc2"]+ops["subVnuc_bound2"]+umat1
