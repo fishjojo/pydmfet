@@ -1,6 +1,6 @@
 import numpy as np
 
-def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, scf_args_frag, scf_args_env):
+def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, scf_args_frag, scf_args_env):
 
     umat = v2m(x, dim, True, sym_tab)
     print ("|umat| = ", np.linalg.norm(umat))
@@ -8,15 +8,19 @@ def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, scf_args
     scf_args_frag.update({'vext_1e':umat})
     scf_args_env.update({'vext_1e':umat})
 
-    mf_frag = scf_solver(use_suborb, **scf_args_frag)
+    mf_frag = scf_solver(use_suborb, nonscf=nonscf, **scf_args_frag)
     mf_frag.kernel()
-    P_frag = mf_frag.make_rdm1()
-    E_frag = mf_frag.energy_elec(P_frag)[0]
+    #P_frag = mf_frag.make_rdm1()
+    #E_frag = mf_frag.energy_elec(P_frag)[0]
+    P_frag = mf_frag.rdm1
+    E_frag = mf_frag.elec_energy
 
-    mf_env  = scf_solver(use_suborb, **scf_args_env)
+    mf_env  = scf_solver(use_suborb, nonscf=nonscf, **scf_args_env)
     mf_env.kernel()
-    P_env = mf_env.make_rdm1()
-    E_env = mf_env.energy_elec(P_env)[0]
+    #P_env = mf_env.make_rdm1()
+    #E_env = mf_env.energy_elec(P_env)[0]
+    P_env = mf_env.rdm1
+    E_env = mf_env.elec_energy
 
 
     P_diff = P_frag + P_env - P_ref

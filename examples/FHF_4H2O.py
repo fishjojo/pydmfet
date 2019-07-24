@@ -67,9 +67,9 @@ for thestructure in range(17,18):
             impurities[aoslice[i,2]:aoslice[i,3]] = 1
 
 
-    params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
-    params.options['maxit'] = 3
-    params.options['ftol']  = 1e-8
+    params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
+    params.options['maxiter'] = 50
+    params.options['ftol']  = 1e-10
     params.options['gtol']  = 1e-4
     params.options['svd_thresh'] = 1e-6  
 

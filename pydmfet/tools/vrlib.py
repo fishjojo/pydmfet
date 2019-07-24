@@ -1,5 +1,6 @@
 import numpy as np
 from functools import reduce
+from pyscf.scf.hf import dot_eri_dm
 
 def mat_diff_norm(P1,P2):
 
@@ -28,6 +29,14 @@ def mat_diff_max(P1,P2):
         for i in range(len(P1)):
             res.append(np.amax(np.absolute(P1[i] - P2[i])))
         return res
+
+
+def dm2jk(DMsub, ERIsub, Kcoeff=1.0, hermi=1):
+
+    j, k = dot_eri_dm(ERIsub, DMsub, hermi)
+    impJK_sub = j - 0.5*Kcoeff*k
+
+    return impJK_sub
 
 
 def fock2onedm(fock, NOcc):

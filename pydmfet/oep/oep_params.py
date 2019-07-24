@@ -3,7 +3,7 @@ class OEPparams:
 
     def __init__(self, algorithm = '2011', oep_method = 'WY', opt_method = 'L-BFGS-B', \
                  diffP_tol = 1e-5, outer_maxit = 50, l2_lambda = 0.0, oep_print = 0, \
-                 options = {'maxit':200, 'ftol':1e-8, 'gtol':1e-5, 'disp':True, 'svd_thresh':1e-2}, \
+                 options = {'maxiter':200, 'ftol':1e-8, 'gtol':1e-5, 'disp':True, 'svd_thresh':1e-2}, \
                  umat_init_method = 'zero'):
 
         self.algorithm = algorithm

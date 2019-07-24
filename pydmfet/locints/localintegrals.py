@@ -9,6 +9,7 @@ import numpy as np
 import copy,time
 from functools import reduce
 
+
 class LocalIntegrals:
 
     def __init__( self, the_mf, active_orbs, localizationtype, ao_rotation=None, use_full_hessian=True, localization_threshold=1e-6 ):
