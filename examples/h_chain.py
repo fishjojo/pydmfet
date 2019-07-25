@@ -103,10 +103,10 @@ for bondlength in bondlengths:
         umat=None
         P_frag=None
         P_env=None
-        params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
+        params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
         params.options['ftol'] = 1e-8
         params.options['gtol'] = 1e-4
-        params.options['maxiter'] = 20
+        params.options['maxiter'] = 50
         params.options['svd_thresh'] = 1e-5
 
 #       theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\

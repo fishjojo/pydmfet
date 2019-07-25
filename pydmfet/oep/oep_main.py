@@ -261,88 +261,6 @@ class OEP:
         return umat
 
 
-    def init_density_partition(self, method = 1):
-
-        print ("Initial density partition")
-
-        self.ks_frag = self.calc_energy_frag(self.umat, None, self.Ne_frag, self.dim)[5]
-        self.ks_env = self.calc_energy_env(self.umat, None, self.Ne_env, self.dim)[5]
-        
-        if(method == 1):
-            self.P_imp = self.ks_frag.rdm1
-            self.P_bath = self.ks_env.rdm1
-        elif(method == 2):
-            print ("density partition from input")
-            self.P_imp = np.dot(np.dot(self.loc2sub[:,:self.dim].T,self.P_frag_loc),self.loc2sub[:,:self.dim])
-            self.P_bath = np.dot(np.dot(self.loc2sub[:,:self.dim].T,self.P_env_loc),self.loc2sub[:,:self.dim])
-        elif(method == 3):
-            print ("Pipek-Mezey density partition")
-            nocc = 0
-            nbas = self.ao_bas_tab_frag.size
-            for i in range(nbas):
-                if(abs(self.ks.mo_occ[i] - 2.0)<1e-8):
-                    nocc += 1
-            mo_pipek = lo.pipek.PM(self.mol).kernel(self.ks.mo_coeff[:,:nocc], verbose=4)
-            s = self.ks.get_ovlp(self.mol)
-            self.P_imp[:,:] = 0.0
-            self.P_bath[:,:] = 0.0
-            Pi = np.zeros([nocc,nbas,nbas])
-            pop = np.zeros(nocc)
-            for i in range(nocc):
-                Pi[i,:,:] = 2.0*np.outer(mo_pipek[:,i],mo_pipek[:,i])
-                PiS = np.dot(Pi[i,:,:],s)
-                for j in range(nbas):
-                    if(self.ao_bas_tab_frag[j] == 1):
-                        pop[i] += PiS[j,j]
-
-            print ("Mulliken pop.:")
-            print (pop)
-            idx = pop.argsort()
-            for i in range(nocc):
-                if(i<self.Ne_env//2):
-                    self.P_bath += tools.dm_ao2sub(Pi[idx[i],:,:], s, self.ao2sub[:,:self.dim])
-                else:
-                    self.P_imp += tools.dm_ao2sub(Pi[idx[i],:,:], s, self.ao2sub[:,:self.dim])
-            for i in range(nocc,nbas):
-                if(self.ks.mo_occ[i] > 1e-8):
-                    P = self.ks.mo_occ[i]*np.outer(self.ks.mo_coeff[:,i],self.ks.mo_coeff[:,i])
-                    self.P_imp += tools.dm_ao2sub(P, s, self.ao2sub[:,:self.dim])
-        else:
-            dim = self.dim
-            dim_imp = self.dim_imp
-            subTEI = self.ops["subTEI"]
-            P_ref = self.P_ref
-            Nelec = self.Ne_frag + self.Ne_env
-            self.P_imp, self.P_bath = subspac.fullP_to_fragP(self, subTEI, Nelec, P_ref, dim, dim_imp, self.mf_method)
-
-        #tools.MatPrint(self.P_imp, "P_imp")
-        #tools.MatPrint(self.P_bath, "P_bath")
-
-        print ("Ne_imp = ", np.sum(np.diag(self.P_imp)))
-        print ("Ne_bath = ", np.sum(np.diag(self.P_bath)))
-        diffP = self.P_imp + self.P_bath - self.P_ref
-        print ("|P_imp + P_bath - P_ref| = ", np.linalg.norm(diffP))
-        print ("max(P_imp + P_bath - P_ref)", np.amax(np.absolute(diffP)))
-
-        P_imp_ao = tools.dm_sub2ao(self.P_imp, self.ao2sub[:,:self.dim])
-        P_bath_ao = tools.dm_sub2ao(self.P_bath, self.ao2sub[:,:self.dim])
-        cubegen.density(self.mol, "frag_dens_init.cube", P_imp_ao, nx=100, ny=100, nz=100)
-        cubegen.density(self.mol, "bath_dens_init.cube", P_bath_ao, nx=100, ny=100, nz=100)
-
-
-        '''
-        dim = self.dim
-        frag_occ = np.zeros([dim],dtype = float)
-        for i in range(self.Ne_frag//2):
-            frag_occ[i] = 2.0
-        self.ints.submo_molden(self.frag_mo, frag_occ, self.loc2sub[:,:dim], 'frag_dens_guess.molden' )
-
-        env_occ = np.zeros([dim],dtype = float)
-        for i in range(self.Ne_env//2):
-            env_occ[i] = 2.0
-        self.ints.submo_molden(self.env_mo, env_occ, self.loc2sub[:,:dim], 'env_dens_guess.molden' )
-        '''
-
     def oep_loop(self, umat0):
 
         '''
@@ -368,6 +286,7 @@ class OEP:
             umat = self.oep_old(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
 
             if self.use_suborb:
+                #sdmfet
                 ao2sub = self.ao2sub[:,:dim]
                 scf_args_frag = {'mol':self.mol_frag, 'Ne':self.Ne_frag, 'Norb':dim, 'method':self.mf_method,\
                                  'vext_1e':umat, 'oei':self.oei_frag, 'tei':self.tei, 'dm0':P_imp_old, 'coredm':0.0, \
@@ -383,8 +302,18 @@ class OEP:
                 mf_env.kernel()
                 self.P_bath = mf_env.rdm1
             else:
-                raise NotImplementedError("NYI")
+                #dmfet
+                scf_args_frag = {'mol':self.mol_frag, 'xc_func':self.mf_method, 'dm0':P_imp_old, \
+                                 'vext_1e':umat, 'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,}
+                mf_frag = qcwrap.qc_scf(False, nonscf=True, **scf_args_frag)
+                mf_frag.kernel()
+                self.P_imp = mf_frag.rdm1
 
+                scf_args_env  = {'mol':self.mol_env, 'xc_func':self.mf_method, 'dm0':P_bath_old, \
+                                 'vext_1e':umat, 'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,}
+                mf_env = qcwrap.qc_scf(False, nonscf=True, **scf_args_env)
+                mf_env.kernel()
+                self.P_bath = mf_env.rdm1
 
             gmax_imp  = tools.mat_diff_max(self.P_imp, P_imp_old)
             gmax_bath = tools.mat_diff_max(self.P_bath, P_bath_old)

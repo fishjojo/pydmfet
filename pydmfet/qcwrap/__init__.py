@@ -2,7 +2,7 @@ from . import pyscf_rks
 from . import pyscf_rhf
 from . import pyscf_rks_nonscf
 from . import pyscf_rks_ao
-
+from . import pyscf_rks_nonscf_ao
 
 def qc_scf(use_suborb, software = 'pyscf', nonscf=False, mol=None, Ne=None, Norb=None, method=None, **kwargs):
 
@@ -25,4 +25,8 @@ def qc_scf(use_suborb, software = 'pyscf', nonscf=False, mol=None, Ne=None, Norb
     else:
         if mol is None:
             raise ValueError("mol can't be None")
+
+        if nonscf:
+            return pyscf_rks_nonscf_ao.rks_nonscf_ao(mol, **kwargs)
+
         return pyscf_rks_ao.rks_ao(mol, **kwargs)
