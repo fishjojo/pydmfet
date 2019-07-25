@@ -263,7 +263,7 @@ def setup_package():
         zip_safe=False,
     )
 
-    run_build = True
+    run_build = False
 
     from setuptools import setup
     if run_build:

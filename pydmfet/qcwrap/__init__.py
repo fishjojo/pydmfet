@@ -25,4 +25,4 @@ def qc_scf(use_suborb, software = 'pyscf', nonscf=False, mol=None, Ne=None, Norb
     else:
         if mol is None:
             raise ValueError("mol can't be None")
-        return pyscf_rks_ao(mol, **kwargs)
+        return pyscf_rks_ao.rks_ao(mol, **kwargs)

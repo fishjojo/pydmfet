@@ -33,7 +33,7 @@ def energy_elec(ks, dm=None, h1e=None, vhf=None):
 
 def get_hcore(ks,mol=None):
 
-    if mol is None: mol = self.mol
+    if mol is None: mol = ks.mol
 
     h = hf.get_hcore(mol)
     if ks.vext_1e is not None:
@@ -101,6 +101,24 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     return vxc
 
 
+def kernel(mf, dm0=None, **kwargs):
+
+    if dm0 is None:
+        dm0 = mf.dm_guess
+
+    mf.converged, mf.e_tot, \
+                mf.mo_energy, mf.mo_coeff, mf.mo_occ = \
+                hf.kernel(mf, mf.conv_tol, mf.conv_tol_grad,
+                          dm0=dm0, callback=mf.callback,
+                          conv_check=mf.conv_check, **kwargs)
+
+    if (mf.converged == False ):
+        #print ("scf did not converge")
+        raise RuntimeError("scf did not converge")
+
+    mf.rdm1 = mf.make_rdm1()
+    mf.elec_energy = mf.energy_elec(mf.rdm1)[0]
+
 
 class rks_ao(rks.RKS):
 
@@ -109,15 +127,20 @@ class rks_ao(rks.RKS):
         wrapper for dft.rks module of pyscf 
     '''
 
-    def __init__(self, mol, xc_func = 'lda,vwn', vext_1e = None, coredm = 0.0, smear_sigma = 0.0, add_coredm_ext_energy = False):
+    def __init__(self, mol, xc_func = 'lda,vwn', vext_1e = None, extra_oei=None, \
+                 coredm = 0.0, dm0=None, smear_sigma = 0.0, add_coredm_ext_energy = False):
 
         self.smear_sigma = smear_sigma
         rks.RKS.__init__(self, mol)
         self.xc = xc_func
         self.vext_1e = vext_1e
+        if extra_oei is not None:
+            self.vext_1e += extra_oei
+
         self.coredm = coredm
         self.add_coredm_ext_energy = add_coredm_ext_energy
         self.ne_frozen = 0
+        self.dm_guess = dm0
 
         if(isinstance(self.coredm, numpy.ndarray) and self.coredm.ndim == 2):
             self.ne_frozen = calc_ne(self, self.coredm)
@@ -127,3 +150,4 @@ class rks_ao(rks.RKS):
     get_occ = get_occ
     get_hcore = get_hcore
     get_veff = get_veff
+    kernel = kernel

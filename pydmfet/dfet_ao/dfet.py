@@ -1,9 +1,42 @@
 import numpy as np
 import pydmfet
-from pydmfet.dfet_ao import scf,oep
+from pydmfet import oep
+from pydmfet.dfet_ao import scf
 from pyscf.tools import cubegen
 from pydmfet import tools
 from functools import reduce
+
+def init_density_partition(dfet, umat=None, mol1=None, mol2=None, mf_method=None):
+
+    if(umat is None): umat = dfet.umat
+    if(mol1 is None): mol1 = dfet.mol_frag
+    if(mol2 is None): mol2 = dfet.mol_env
+    if(mf_method is None): mf_method = dfet.mf_method
+
+    if dfet.vnuc_bound_frag is None:
+        oei = umat
+    else:
+        oei = umat + dfet.vnuc_bound_frag
+    mf_frag = scf.EmbedSCF(mol1, oei, dfet.smear_sigma)
+    mf_frag.xc = mf_method
+    mf_frag.scf(dm0 = dfet.P_imp)
+    FRAG_1RDM = mf_frag.make_rdm1()
+    mo_frag = mf_frag.mo_coeff
+    occ_frag = mf_frag.mo_occ
+
+    if dfet.vnuc_bound_env is None:
+        oei = umat
+    else:
+        oei = umat + dfet.vnuc_bound_env
+    mf_env = scf.EmbedSCF(mol2, oei, dfet.smear_sigma)
+    mf_env.xc = mf_method
+    mf_env.scf(dm0 = dfet.P_bath)
+    ENV_1RDM = mf_env.make_rdm1()
+    mo_env = mf_env.mo_coeff
+    occ_env = mf_env.mo_occ
+
+    return FRAG_1RDM, ENV_1RDM
+
 
 def bound_vnuc_ao(dfet, boundary_atoms, mol=None):
 
@@ -25,19 +58,20 @@ def bound_vnuc_ao(dfet, boundary_atoms, mol=None):
 class DFET:
 
     def __init__(self, mf_full,mol_frag, mol_env, Ne_frag, Ne_env, boundary_atoms=None, boundary_atoms2=None, \
-                 umat = None, oep_params = pydmfet.oep.OEPparams(), smear_sigma = 0.0,\
+                 umat = None, oep_params = oep.OEPparams(), smear_sigma = 0.0,\
                  ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
                  plot_dens = True):
 
         self.mf_full = mf_full
         self.mol = self.mf_full.mol
+        self.mol_full = self.mol
         self.boundary_atoms = boundary_atoms
         self.boundary_atoms2 = boundary_atoms2
 
         self.umat = umat
         self.smear_sigma = smear_sigma
 
-        self.P_ref = None#self.mf_full.make_rdm1()
+        self.P_ref = self.mf_full.make_rdm1()
         self.P_imp = None
         self.P_bath = None
 
@@ -60,35 +94,27 @@ class DFET:
 
         self.plot_dens = plot_dens
 
-        self.vnuc_bound_frag = 0.0
-        self.vnuc_bound_env  = 0.0
+        self.vnuc_bound_frag = None
+        self.vnuc_bound_env  = None
 
         if(boundary_atoms is not None): 
             self.vnuc_bound_frag = self.bound_vnuc_ao(boundary_atoms)
         if(boundary_atoms2 is not None):
             self.vnuc_bound_env  = self.bound_vnuc_ao(boundary_atoms2)
 
-        #test total system mf calculation with smearing
-        mf = scf.EmbedSCF(self.mol, 0.0, smear_sigma = self.smear_sigma)
-        mf.xc = self.mf_method
-        mf.scf()
-        self.P_ref = mf.make_rdm1()
-        #tools.MatPrint(self.P_ref,"P_ref")
-        print ("mo_energy:")
-        print (mf.mo_energy)
-        print ("mo_occ:")
-        print (mf.mo_occ)
 
         if(self.plot_dens):
             cubegen.density(self.mol, "tot_dens.cube", self.P_ref, nx=100, ny=100, nz=100)
 
+        self.P_imp, self.P_bath = init_density_partition(self)
 
     bound_vnuc_ao = bound_vnuc_ao
 
 
     def calc_umat(self):
       
-        myoep = oep.OEPao(self, self.oep_params)
+        #myoep = oep.OEPao(self, self.oep_params)
+        myoep = oep.OEP(self, self.oep_params)
         self.umat = myoep.kernel()
         self.P_imp = myoep.P_imp
         self.P_bath = myoep.P_bath

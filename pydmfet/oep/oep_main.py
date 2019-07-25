@@ -10,6 +10,7 @@ from pydmfet.libcpp import oep_hess, oep_hess_old, mkl_svd
 from pydmfet.opt import newton
 from pydmfet.oep import OEPparams, ObjFunc_WuYang
 from pydmfet.oep.oep_optimize import OEP_Optimize
+from functools import reduce
 
 def init_umat_invks(oep):
 
@@ -158,6 +159,8 @@ class OEP:
             self.oei_frag = kin + vnuc_frag + vnuc_bound_frag
             self.oei_env  = kin + vnuc_env  + vnuc_bound_env + coreJK
 
+        self.vnuc_bound_frag_ao = getattr(embedobj, 'vnuc_bound_frag', None)
+        self.vnuc_bound_env_ao  = getattr(embedobj, 'vnuc_bound_env', None)
 
         '''
         self.dim_imp = embedobj.dim_imp
@@ -207,7 +210,7 @@ class OEP:
         print ('|P_bath-P_bath_0| = ', tools.mat_diff_norm(self.P_bath, P_bath_0)) 
         print ('max(P_bath-P_bath_0) = ', tools.mat_diff_max(self.P_bath, P_bath_0))
 
-        return self
+        return self.umat
 
 
     def oep_old(self, umat0, nonscf=False, dm0_frag=None, dm0_env=None):
@@ -240,8 +243,11 @@ class OEP:
                              'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
 
         else:
-            #dmfet
-            raise NotImplementedError("dmfet NYI")
+            #dmfet (no frozen density)
+            scf_args_frag = {'mol':self.mol_frag, 'xc_func':self.mf_method, 'dm0':dm0_frag, \
+                             'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,}
+            scf_args_env  = {'mol':self.mol_env, 'xc_func':self.mf_method, 'dm0':dm0_env, \
+                             'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,}
 
         func_args = (self.v2m, sym_tab, scf_solver, self.P_ref, dim, self.use_suborb, nonscf, scf_args_frag, scf_args_env,) 
  
@@ -414,18 +420,18 @@ class OEP:
         Ne_env = self.Ne_env
         dim = self.dim
 
-        coredm = self.core1PDM_ao
-        ao2sub = self.ao2sub[:,:dim]
-
         dm0_frag = None
-        if(self.P_imp is None):
-            dm0_frag,mo_coeff = tools.fock2onedm(self.oei_frag, Ne_frag//2)
+        if self.use_suborb:
+            coredm = self.core1PDM_ao
+            ao2sub = self.ao2sub[:,:dim]
+            mf_frag = qcwrap.qc_scf(True, mol=self.mol_frag, Ne=Ne_frag, Norb=dim, method=self.mf_method,\
+                                    vext_1e=umat, oei=self.oei_frag, tei=self.tei,\
+                                    dm0=dm0_frag, coredm=0.0, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
         else:
-            dm0_frag = self.P_imp
+            mf_frag = qcwrap.qc_scf(False, mol=self.mol_frag, xc_func=self.mf_method,\
+                                    vext_1e=umat, extra_oei=self.vnuc_bound_frag_ao, \
+                                    dm0=dm0_frag, smear_sigma = self.smear_sigma)
 
-        mf_frag = qcwrap.qc_scf(True, mol=self.mol_frag, Ne=Ne_frag, Norb=dim, method=self.mf_method,\
-                                vext_1e=umat, oei=self.oei_frag, tei=self.tei,\
-                                dm0=dm0_frag, coredm=0.0, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
         #mf_frag.init_guess =  'minao'
         #mf_frag.conv_check = False
         mf_frag.kernel()
@@ -437,14 +443,15 @@ class OEP:
         #mf_frag.stability(internal=True, external=False, verbose=5)
 
         dm0_env = None
-        if(self.P_bath is None):
-            dm0_env,mo_coeff = tools.fock2onedm(subOEI2, Ne_env//2)
+        if self.use_suborb:
+            mf_env = qcwrap.qc_scf(True, mol=self.mol_env, Ne=Ne_env, Norb=dim, method=self.mf_method, \
+                                   vext_1e=umat, oei=self.oei_env, tei=self.tei,\
+                                   dm0=dm0_env, coredm=coredm, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
         else:
-            dm0_env = self.P_bath
+            mf_env = qcwrap.qc_scf(False, mol=self.mol_env, xc_func=self.mf_method, \
+                                   vext_1e=umat, extra_oei=self.vnuc_bound_env_ao, \
+                                   dm0=dm0_env, smear_sigma = self.smear_sigma)
 
-        mf_env = qcwrap.qc_scf(True, mol=self.mol_env, Ne=Ne_env, Norb=dim, method=self.mf_method, \
-                               vext_1e=umat, oei=self.oei_env, tei=self.tei,\
-                               dm0=dm0_env, coredm=coredm, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
         #mf_env.init_guess =  'minao'
         #mf_env.conv_check = False
         mf_env.kernel()
@@ -480,6 +487,7 @@ class OEP:
         W = FRAG_energy + ENV_energy - np.trace(np.dot(self.P_ref,umat))
         print ("W = ", W)
 
+        '''
         deltaN = 0.001
         mf_frag.mo_occ[Ne_frag//2] = deltaN
         mu_A = (mf_frag.energy_tot() - FRAG_energy)/deltaN
@@ -494,6 +502,7 @@ class OEP:
         mu_B = (-mf_env.energy_tot() + ENV_energy)/deltaN
         print ('mu_A = ',mu_A)
         print ('mu_B = ',mu_B)
+        '''
 
         if(self.P_imp is not None):
             print ("P_imp change (scf - non-scf): ",  tools.mat_diff_norm(FRAG_1RDM, self.P_imp) )
@@ -507,9 +516,14 @@ class OEP:
         self.frag_mo = mf_frag.mo_coeff
         self.env_mo = mf_env.mo_coeff
 
-        print ('check orthogonality')
-        ortho = np.dot(mf_frag.mo_coeff[:,:Ne_frag//2].T, mf_env.mo_coeff[:,:Ne_env//2])
-        print (np.linalg.norm(ortho), np.amax(np.absolute(ortho)))
+        print ('mo orthogonality:')
+        if self.use_suborb:
+            ortho = np.dot(mf_frag.mo_coeff[:,:Ne_frag//2].T, mf_env.mo_coeff[:,:Ne_env//2])
+            print (ortho)
+        else:
+            s = self.mol_full.intor_symmetric('int1e_ovlp')
+            ortho = reduce(np.dot,(mf_frag.mo_coeff[:,mf_frag.mo_occ>1e-8].T, s, mf_env.mo_coeff[:,mf_env.mo_occ>1e-8]))
+            print (ortho)
 
         return (FRAG_1RDM, ENV_1RDM)
 
