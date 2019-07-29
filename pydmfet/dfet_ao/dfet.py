@@ -78,6 +78,8 @@ class DFET:
         self.mol_frag = mol_frag
         self.mol_env = mol_env
 
+        self.sym_tab = None
+
         self.Ne_frag = Ne_frag
         self.Ne_env = Ne_env
 

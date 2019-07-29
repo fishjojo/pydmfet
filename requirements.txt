@@ -1,3 +1,2 @@
 numpy>=1.13.3
 scipy>=1.2.1
-future>=0.16.1

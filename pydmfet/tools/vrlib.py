@@ -65,7 +65,7 @@ def vec2mat(data, dim, is_v2m=True, sym_tab = None):
 
     res = None
 
-    if not (sym_tab is None):
+    if sym_tab is not None:
         ind_dict = dict()
         for i in range(dim):
             for j in range(i,dim):

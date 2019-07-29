@@ -5,6 +5,7 @@ from pyscf import gto, scf,dft, ao2mo,cc
 import numpy as np
 from pyscf.tools import molden, cubegen
 import copy,time
+from pydmfet.tools.sym import h_lattice_sym_tab
 
 DMguess  = None
 
@@ -30,6 +31,14 @@ for bondlength in bondlengths:
     mf.xc = 'pbe,pbe'
     mf.max_cycle = 50
     mf.scf(dm0=DMguess)
+
+    atm_ind = np.zeros([nat],dtype=int)
+    for i in range(nat):
+        atm_ind[i] = i
+    atm_ind = atm_ind.reshape([1,nat])
+    sym_tab = h_lattice_sym_tab(atm_ind)
+    print (sym_tab)
+
 
     #P=mf.make_rdm1()
     #tools.MatPrint(P,"P_ref_ao")
@@ -104,7 +113,7 @@ for bondlength in bondlengths:
         P_frag=None
         P_env=None
         params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
-        params.options['ftol'] = 1e-8
+        params.options['ftol'] = 1e-9
         params.options['gtol'] = 1e-4
         params.options['maxiter'] = 50
         params.options['svd_thresh'] = 1e-5
@@ -116,6 +125,8 @@ for bondlength in bondlengths:
         theDMFET = dfet.DFET(mf, mol_frag, mol_env, Ne_frag, Ne_env,\
                      boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat = umat,\
                      oep_params=params, smear_sigma=temp, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+        theDMFET.sym_tab = sym_tab
 
         umat = theDMFET.embedding_potential()
         #energy = theDMFET.correction_energy()
