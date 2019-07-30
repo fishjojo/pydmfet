@@ -14,7 +14,8 @@ Installation
 ============
 At top directory,
 
-.. code-block:: bash
+.. code-block:: console
+
    $ pip install .
 
 
