@@ -15,7 +15,7 @@ Installation
 At top directory,
 
 .. code-block:: bash
-$ pip install .
+   $ pip install .
 
 
 Citing PyDMFET
