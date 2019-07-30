@@ -12,8 +12,8 @@ PyDMFET depends on PySCF, Wannier90, Numpy and Scipy.
 
 Installation
 ============
-At top directory:
-.. code-block:: 
+At top directory::
+
 pip install .
 
 
