@@ -10,6 +10,13 @@ using Gaussian type orbital bases (with or without periodic boundary conditions)
 
 PyDMFET depends on PySCF, Wannier90, Numpy and Scipy.
 
+Installation
+============
+At top directory:
+.. code-block:: 
+pip install .
+
+
 Citing PyDMFET
 ==============
 The following paper should be cited in publications utilizing the PyDMFET package:

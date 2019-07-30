@@ -16,8 +16,8 @@ extern "C" {
 
 int degen_subspac(vector<vector<int>> &sub, double* occ, double* mo_energy, int norb, double tol =1e-8);
 void make_degen_factor(double* jt, vector<vector<int>> sub, double* jCa, double* occ, int nsub, int norb, int NBas );
-void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ,
-                            int dim, int NBas, int NAlpha, int nthread, double smear=0.0, double tol=1e-8);
+//void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ,
+//                            int dim, int NBas, int nthread, double smear=0.0, double tol=1e-8);
 
 
 void VRadd(double* C, double* A, double* B, int N)
@@ -173,7 +173,7 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
 
 
 void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ, 
-			    int dim, int NBas, int NAlpha, int nthread, double smear, double tol)
+			    int dim, int NBas, int nthread, double smear, double tol)
 {
    //clock_t startcputime = clock();
    //auto wcts = chrono::system_clock::now();
