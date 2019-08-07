@@ -7,7 +7,33 @@ import ctypes
 
 libhess = np.ctypeslib.load_library('libhess', os.path.dirname(__file__))
 
-def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0):
+def symmtrize_hess(hess, sym_tab, size):
+
+    dim = sym_tab.shape[0]
+
+    ind_dict = dict()
+    for i in range(dim):
+        for j in range(i,dim):
+            ind = sym_tab[i,j]
+            ind2 = (i,j,)
+            if not (ind in ind_dict):
+                ind_dict.update({ind:[ind2]})
+            else:
+                ind_dict[ind].append(ind2)
+
+    nelem = len(ind_dict)
+    res = np.zeros([size,nelem], dtype=float)
+    for ind, ind2 in ind_dict.items():
+        for i,value in enumerate(ind2):
+            mu = value[0]
+            nu = value[1]
+            ioff = (2*dim-mu+1)*mu//2 + nu-mu
+            res[:,ind] += hess[:,ioff]
+
+    return res
+
+
+def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0, sym_tab=None):
 
     mo_coeff = np.reshape(jCa, (NOrb*NOrb), 'F')
     hess = np.ndarray((size,size),dtype=float, order='F')
@@ -35,6 +61,9 @@ def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0):
 
     #tools.MatPrint(hess,"hess")
     t1 = tools.timer("hessian construction", t0)
+
+    if sym_tab is not None:
+        return symmtrize_hess(hess,sym_tab,size)
 
     return hess
 

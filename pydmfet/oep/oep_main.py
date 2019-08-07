@@ -8,74 +8,10 @@ import time,copy
 from pydmfet import qcwrap,tools,subspac, libgen
 from pydmfet.libcpp import oep_hess, mkl_svd
 from pydmfet.opt import newton
-from pydmfet.oep import OEPparams, ObjFunc_WuYang
+from pydmfet.oep import OEPparams, ObjFunc_WuYang, ObjFunc_LeastSq
 from pydmfet.oep.oep_optimize import OEP_Optimize
 from functools import reduce
-
-def init_umat_invks(oep):
-
-    dim = oep.dim
-    Ne = oep.Ne_frag + oep.Ne_env
-    ops = oep.ops
-
-    subOEI = ops["subKin"]+ops["subVnuc1"]+ops["subVnuc2"]+ops["subCoreJK"]
-    subTEI = ops["subTEI"]
-
-    coredm = oep.core1PDM_ao
-    ao2sub = oep.ao2sub[:,:dim]
-    mf = qcwrap.qc_scf(Ne,dim,oep.mf_method,mol=oep.mol,oei=subOEI,tei=subTEI,dm0=np.eye(dim),coredm=coredm,ao2sub=ao2sub)
-    mf.runscf()
-
-    vks = mf.get_veff()
-
-    #P_ref = oep.P_imp + oep.P_bath
-    P_ref = oep.P_ref
-
-    _args=[P_ref,dim,Ne, subOEI, subTEI,coredm,ao2sub,oep.mf_method,oep.mol]
-    _args=tuple(_args)
-
-    umat = np.zeros((dim,dim)) 
-    x = tools.mat2vec(vks, dim)
-    result = wy_oep(x,_args)
-    voep = tools.vec2mat(result.x, dim)
-
-    return vks-voep
-
-
-def wy_oep(x,_args):
-
-
-    maxit = 200
-    gtol = 1e-6
-    ftol = 1e-13
-    algorithm = 'L-BFGS-B'
-
-    result = optimize.minimize(wy_oep_cost,x,args=_args,method=algorithm, jac=True, \
-                               options={'disp': True, 'maxiter': maxit, 'gtol':gtol, 'ftol':ftol, 'maxcor':10} )
-
-
-    return result
-
-
-def wy_oep_cost(x, P_ref, dim, Ne, subOEI, subTEI,coredm,ao2sub,mf_method,mol):
-
-
-    umat = tools.vec2mat(x, dim)
-    print ("|umat| = ", np.linalg.norm(umat))
-
-    oei = subOEI + umat
-    tei = subTEI
-
-    FRAG_energy, FRAG_1RDM = qcwrap.pyscf_rhf.scf_oei( oei, dim, Ne)
-
-    energy = FRAG_energy - np.trace(np.dot(P_ref,umat))
-    diffP = FRAG_1RDM - P_ref
-
-    grad = tools.mat2vec(diffP, dim)
-    grad = -1.0 * grad
-
-    return (-energy,grad)
-
+from scipy.optimize.optimize import  MemoizeJac
 
 def init_umat(oep, dim, umat_init_method = "zero"):
 
@@ -172,8 +108,6 @@ class OEP:
         self.impJK_sub = None
         self.bathJK_sub = None
 
-        self.Kcoeff = embedobj.Kcoeff
-
         self.frag_mo = None
         self.env_mo = None
 
@@ -198,6 +132,8 @@ class OEP:
             self.umat = self.oep_loop(self.umat)
         elif(algorithm.lower() == 'leastsq'):
             self.umat = self.oep_leastsq(self.umat)
+        else:
+            raise ValueError("algorithm %s not supported" % algorithm)
 
         #print ('sum (diag(umat)) = ', np.sum( np.diag( self.umat )) )
         #self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
@@ -393,30 +329,10 @@ class OEP:
         env_mo = mf_env.mo_coeff
         env_occ = mf_env.mo_occ
 
-        #self.ints.submo_molden(env_mo, env_occ, self.loc2sub, "mo_env.molden" )
-        #dm_ao = tools.dm_sub2ao(ENV_1RDM, ao2sub)
-        #cubegen.density(self.mol, "env_dens.cube", dm_ao, nx=100, ny=100, nz=100)
-
-        #tools.MatPrint(umat, "umat")
-        #tools.MatPrint(FRAG_1RDM,"P_imp")
-        #tools.MatPrint(tools.dm_sub2ao(FRAG_1RDM, ao2sub), "P_imp_ao")
-
-        #tools.MatPrint(frag_mo,'frag_mo')
-
-        #mo_i, mo_e = mf_env.stability(internal=True, external=False, verbose=5)
-        #P_new = 2.0*np.dot(mo_i[:,:Ne_env//2],mo_i[:,:Ne_env//2].T)
-        #print np.linalg.norm(ENV_1RDM - P_new)
-        #mf_env = qcwrap.qc_scf(Ne_env,dim,self.mf_method,mol=None,oei=subOEI2,tei=subTEI,dm0=P_new,coredm=coredm,ao2sub=ao2sub)
-        #mf_env.runscf()
-        #ENV_energy = mf_env.elec_energy
-        #ENV_1RDM = mf_env.rdm1
-
         print ("scf energies:")
         print ("EA (no vemb contrib.) = ",FRAG_energy-np.trace(np.dot(FRAG_1RDM,umat)) )
         print ("EB (no vemb contrib.) = ",ENV_energy-np.trace(np.dot(ENV_1RDM,umat)) )
         #print np.trace(np.dot(FRAG_1RDM,umat)), np.trace(np.dot(ENV_1RDM,umat)),np.trace(np.dot(FRAG_1RDM+ENV_1RDM,umat))
-        #self.ints.submo_molden( frag_mo[:,:dim], frag_occ, self.loc2sub, 'frag_dens_scf.molden' )
-        #self.ints.submo_molden( env_mo[:,:dim], env_occ, self.loc2sub, 'env_dens_scf.molden' )
         W = FRAG_energy + ENV_energy - np.trace(np.dot(self.P_ref,umat))
         print ("W = ", W)
 
@@ -459,36 +375,6 @@ class OEP:
             print (ortho)
 
         return (FRAG_1RDM, ENV_1RDM)
-
-
-
-
-    def oep_newton(self, x, _args):
-
-        ftol = self.params.ftol
-        #gtol = self.params.gtol
-        gtol = self.gtol_dyn
-        print ('gtol = ', gtol)
-        maxit = self.params.maxit
-        svd_thresh = self.params.svd_thresh
-
-        x_new = newton(self.cost_hess_wuyang,x,args=_args,ftol=ftol,gtol=gtol,maxit=maxit,svd_thresh=svd_thresh)
-
-        return x_new
-
-
-    def oep_cg(self, x, _args):
-
-        gtol = self.params.gtol
-        #gtol = self.gtol_dyn
-        print ('gtol = ', gtol)
-        maxit = self.params.maxit
-        algorithm = self.params.opt_method
-
-        res = optimize.minimize(self.cost_wuyang, x, args=_args, method=algorithm,jac=True, hess=self.hess_wuyang, \
-                       options={'maxiter': maxit, 'gtol':gtol, 'disp': True})
-
-        return res
 
 
 
@@ -845,32 +731,62 @@ class OEP:
         return (f,g)
 
 
-    def oep_leastsq(self, _umat):
+    def oep_leastsq(self, umat0, nonscf=False, dm0_frag=None, dm0_env=None):
 
-        umat = _umat.copy()
+        '''
+        least squre fit for density difference
+        '''
 
-        umat = self.oep_leastsq_base(umat)
-
-        return umat
-
-
-    def oep_leastsq_base(self, umat):
-
+        params = self.params
         dim = self.dim
-        ops = self.ops
-        P_ref = self.P_ref
-        Ne_frag = self.Ne_frag
-        Ne_env = self.Ne_env
+        sym_tab = self.sym_tab
+        scf_solver = qcwrap.qc_scf
 
-        x0 = tools.mat2vec(umat, dim)
-        _args = (dim, Ne_frag, Ne_env, P_ref, ops)
+        maxit = params.options['maxiter']
+        ftol = params.options.get('ftol', None)
+        xtol = params.options.get('xtol', None)
+        gtol = params.options.get('gtol', None)
+        if ftol is None and xtol is None and gtol is None:
+            raise ValueError("At least one of ftol, xtol and gtol has to be set")
 
-        maxit = self.params.maxit
+        
+        if self.use_suborb:
+            #sdmfet
+            ao2sub = self.ao2sub[:,:dim]
 
-        result = optimize.least_squares(self.oep_calc_diffP, x0, jac=self.oep_calc_diffP_derivative, bounds=(-2.0, 2.0), method='trf', ftol=1e-08, xtol=1e-08, gtol=1e-08, x_scale=1.0, loss='soft_l1', f_scale=1.0, diff_step=None, tr_solver=None, tr_options={}, jac_sparsity=None, max_nfev=maxit, verbose=2, args=_args)
+            scf_args_frag = {'mol':self.mol_frag, 'Ne':self.Ne_frag, 'Norb':dim, 'method':self.mf_method,\
+                             'oei':self.oei_frag, 'tei':self.tei, 'dm0':dm0_frag, 'coredm':0.0, \
+                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
 
-        x = result.x
-        umat = tools.vec2mat(x, dim)
+            scf_args_env  = {'mol':self.mol_env, 'Ne':self.Ne_env, 'Norb':dim, 'method':self.mf_method,\
+                             'oei':self.oei_env, 'tei':self.tei, 'dm0':dm0_env, 'coredm':self.core1PDM_ao, \
+                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
+
+        else:
+            #dmfet (no frozen density)
+            scf_args_frag = {'mol':self.mol_frag, 'xc_func':self.mf_method, 'dm0':dm0_frag, \
+                             'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,}
+            scf_args_env  = {'mol':self.mol_env, 'xc_func':self.mf_method, 'dm0':dm0_env, \
+                             'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,}
+
+
+        #func = MemoizeJac(ObjFunc_LeastSq)
+        #func_grad = func.derivative
+        func_args = (self.v2m, sym_tab, scf_solver, self.P_ref, dim, self.use_suborb, nonscf, scf_args_frag, scf_args_env,)
+
+        x0 = self.v2m(umat0, dim, False, sym_tab)
+        '''
+        result = optimize.least_squares(func, x0, jac=func_grad, \
+                                        method='trf', ftol=ftol, xtol=xtol, gtol=gtol, x_scale=1.0, \
+                                        loss='linear', f_scale=1.0, max_nfev=maxit, verbose=2, args=func_args)
+        '''
+
+        func = ObjFunc_LeastSq
+        optimizer = OEP_Optimize(params.opt_method, params.options, x0, func, func_args)
+        x = optimizer.kernel()
+
+        umat = self.v2m(x, dim, True, sym_tab)
+
         return umat
 
 

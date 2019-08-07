@@ -23,7 +23,7 @@ void make_degen_factor(double* jt, vector<vector<int>> sub, double* jCa, double*
 void VRadd(double* C, double* A, double* B, int N)
 {
    for (int i=0; i<N; i++)
-	C[i] = A[i] + B[i];
+        C[i] = A[i] + B[i];
 
    return;
 }
@@ -31,7 +31,7 @@ void VRadd(double* C, double* A, double* B, int N)
 void VRaxpy(double* C, double a, double* x, double* y, int N)
 {
    for (int i=0; i<N; i++)
-	C[i] = a*x[i] + y[i];
+        C[i] = a*x[i] + y[i];
 
    return;
 }
@@ -40,7 +40,7 @@ void VRaxpy(double* C, double a, double* x, double* y, int N)
 void VRcopy(double* y, double* x, int N)
 {
    for (int i=0; i<N; i++)
-	y[i] = x[i];
+        y[i] = x[i];
 
    return;
 }
@@ -73,31 +73,52 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
       int index_munu = i*N2*NVa;
       for(int a=imax; a<amax; a++){
          for(int mu=0; mu<NBas; mu++){
-	    double Cmui=jCa[mu+i*NBas];
-	    //VRaxpy(jt+index_munu,Cmui,jCa+a*NBas,jt+index_munu,NBas);
-	    cblas_daxpy(NBas, Cmui, jCa+a*NBas, 1, jt+index_munu, 1);
-	    index_munu += NBas;
-	 }
+            double Cmui=jCa[mu+i*NBas];
+            //VRaxpy(jt+index_munu,Cmui,jCa+a*NBas,jt+index_munu,NBas);
+            cblas_daxpy(NBas, Cmui, jCa+a*NBas, 1, jt+index_munu, 1);
+            index_munu += NBas;
+         }
       }
    } 
+
+   double *jt_T = new double [N2*NOVa];
+   #pragma omp parallel for schedule(static)
+   for(int i=0; i<imax; i++){
+      int index_munu = i*N2*NVa;
+      for(int a=imax; a<amax; a++){
+         mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt+index_munu, NBas, jt_T+index_munu, NBas);
+         index_munu += N2;
+      }
+   }
 
    double *jt_dia = new double [N2*NOVa];
    for(int i=0; i<N2*NOVa; i++)
       jt_dia[i] = 0.0;
-
-
    #pragma omp parallel for schedule(static)
    for(int i=0; i<imax; i++){
       int index_ia = i*NVa;
       for(int a=imax; a<amax; a++){
-	 double eps_ia = orb_Ea[i] - orb_Ea[a];
-	 double dia = 2.0/eps_ia;
-	 int ioff = N2*index_ia;
-	 //VRaxpy(jt_dia+ioff, dia, jt+ioff, jt_dia+ioff, N2);
-	 cblas_daxpy(N2, dia, jt+ioff, 1, jt_dia+ioff, 1);
-	 index_ia++;
+         double eps_ia = orb_Ea[i] - orb_Ea[a];
+         double dia = 2.0/eps_ia;
+         int ioff = N2*index_ia;
+         //VRaxpy(jt_dia+ioff, dia, jt+ioff, jt_dia+ioff, N2);
+         cblas_daxpy(N2, dia, jt+ioff, 1, jt_dia+ioff, 1);
+         index_ia++;
       }
    }
+
+   double *jt_T_dia = new double [N2*NOVa];
+   #pragma omp parallel for schedule(static)
+   for(int i=0; i<imax; i++){
+      int index_ia = i*NVa;
+      for(int a=imax; a<amax; a++){
+         int ioff = N2*index_ia;
+         mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt_dia+ioff, NBas, jt_T_dia+ioff, NBas);
+         index_ia++;
+      }
+   }
+
+
 
    double *jHfull = new double [N2*N2];
    //mkl_set_num_threads(nthread);
@@ -108,7 +129,20 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
    delete [] jt;
    delete [] jt_dia;
 
+   double *jHfull_cc = new double [N2*N2];
+   cblas_dgemm (CblasColMajor, CblasNoTrans, CblasTrans, N2, N2, NOVa, 1.0, jt_T, N2, jt_T_dia, N2, 0.0, jHfull_cc, N2);
+
+   delete [] jt_T;
+   delete [] jt_T_dia;
   
+   #pragma omp parallel for schedule(static)
+   for(int i=0; i<N2; i++){
+      int ioff = i*N2;
+      vdAdd(N2, jHfull+ioff, jHfull_cc+ioff, jHfull+ioff);
+   } 
+   delete [] jHfull_cc;
+
+
    //mkl_set_num_threads(1);
  #pragma omp parallel
  {
@@ -118,45 +152,32 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
    //  cout<<" nthread = " << nthread << endl;
    //}
 
-   //are we private
    double *jTemp = new double[N2];
-   double *jTemp1 = new double[N2];
-
    #pragma omp for schedule(dynamic)
    for(int mu=0; mu<NBas; mu++){
       int index = (2*NBas-mu+1)*mu/2*dim;
       for(int nu=mu; nu<NBas; nu++){
-	 //VRcopy(jTemp, jHfull + (mu+nu*NBas)*N2, N2);
-	 cblas_dcopy (N2, jHfull + (mu+nu*NBas)*N2, 1, jTemp, 1);
-	 mkl_dimatcopy ('C', 'T', NBas, NBas, 1.0, jTemp, NBas, NBas);
-	 VRadd(jTemp, jTemp, jHfull + (mu+nu*NBas)*N2, N2);
+         if (mu != nu) {
+           VRadd(jTemp, jHfull + (nu+mu*NBas)*N2, jHfull + (mu+nu*NBas)*N2, N2);
+         }
 
-	 //VRcopy(jTemp1, jHfull + (nu+mu*NBas)*N2, N2);
-	 cblas_dcopy (N2, jHfull + (nu+mu*NBas)*N2, 1, jTemp1, 1);
-	 mkl_dimatcopy ('C', 'T', NBas, NBas, 1.0, jTemp1, NBas, NBas);
-	 VRadd(jTemp1, jTemp1, jHfull + (nu+mu*NBas)*N2, N2);
-
-	 VRadd(jTemp,jTemp, jTemp1, N2);
-
-	 for(int i=0; i<NBas; i++)
-	    jTemp[i*NBas+i] *= 0.5;
+         double *ptr = jTemp;
+         if (mu == nu) ptr = jHfull + (mu+nu*NBas)*N2;
 
          for(int lam=0; lam<NBas; lam++){
-	    //VRcopy(hess+index, jTemp+lam*NBas+lam, NBas-lam);
-	    cblas_dcopy (NBas-lam, jTemp+lam*NBas+lam, 1, hess+index, 1);
-	    index += NBas-lam;
-	 }
+            cblas_dcopy (NBas-lam, ptr+lam*NBas+lam, 1, hess+index, 1);
+            index += NBas-lam;
+         }
       }
    }
 
    delete[] jTemp; 
-   delete[] jTemp1;
  }
 
    delete [] jHfull; 
 
    //mkl_set_num_threads(nthread);
-   mkl_dimatcopy ('C', 'T', dim, dim, -2.0, hess, dim, dim);
+   //mkl_dimatcopy ('C', 'T', dim, dim, -2.0, hess, dim, dim);
 
 /*
    double cpu_duration = (clock() - startcputime) / (double)CLOCKS_PER_SEC;
@@ -173,7 +194,7 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
 
 
 void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* mo_occ, 
-			    int dim, int NBas, int nthread, double smear, double tol)
+                            int dim, int NBas, int nthread, double smear, double tol)
 {
    //clock_t startcputime = clock();
    //auto wcts = chrono::system_clock::now();
@@ -207,13 +228,13 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    for(int i=0; i<imax; i++){
       int index_munu = i*N2*NVa;
       for(int a=a_start; a<amax; a++){
-	if(a != i){
+        if(a != i){
          for(int mu=0; mu<NBas; mu++){
-	    double Cmui=jCa[mu+i*NBas];
-	    //VRaxpy(jt+index_munu,Cmui,jCa+a*NBas,jt+index_munu,NBas);
-	    cblas_daxpy(NBas, Cmui, jCa+a*NBas, 1, jt+index_munu, 1);
-	    index_munu += NBas;
-	 }
+            double Cmui=jCa[mu+i*NBas];
+            //VRaxpy(jt+index_munu,Cmui,jCa+a*NBas,jt+index_munu,NBas);
+            cblas_daxpy(NBas, Cmui, jCa+a*NBas, 1, jt+index_munu, 1);
+            index_munu += NBas;
+         }
         }
       }
    } 
@@ -227,22 +248,22 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
       int index_ia = i*NVa;
       double occ_i = mo_occ[i];
       for(int a=a_start; a<amax; a++){
-	double occ_a = mo_occ[a];
-	if(a != i){
-	 double eps_ia = orb_Ea[i] - orb_Ea[a];
-	 double dia;
-	 if(fabs(eps_ia) < 1e-3){
-	    cout << "near degenerate orbitals detected: "<<i+1<<", "<<a+1<<endl;
-	    dia = 0.0;
-	 }
-	 else{
-	    dia = occ_i/eps_ia;
-	 }
-	 int ioff = N2*index_ia;
-	 //VRaxpy(jt_dia+ioff, dia, jt+ioff, jt_dia+ioff, N2);
-	 cblas_daxpy(N2, dia, jt+ioff, 1, jt_dia+ioff, 1);
-	 index_ia++;
-	}
+        double occ_a = mo_occ[a];
+        if(a != i){
+         double eps_ia = orb_Ea[i] - orb_Ea[a];
+         double dia;
+         if(fabs(eps_ia) < 1e-3){
+            cout << "near degenerate orbitals detected: "<<i+1<<", "<<a+1<<endl;
+            dia = 0.0;
+         }
+         else{
+            dia = occ_i/eps_ia;
+         }
+         int ioff = N2*index_ia;
+         //VRaxpy(jt_dia+ioff, dia, jt+ioff, jt_dia+ioff, N2);
+         cblas_daxpy(N2, dia, jt+ioff, 1, jt_dia+ioff, 1);
+         index_ia++;
+        }
       }
    }
 
@@ -262,7 +283,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
      double pfunc = 0.0;
      double *jt_sum = new double [N2];
      for(int i=0; i<N2; i++) {
-	jt_sum[i]=0.0;
+        jt_sum[i]=0.0;
      }
 
 
@@ -271,15 +292,15 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
      nsub = degen_subspac(sub, mo_occ, orb_Ea, NOrb, tol);
      double *jt_deg = NULL;
      if(nsub > 0){
-	jt_deg = new double[N2*nsub];
+        jt_deg = new double[N2*nsub];
         make_degen_factor(jt_deg, sub, jCa, mo_occ, nsub, NOrb, NBas);
 
-	cout<<"nsub = "<<nsub<<endl;
-	for (int i=0; i<nsub; i++){
-	   for (int j=0; j<sub[i].size(); j++)
-	       cout<<sub[i][j]<<" ";
-	   cout<<endl;
-	}
+        cout<<"nsub = "<<nsub<<endl;
+        for (int i=0; i<nsub; i++){
+           for (int j=0; j<sub[i].size(); j++)
+               cout<<sub[i][j]<<" ";
+           cout<<endl;
+        }
      }
 
      nsub = 0; cout<<"ignore degenerate orbital contribution"<<endl;
@@ -287,35 +308,35 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
      //orbital energy part
      for(int i=0; i<NOrb; i++){
         double occ = mo_occ[i]/2.0;
-	if(occ<tol || 1.0-occ<tol) continue;
+        if(occ<tol || 1.0-occ<tol) continue;
 
-	double *jt = new double [N2];
-	for(int j=0; j<N2; j++) jt[j] = 0.0;
+        double *jt = new double [N2];
+        for(int j=0; j<N2; j++) jt[j] = 0.0;
 
-	cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+i*NBas, 1, jCa+i*NBas, 1, jt, NBas);
-	double factor = -2.0*occ*(1.0-occ)/smear;
-	pfunc += factor * (-0.5);
+        cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+i*NBas, 1, jCa+i*NBas, 1, jt, NBas);
+        double factor = -2.0*occ*(1.0-occ)/smear;
+        pfunc += factor * (-0.5);
         if(nsub == 0){
-	  cblas_dger(CblasColMajor, N2, N2, factor, jt, 1, jt, 1, jHfull, N2);
-	  cblas_dger(CblasColMajor, NBas, NBas, -0.5*factor, jCa+i*NBas, 1, jCa+i*NBas, 1, jt_sum, NBas);
-	}
-	else{
-	  for(int j=0; j<nsub; j++){
-	     for(int k=0; k<sub[j].size(); k++){
-		if(i==sub[j][k]){
-		   cblas_dger(CblasColMajor, N2, N2, factor, jt_deg+N2*j, 1, jt, 1, jHfull, N2);
-		   cblas_daxpy(N2, -0.5*factor, jt_deg+N2*j, 1, jt_sum, 1);
-		}
-	     }
-	  }
+          cblas_dger(CblasColMajor, N2, N2, factor, jt, 1, jt, 1, jHfull, N2);
+          cblas_dger(CblasColMajor, NBas, NBas, -0.5*factor, jCa+i*NBas, 1, jCa+i*NBas, 1, jt_sum, NBas);
+        }
+        else{
+          for(int j=0; j<nsub; j++){
+             for(int k=0; k<sub[j].size(); k++){
+                if(i==sub[j][k]){
+                   cblas_dger(CblasColMajor, N2, N2, factor, jt_deg+N2*j, 1, jt, 1, jHfull, N2);
+                   cblas_daxpy(N2, -0.5*factor, jt_deg+N2*j, 1, jt_sum, 1);
+                }
+             }
+          }
         }
 
-	delete [] jt;
+        delete [] jt;
      }
 
      //chemical potential part
      for(int i=0; i<NOrb; i++){
-	double occ = mo_occ[i]/2.0;
+        double occ = mo_occ[i]/2.0;
         if(occ<tol || 1.0-occ<tol) continue;
 
         double *jt = new double [N2];
@@ -323,9 +344,9 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
 
         cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+i*NBas, 1, jCa+i*NBas, 1, jt, NBas);
         double factor = 2.0*occ*(1.0-occ)/smear/pfunc;
-	cblas_dger(CblasColMajor, N2, N2, factor, jt, 1, jt_sum, 1, jHfull, N2);
+        cblas_dger(CblasColMajor, N2, N2, factor, jt, 1, jt_sum, 1, jHfull, N2);
 
-	delete [] jt;
+        delete [] jt;
      }
 
      delete [] jt_sum;
@@ -350,26 +371,26 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    for(int mu=0; mu<NBas; mu++){
       int index = (2*NBas-mu+1)*mu/2*dim;
       for(int nu=mu; nu<NBas; nu++){
-	 //VRcopy(jTemp, jHfull + (mu+nu*NBas)*N2, N2);
-	 cblas_dcopy (N2, jHfull + (mu+nu*NBas)*N2, 1, jTemp, 1);
-	 mkl_dimatcopy ('C', 'T', NBas, NBas, 1.0, jTemp, NBas, NBas);
-	 VRadd(jTemp, jTemp, jHfull + (mu+nu*NBas)*N2, N2);
+         //VRcopy(jTemp, jHfull + (mu+nu*NBas)*N2, N2);
+         cblas_dcopy (N2, jHfull + (mu+nu*NBas)*N2, 1, jTemp, 1);
+         mkl_dimatcopy ('C', 'T', NBas, NBas, 1.0, jTemp, NBas, NBas);
+         VRadd(jTemp, jTemp, jHfull + (mu+nu*NBas)*N2, N2);
 
-	 //VRcopy(jTemp1, jHfull + (nu+mu*NBas)*N2, N2);
-	 cblas_dcopy (N2, jHfull + (nu+mu*NBas)*N2, 1, jTemp1, 1);
-	 mkl_dimatcopy ('C', 'T', NBas, NBas, 1.0, jTemp1, NBas, NBas);
-	 VRadd(jTemp1, jTemp1, jHfull + (nu+mu*NBas)*N2, N2);
+         //VRcopy(jTemp1, jHfull + (nu+mu*NBas)*N2, N2);
+         cblas_dcopy (N2, jHfull + (nu+mu*NBas)*N2, 1, jTemp1, 1);
+         mkl_dimatcopy ('C', 'T', NBas, NBas, 1.0, jTemp1, NBas, NBas);
+         VRadd(jTemp1, jTemp1, jHfull + (nu+mu*NBas)*N2, N2);
 
-	 VRadd(jTemp,jTemp, jTemp1, N2);
+         VRadd(jTemp,jTemp, jTemp1, N2);
 
-	 for(int i=0; i<NBas; i++)
-	    jTemp[i*NBas+i] *= 0.5;
+         for(int i=0; i<NBas; i++)
+            jTemp[i*NBas+i] *= 0.5;
 
          for(int lam=0; lam<NBas; lam++){
-	    //VRcopy(hess+index, jTemp+lam*NBas+lam, NBas-lam);
-	    cblas_dcopy (NBas-lam, jTemp+lam*NBas+lam, 1, hess+index, 1);
-	    index += NBas-lam;
-	 }
+            //VRcopy(hess+index, jTemp+lam*NBas+lam, NBas-lam);
+            cblas_dcopy (NBas-lam, jTemp+lam*NBas+lam, 1, hess+index, 1);
+            index += NBas-lam;
+         }
       }
    }
 
@@ -380,7 +401,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    delete [] jHfull; 
 
    //mkl_set_num_threads(nthread);
-   mkl_dimatcopy ('C', 'T', dim, dim, -2.0, hess, dim, dim);
+   mkl_dimatcopy ('C', 'T', dim, dim, 1.0, hess, dim, dim);
 
 /*
    double cpu_duration = (clock() - startcputime) / (double)CLOCKS_PER_SEC;
@@ -403,24 +424,24 @@ int degen_subspac(vector<vector<int>> &sub, double* occ, double* mo_energy, int 
   for (int i=0; i<norb; i++){
     double occ_i = occ[i]/2.0;
     if(occ_i>tol && occ_i < 1.0-tol){
-	e_cur = mo_energy[i];
-	if(fabs(e_cur-e_prev) > 1e-3){
-	   e_prev = e_cur;
-	   nelem = 0;
-	}
-	else{
-	   if(nelem == 0){
-	      vector<int> v;
-	      sub.push_back(v);
-	      nsub++;
-	      sub.back().push_back(i-1);
-	      nelem++;
-	   }
-	   sub.back().push_back(i);
-	   nelem++;
+        e_cur = mo_energy[i];
+        if(fabs(e_cur-e_prev) > 1e-3){
+           e_prev = e_cur;
+           nelem = 0;
+        }
+        else{
+           if(nelem == 0){
+              vector<int> v;
+              sub.push_back(v);
+              nsub++;
+              sub.back().push_back(i-1);
+              nelem++;
+           }
+           sub.back().push_back(i);
+           nelem++;
 
-	   e_prev = e_cur;
-	}
+           e_prev = e_cur;
+        }
     }
   }
 
@@ -434,9 +455,9 @@ void make_degen_factor(double* jt, vector<vector<int>> sub, double* jCa, double*
    for (int isub=0; isub<nsub; isub++){
       double Ne = 0.0;
       for (int i=sub[isub].front(); i<=sub[isub].back(); i++){
-	  double occ_i = occ[i]/2.0; 
-	  Ne += occ_i;
-	  cblas_dger(CblasColMajor, NBas, NBas, occ_i, jCa+i*NBas, 1, jCa+i*NBas, 1, jt+ioff, NBas);
+          double occ_i = occ[i]/2.0; 
+          Ne += occ_i;
+          cblas_dger(CblasColMajor, NBas, NBas, occ_i, jCa+i*NBas, 1, jCa+i*NBas, 1, jt+ioff, NBas);
       }
       cblas_dscal(N2,1.0/Ne,jt+ioff,1);
       ioff += N2;
