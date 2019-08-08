@@ -38,7 +38,8 @@ def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0, sym_t
     mo_coeff = np.reshape(jCa, (NOrb*NOrb), 'F')
     hess = np.ndarray((size,size),dtype=float, order='F')
     nthread  = lib.num_threads()
-    occ_tol = 1e-8
+    e_tol = 1e-3
+    occ_tol = 1e-5 #this should be small enough?
 
     t0 = (time.clock(),time.time())
 
@@ -57,7 +58,7 @@ def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0, sym_t
                               mo_coeff.ctypes.data_as(ctypes.c_void_p), orb_Ea.ctypes.data_as(ctypes.c_void_p), \
                               mo_occ.ctypes.data_as(ctypes.c_void_p),\
                               ctypes.c_int(size), ctypes.c_int(NOrb), ctypes.c_int(nthread),\
-                              ctypes.c_double(smear), ctypes.c_double(occ_tol))
+                              ctypes.c_double(smear), ctypes.c_double(e_tol), ctypes.c_double(occ_tol))
 
     #tools.MatPrint(hess,"hess")
     t1 = tools.timer("hessian construction", t0)

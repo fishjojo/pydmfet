@@ -108,11 +108,11 @@ for bondlength in bondlengths:
         boundary_atoms = None
         boundary_atoms2 =  None
 
-        umat = np.load('umat.npy')  
-        #umat=None
+        #umat = np.load('umat.npy')  
+        umat=None
         P_frag=None
         P_env=None
-        params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
+        params = oep.OEPparams(algorithm = 'leastsq', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 20)
         params.options['ftol'] = 1e-9
         params.options['gtol'] = 1e-4
         params.options['maxiter'] = 50
