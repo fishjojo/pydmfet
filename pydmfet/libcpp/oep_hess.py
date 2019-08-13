@@ -30,7 +30,16 @@ def symmtrize_hess(hess, sym_tab, size):
             ioff = (2*dim-mu+1)*mu//2 + nu-mu
             res[:,ind] += hess[:,ioff]
 
-    return res
+    res_small = np.zeros([nelem,nelem], dtype=float)
+    for ind, ind2 in ind_dict.items():
+        for i,value in enumerate(ind2):
+            mu = value[0]
+            nu = value[1]
+            ioff = (2*dim-mu+1)*mu//2 + nu-mu
+            res_small[ind,:] = res[ioff,:]
+            break
+
+    return res_small
 
 
 def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0, sym_tab=None):
@@ -63,8 +72,8 @@ def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0, sym_t
     #tools.MatPrint(hess,"hess")
     t1 = tools.timer("hessian construction", t0)
 
-    if sym_tab is not None:
-        return symmtrize_hess(hess,sym_tab,size)
+    #if sym_tab is not None:
+    #    return symmtrize_hess(hess,sym_tab,size)
 
     return hess
 

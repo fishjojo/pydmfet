@@ -1,6 +1,6 @@
 import numpy as np
 
-def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, scf_args_frag, scf_args_env):
+def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, scf_args_frag, scf_args_env, calc_hess=False):
 
     umat = v2m(x, dim, True, sym_tab)
     print ("|umat| = ", np.linalg.norm(umat))
@@ -37,6 +37,23 @@ def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, 
     print ('-W = ', f)
     print ("2-norm (grad),       max(grad):" )
     print (np.linalg.norm(grad), ", ", np.amax(np.absolute(grad)))
+
+    if calc_hess:
+        from pydmfet.libcpp import oep_hess, symmtrize_hess
+        size = dim*(dim+1)//2
+        smear_sigma = getattr(mf_frag, 'smear_sigma', 0.0)
+        Ne = int(np.sum(mf_frag.mo_occ))
+        hess_frag = oep_hess(mf_frag.mo_coeff, mf_frag.mo_energy, size, dim, Ne//2, mf_frag.mo_occ, smear_sigma, sym_tab)
+
+        smear_sigma = getattr(mf_env, 'smear_sigma', 0.0)
+        Ne = int(np.sum(mf_env.mo_occ))
+        hess_env = oep_hess(mf_env.mo_coeff, mf_env.mo_energy, size, dim, Ne//2, mf_env.mo_occ, smear_sigma, sym_tab)
+
+        hess = -hess_frag - hess_env
+        if sym_tab is not None:
+            hess = symmtrize_hess(hess,sym_tab,size)
+
+        return f,grad,hess
 
     return f, grad
 

@@ -1,5 +1,37 @@
 from scipy import optimize
 from pydmfet.opt import newton
+import numpy
+
+class Memoize_Jac_Hess(object):
+
+    def __init__(self, fun):
+        self.fun = fun
+        self.jac = None
+        self.hess = None
+        self.x = None
+
+    def __call__(self, x, *args):
+        self.x = numpy.asarray(x).copy()
+        res = self.fun(x, *args)
+        self.jac = res[1] if len(res) > 1 else None
+        self.hess = res[2] if len(res) > 2 else None
+        return res[0]
+
+    def derivative(self, x, *args):
+        if self.jac is not None and numpy.all(x == self.x):
+            return self.jac
+        else:
+            self(x, *args)
+            return self.jac
+
+    def hessian(self, x, *args):
+        if self.hess is not None and numpy.all(x == self.x):
+            return self.hess
+        else:
+            self(x, *args)
+            return self.hess
+
+
 
 class OEP_Optimize():
 

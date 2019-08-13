@@ -9,7 +9,7 @@ from pydmfet import qcwrap,tools,subspac, libgen
 from pydmfet.libcpp import oep_hess, mkl_svd
 from pydmfet.opt import newton
 from pydmfet.oep import OEPparams, ObjFunc_WuYang, ObjFunc_LeastSq
-from pydmfet.oep.oep_optimize import OEP_Optimize
+from pydmfet.oep.oep_optimize import OEP_Optimize, Memoize_Jac_Hess
 from functools import reduce
 from scipy.optimize.optimize import  MemoizeJac
 
@@ -189,9 +189,18 @@ class OEP:
             scf_args_env  = {'mol':self.mol_env, 'xc_func':self.mf_method, 'dm0':dm0_env, \
                              'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,}
 
-        func_args = (self.v2m, sym_tab, scf_solver, self.P_ref, dim, self.use_suborb, nonscf, scf_args_frag, scf_args_env,) 
+        use_hess = False
+        jac = True
+        hess = None
+        if params.opt_method.lower().startswith("trust"):
+            use_hess = True
+            func = Memoize_Jac_Hess(ObjFunc_WuYang)
+            jac = func.derivative
+            hess = func.hessian
+
+        func_args = (self.v2m, sym_tab, scf_solver, self.P_ref, dim, self.use_suborb, nonscf, scf_args_frag, scf_args_env,use_hess,) 
  
-        optimizer = OEP_Optimize(params.opt_method, params.options, x0, func, func_args)
+        optimizer = OEP_Optimize(params.opt_method, params.options, x0, func, func_args, jac, hess)
         x = optimizer.kernel() 
 
         umat = self.v2m(x, dim, True, sym_tab)

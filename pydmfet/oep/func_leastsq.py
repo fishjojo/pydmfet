@@ -1,5 +1,5 @@
 import numpy as np
-from pydmfet.libcpp import oep_hess
+from pydmfet.libcpp import oep_hess, symmtrize_hess
 from pydmfet import tools
 
 def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, scf_args_frag, scf_args_env):
@@ -29,7 +29,7 @@ def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf,
 
 
     P_diff = P_frag + P_env - P_ref
-    f = v2m(P_diff, dim, False, None)
+    f = v2m(P_diff, dim, False, sym_tab)
 
     print ("2-norm (grad),       max(grad):" )
     print (np.linalg.norm(f), ", ", np.amax(np.absolute(f)))
@@ -46,11 +46,14 @@ def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf,
 
     grad = hess_frag + hess_env
 
+    if sym_tab is not None:
+        grad = symmtrize_hess(grad,sym_tab,size)
 
     grad = np.dot(f,grad)
     #print('delP*X')
     #print(grad)
 
+    f = v2m(P_diff, dim, False, None)
     f = 0.5*np.dot(f,f)
 
     return f, grad
