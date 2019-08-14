@@ -163,6 +163,7 @@ class OEP:
         t0 = (time.clock(),time.time())
        
         params = self.params
+        print("gtol = ", params.options["gtol"])
         dim = self.dim
         sym_tab = self.sym_tab
 
@@ -192,7 +193,7 @@ class OEP:
         use_hess = False
         jac = True
         hess = None
-        if params.opt_method.lower().startswith("trust"):
+        if params.opt_method.lower().startswith("trust") or params.opt_method.lower()=="newton":
             use_hess = True
             func = Memoize_Jac_Hess(ObjFunc_WuYang)
             jac = func.derivative
@@ -219,6 +220,8 @@ class OEP:
         t0 = (time.clock(),time.time())
 
         params = self.params
+        gtol0 = copy.copy(params.options["gtol"])
+        gtol_min = 1e6
         dim = self.dim
 
         threshold = params.diffP_tol
@@ -231,6 +234,11 @@ class OEP:
 
             P_imp_old  = copy.copy(self.P_imp)
             P_bath_old = copy.copy(self.P_bath)
+
+            diffP=(self.P_imp+self.P_bath-self.P_ref)
+            gtol = np.amax(np.absolute(diffP))
+            gtol_min = min(gtol,gtol_min)
+            self.params.options["gtol"] = max(gtol_min/5.0, gtol0)  #gradually reduce gtol
 
             umat = self.oep_old(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
 
@@ -280,6 +288,8 @@ class OEP:
                 print ("STOP: embedding potential optimization exceeds max No. of iterations")
 
         t1 = tools.timer("embedding potential optimization (split loops)", t0)
+
+        self.params.options["gtol"] = gtol0
 
         return umat
 

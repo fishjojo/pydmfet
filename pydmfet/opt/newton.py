@@ -5,18 +5,13 @@ from scipy.optimize import line_search
 from scipy.optimize.optimize import  MemoizeJac
 
 
-def line_scipy(func,xk,args,fk,gk,hess,svd_thresh):
-
-    _func = MemoizeJac(func)
-    jac = _func.derivative
+def line_scipy(func,xk,args,jac,fk,gk,hess,svd_thresh):
 
     size = gk.size
     invers_hess = invert_mat_sigular_thresh(hess,svd_thresh)
-    pk = np.zeros(size,dtype=np.double)
-    pk = np.dot(invers_hess,gk)
-    #pk *= -2.0
+    pk = -np.dot(invers_hess,gk)
 
-    alpha,fc,gc,new_fval,old_fval,new_slope=line_search(_func, jac, xk, pk, gfk=gk, old_fval=fk, args=args,maxiter=100)
+    alpha,fc,gc,new_fval,old_fval,new_slope=line_search(func, jac, xk, pk, gfk=gk, old_fval=fk, args=args,maxiter=20)
 
     if(alpha is None) : return None
 
@@ -25,18 +20,14 @@ def line_scipy(func,xk,args,fk,gk,hess,svd_thresh):
     return x_new
 
 
-def backtrack(func,x,args,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
+def backtrack(func,x,args,jac,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
 
     info=0
     size = g.size
 
     invers_hess = invert_mat_sigular_thresh(hess,svd_thresh)
     #invers_hess = np.linalg.pinv(hess,rcond=1e-8)
-
-    jX = np.zeros(size,dtype=np.double)
-    jX = np.dot(invers_hess,g)
-    #X_len = np.linalg.norm(jX)
-    jX = -1.0*jX
+    jX = -np.dot(invers_hess,g)
 
     m = np.dot(jX,g)
     t = -c*m
@@ -59,7 +50,8 @@ def backtrack(func,x,args,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
         print ("line search step size = " , alpha_loc)
 
         x_new = x + jY
-        f_new, g_new = func(x_new, *args)
+        f_new = func(x_new, *args)
+        g_new = jac(x_new, *args)
 
         max_jY = np.amax(np.absolute(jY))
         if(max_jY < 1e-8):
@@ -88,20 +80,29 @@ def backtrack(func,x,args,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
 
 
 
-def newton(func,x0,args=(),ftol=1e-6,gtol=1e-5,maxit=50,svd_thresh=0.01):
+def newton(func,x0,args,jac,hessian,options):
 
     x0 = np.asarray(x0, dtype=np.double)
     if not isinstance(args, tuple):
         args = (args,)
 
     x = x0.copy()
-    alpha = 2.0
+    alpha = 1.0
     it = 0
     f_old=1e6
+
+    maxit = options["maxiter"]
+    gtol  = options["gtol"]
+    ftol  = options["ftol"]
+    svd_thresh = options["svd_thresh"]
     while(1 and it<maxit):
         it += 1
+
         #call func
-        f,g,hess = func(x,*args,calc_hess=True)
+        f = func(x,*args)
+        g = jac(x,*args)
+        hess = hessian(x,*args)
+
         gmax = np.amax(np.absolute(g))
         if(gmax<gtol or abs(f-f_old)<ftol):
             break
@@ -112,11 +113,11 @@ def newton(func,x0,args=(),ftol=1e-6,gtol=1e-5,maxit=50,svd_thresh=0.01):
         if(gmax<1e-3): svd_loc = max(1e-4, svd_thresh)
         if(gmax<1e-4): svd_loc = max(1e-5, svd_thresh)
         if(gmax<1e-5): svd_loc = max(1e-6, svd_thresh)
-        #svd_loc = svd_thresh
-        if(it==1): alpha_loc = 0.5
-        else: alpha_loc = alpha
-        x = backtrack(func,x,args,f,g,hess,svd_loc,alpha=alpha_loc)
-        #x=line_scipy(func,x,args,f,g,hess,svd_loc)
+        svd_loc = svd_thresh
+        #if(it==1): alpha_loc = 0.5
+        #else: alpha_loc = alpha
+        x = backtrack(func,x,args,jac,f,g,hess,svd_loc,alpha=alpha)
+        #x=line_scipy(func,x,args,jac,f,g,hess,svd_loc)
         if(x is None):
             raise Exception(" Line search failed!")
 

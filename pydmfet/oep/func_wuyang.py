@@ -1,4 +1,5 @@
 import numpy as np
+from pydmfet import tools
 
 def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, scf_args_frag, scf_args_env, calc_hess=False):
 
@@ -50,6 +51,7 @@ def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, 
         hess_env = oep_hess(mf_env.mo_coeff, mf_env.mo_energy, size, dim, Ne//2, mf_env.mo_occ, smear_sigma, sym_tab)
 
         hess = -hess_frag - hess_env
+
         if sym_tab is not None:
             hess = symmtrize_hess(hess,sym_tab,size)
 

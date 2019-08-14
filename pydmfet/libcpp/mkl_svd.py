@@ -50,6 +50,7 @@ def invert_mat_sigular_thresh(mat,thresh):
             D[i] = 1.0/s
         else:
             break
+#        D[i] = s/(s*s+thresh*thresh)
 
     print (" rank = ", irank)
     print (" singular value | inverse singular value")

@@ -50,7 +50,7 @@ class OEP_Optimize():
 
         if self.method.lower() == "newton":
             #in-house newton method
-            return newton(self.func, self.x0, args=self.func_args, options=self.options)
+            return newton(self.func, self.x0, self.func_args, self.jac, self.hess, self.options)
 
         #scipy.optimize functions
         if self.hess is not None:

@@ -6,7 +6,7 @@ def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf,
 
     umat = v2m(x, dim, True, sym_tab)
     print ("|umat| = ", np.linalg.norm(umat))
-    tools.MatPrint(umat, "umat")
+    #tools.MatPrint(umat, "umat")
 
     scf_args_frag.update({'vext_1e':umat})
     scf_args_env.update({'vext_1e':umat})

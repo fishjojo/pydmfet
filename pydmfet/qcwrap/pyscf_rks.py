@@ -99,8 +99,8 @@ def kernel(mf, dm0=None, **kwargs):
                           conv_check=mf.conv_check, **kwargs)
 
     if (mf.converged == False ):
-        #print ("scf did not converge")
-        raise RuntimeError("scf did not converge")
+        print ("scf did not converge")
+        #raise RuntimeError("scf did not converge")
 
     mf.rdm1 = mf.make_rdm1()
     mf.elec_energy = mf.energy_elec(mf.rdm1)[0]
