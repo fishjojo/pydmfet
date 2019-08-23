@@ -138,6 +138,7 @@ class DFET:
             cubegen.density(self.mol, "frag_dens.cube", self.P_imp, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "env_dens.cube", self.P_bath, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "vemb.cube", umat_ao, nx=100, ny=100, nz=100)
+            cubegen.density(self.mol, "error_dens.cube", self.P_imp+self.P_bath-self.P_ref, nx=100, ny=100, nz=100)
 
         return self.umat
 

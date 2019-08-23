@@ -39,6 +39,33 @@ def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, 
     print ("2-norm (grad),       max(grad):" )
     print (np.linalg.norm(grad), ", ", np.amax(np.absolute(grad)))
 
+    '''
+    #test grad
+    eps = 1e-5
+    size = dim*(dim+1)//2
+    step = np.zeros([size])
+    step[0] = eps
+    x_p = x + step
+    x_m = x - step
+
+    umat_p = v2m(x_p, dim, True, None)
+    scf_args_frag.update({'vext_1e':umat_p})
+    mf_frag_p = scf_solver(use_suborb, nonscf=nonscf, **scf_args_frag)
+    mf_frag_p.kernel()
+    E_frag_p = mf_frag_p.elec_energy
+
+    umat_m = v2m(x_m, dim, True, None)
+    scf_args_frag.update({'vext_1e':umat_m})
+    mf_frag_m = scf_solver(use_suborb, nonscf=nonscf, **scf_args_frag)
+    mf_frag_m.kernel()
+    E_frag_m = mf_frag_m.elec_energy
+
+    print ("grad_finite: ", (E_frag_p-E_frag_m)/2.0/eps)
+    print ("grad_anal: ", P_frag[0,0])
+    exit()
+    #end test
+    '''
+
     if calc_hess:
         from pydmfet.libcpp import oep_hess, symmtrize_hess
         size = dim*(dim+1)//2

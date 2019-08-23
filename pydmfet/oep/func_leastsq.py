@@ -44,17 +44,49 @@ def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf,
     Ne = int(np.sum(mf_env.mo_occ))
     hess_env = oep_hess(mf_env.mo_coeff, mf_env.mo_energy, size, dim, Ne//2, mf_env.mo_occ, smear_sigma, sym_tab)
 
-    grad = hess_frag + hess_env
+    hess = hess_frag + hess_env
+
+    '''
+    #test hess
+    eps = 1e-5
+    step = np.zeros([size])
+    step[0] = eps
+    x_p = x + step
+    x_m = x - step
+
+    umat_p = v2m(x_p, dim, True, None)
+    scf_args_frag.update({'vext_1e':umat_p})
+    mf_frag_p = scf_solver(use_suborb, nonscf=nonscf, **scf_args_frag)
+    mf_frag_p.init_guess = 'hcore'
+    mf_frag_p.kernel()
+    P_frag_p = mf_frag_p.rdm1
+
+    umat_m = v2m(x_m, dim, True, None)
+    scf_args_frag.update({'vext_1e':umat_m})
+    mf_frag_m = scf_solver(use_suborb, nonscf=nonscf, **scf_args_frag)
+    mf_frag_m.init_guess = 'hcore'
+    mf_frag_m.kernel()
+    P_frag_m = mf_frag_m.rdm1
+
+    P_grad = 0.5/eps*(P_frag_p - P_frag_m)
+    P_grad_anl = v2m(hess_frag[:,0], dim, True, None)
+    tools.MatPrint(P_grad,"P_grad finite")
+    tools.MatPrint(P_grad_anl,"P_grad anl")
+    tools.MatPrint((P_grad_anl-P_grad)/P_grad,"P_grad anl-P_grad / P_grad")
+    tools.MatPrint(P_grad*P_grad_anl,"P_grad * P_grad_anl")
+    exit()
+    #end test hess
+    '''
 
     if sym_tab is not None:
-        grad = symmtrize_hess(grad,sym_tab,size)
+        hess = symmtrize_hess(hess,sym_tab,size)
 
-    grad = np.dot(f,grad)
+    grad = np.dot(f,hess)
     #print('delP*X')
     #print(grad)
 
     f = v2m(P_diff, dim, False, None)
     f = 0.5*np.dot(f,f)
-
+    print("f = ", f)
     return f, grad
 

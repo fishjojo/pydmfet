@@ -47,8 +47,8 @@ def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0, sym_t
     mo_coeff = np.reshape(jCa, (NOrb*NOrb), 'F')
     hess = np.ndarray((size,size),dtype=float, order='F')
     nthread  = lib.num_threads()
-    e_tol = 1e-3
-    occ_tol = 1e-5 #this should be small enough?
+    e_tol = 1e-4
+    occ_tol = 1e-8 #this should be small enough?
 
     t0 = (time.clock(),time.time())
 

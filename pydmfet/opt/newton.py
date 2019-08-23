@@ -5,11 +5,14 @@ from scipy.optimize import line_search
 from scipy.optimize.optimize import  MemoizeJac
 
 
-def line_scipy(func,xk,args,jac,fk,gk,hess,svd_thresh):
+def line_scipy(func,xk,args,jac,fk,gk,hess,const_shift,svd_thresh):
 
     size = gk.size
     invers_hess = invert_mat_sigular_thresh(hess,svd_thresh)
     pk = -np.dot(invers_hess,gk)
+
+    proj = np.eye(size)-np.outer(const_shift,const_shift)
+    pk = np.dot(proj,pk)
 
     alpha,fc,gc,new_fval,old_fval,new_slope=line_search(func, jac, xk, pk, gfk=gk, old_fval=fk, args=args,maxiter=20)
 
@@ -20,7 +23,7 @@ def line_scipy(func,xk,args,jac,fk,gk,hess,svd_thresh):
     return x_new
 
 
-def backtrack(func,x,args,jac,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
+def backtrack(func,x,args,jac,f,g,hess,const_shift,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
 
     info=0
     size = g.size
@@ -28,6 +31,10 @@ def backtrack(func,x,args,jac,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
     invers_hess = invert_mat_sigular_thresh(hess,svd_thresh)
     #invers_hess = np.linalg.pinv(hess,rcond=1e-8)
     jX = -np.dot(invers_hess,g)
+
+    proj = np.eye(size)-np.outer(const_shift,const_shift)
+    jX = np.dot(proj,jX)
+
 
     m = np.dot(jX,g)
     t = -c*m
@@ -37,8 +44,15 @@ def backtrack(func,x,args,jac,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
     alpha_loc = copy.copy(alpha)
     inc = False
     it = 0
+    gmax_0 = np.amax(np.absolute(g))
+    gmax_1 = 0.0
     while(1):
         it += 1
+
+        if it == 2:
+            if gmax_0/gmax_1 < 0.01:
+                alpha_loc *= gmax_0/gmax_1*100.0
+
         #print "line search step size = " , alpha_loc
         jY = alpha_loc * jX
 
@@ -52,6 +66,9 @@ def backtrack(func,x,args,jac,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
         x_new = x + jY
         f_new = func(x_new, *args)
         g_new = jac(x_new, *args)
+
+        if it == 1:
+            gmax_1 = np.amax(np.absolute(g_new))
 
         max_jY = np.amax(np.absolute(jY))
         if(max_jY < 1e-8):
@@ -80,7 +97,7 @@ def backtrack(func,x,args,jac,f,g,hess,svd_thresh,alpha=2.0,tau=0.5,c=0.1):
 
 
 
-def newton(func,x0,args,jac,hessian,options):
+def newton(func,x0,args,jac,hessian,options, const_shift):
 
     x0 = np.asarray(x0, dtype=np.double)
     if not isinstance(args, tuple):
@@ -116,8 +133,8 @@ def newton(func,x0,args,jac,hessian,options):
         svd_loc = svd_thresh
         #if(it==1): alpha_loc = 0.5
         #else: alpha_loc = alpha
-        x = backtrack(func,x,args,jac,f,g,hess,svd_loc,alpha=alpha)
-        #x=line_scipy(func,x,args,jac,f,g,hess,svd_loc)
+        x = backtrack(func,x,args,jac,f,g,hess,const_shift,svd_loc,alpha=alpha)
+        #x=line_scipy(func,x,args,jac,f,g,hess,const_shift,svd_loc)
         if(x is None):
             raise Exception(" Line search failed!")
 

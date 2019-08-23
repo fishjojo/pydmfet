@@ -132,6 +132,8 @@ class OEP:
             self.umat = self.oep_loop(self.umat)
         elif(algorithm.lower() == 'leastsq'):
             self.umat = self.oep_leastsq(self.umat)
+        elif(algorithm.lower() == 'split-leastsq'):
+            self.umat = self.oep_loop(self.umat, do_leastsq=True)
         else:
             raise ValueError("algorithm %s not supported" % algorithm)
 
@@ -200,9 +202,16 @@ class OEP:
             hess = func.hessian
 
         func_args = (self.v2m, sym_tab, scf_solver, self.P_ref, dim, self.use_suborb, nonscf, scf_args_frag, scf_args_env,use_hess,) 
+
+
+        ovlp = np.eye(dim)
+        if not self.use_suborb:
+            ovlp = self.mol_full.intor_symmetric('int1e_ovlp')
+        shift = self.v2m(ovlp, dim, False, sym_tab)
+        shift = shift / np.linalg.norm(shift)
  
         optimizer = OEP_Optimize(params.opt_method, params.options, x0, func, func_args, jac, hess)
-        x = optimizer.kernel() 
+        x = optimizer.kernel(const_shift = shift) 
 
         umat = self.v2m(x, dim, True, sym_tab)
 
@@ -211,7 +220,7 @@ class OEP:
         return umat
 
 
-    def oep_loop(self, umat0):
+    def oep_loop(self, umat0, do_leastsq=False):
 
         '''
         oep with split loops
@@ -238,9 +247,12 @@ class OEP:
             diffP=(self.P_imp+self.P_bath-self.P_ref)
             gtol = np.amax(np.absolute(diffP))
             gtol_min = min(gtol,gtol_min)
-            self.params.options["gtol"] = max(gtol_min/5.0, gtol0)  #gradually reduce gtol
+            #self.params.options["gtol"] = max(gtol_min/5.0, gtol0)  #gradually reduce gtol
 
-            umat = self.oep_old(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
+            if do_leastsq:
+                umat = self.oep_leastsq(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
+            else:
+                umat = self.oep_old(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
 
             if self.use_suborb:
                 #sdmfet

@@ -2,56 +2,66 @@ import numpy as np
 
 def find_efermi(eigenvals, smear_sigma, NAlpha, Norb):
 
-    toll = 1.0e-14
-
-    e_homo = eigenvals[NAlpha-1]
-
-    step=max(2.0*smear_sigma,1.0)
-
-    emed = e_homo
-    emax = emed + step
-    emin = emed - step
-
-    attempts=0
     maxit = 200
+    toll = 1.0e-12
+    step=max(2.0*smear_sigma,1.0)
+    i_homo = NAlpha-1
+
+    convgd = False
     while True:
-        attempts += 1
+        if i_homo == Norb:
+            raise Exception("failed to find fermi energy!")
 
-        fmax = fzero(eigenvals, emax, smear_sigma, NAlpha, Norb)[0]
-        fmed = fzero(eigenvals, emed, smear_sigma, NAlpha, Norb)[0]
-        fmin = fzero(eigenvals, emin, smear_sigma, NAlpha, Norb)[0]
+        e_homo = eigenvals[i_homo]
+        emed = e_homo
+        emax = emed + step
+        emin = emed - step
 
-        if (fmax*fmin < 0.0):
-            break
-        elif(attempts > maxit):
-            raise Exception("fail!")
-        else:
-            emax += step
-            emin -= step
+        attempts=0
+        while True:
+            attempts += 1
 
-    attempts=0
-    mo_occ = None
-    while True:
-        attempts += 1
-        if(fmax*fmed > 0.0):
-            emax = emed
-            fmax = fmed
-        else:
-            emin = emed
-            fmin = fmed
+            fmax = fzero(eigenvals, emax, smear_sigma, NAlpha, Norb)[0]
+            fmed = fzero(eigenvals, emed, smear_sigma, NAlpha, Norb)[0]
+            fmin = fzero(eigenvals, emin, smear_sigma, NAlpha, Norb)[0]
 
-        if(attempts < 15 or abs(fmax-fmin) < 0.0):
-            emed=0.5*(emin+emax)
-        else:
-            emed=-fmin*(emax-emin)/(fmax-fmin)+emin
+            if (fmax*fmin < 0.0):
+                break
+            elif(attempts > maxit):
+                raise Exception("fail!")
+            else:
+                emax += step
+                emin -= step
+
+        attempts=0
+        mo_occ = None
+        while True:
+            attempts += 1
+            if(fmax*fmed > 0.0):
+                emax = emed
+                fmax = fmed
+            else:
+                emin = emed
+                fmin = fmed
+
+            if(attempts < 15 or abs(fmax-fmin) < 0.0):
+                emed=0.5*(emin+emax)
+            else:
+                emed=-fmin*(emax-emin)/(fmax-fmin)+emin
     
-        fmed, mo_occ = fzero(eigenvals, emed, smear_sigma, NAlpha, Norb)
+            fmed, mo_occ = fzero(eigenvals, emed, smear_sigma, NAlpha, Norb)
 
-        if(abs(fmed) < toll or abs(emin-emax) < toll*0.1 ):
+            if(abs(fmed) < toll or abs(emin-emax) < toll*0.1 ):
+                convgd = True
+                break
+
+            if(attempts > maxit):
+                #raise Exception("fail 2!")
+                i_homo += 1
+                break
+
+        if convgd:
             break
-
-        if(attempts > maxit):
-            raise Exception("fail 2!")
 
     return emed, mo_occ
 
@@ -84,7 +94,7 @@ def entropy_corr(mo_occ, smear_sigma=0.0):
     if mo_occ is None:
         return 0.0
 
-    toll = 1e-14
+    toll = 1e-8
     S = 0.0
     if(smear_sigma >= 1e-8):
         nmo = mo_occ.size

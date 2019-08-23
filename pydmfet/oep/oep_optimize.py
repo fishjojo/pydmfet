@@ -46,11 +46,11 @@ class OEP_Optimize():
         self.hess      = hess
 
 
-    def kernel(self):
+    def kernel(self, const_shift = None):
 
         if self.method.lower() == "newton":
             #in-house newton method
-            return newton(self.func, self.x0, self.func_args, self.jac, self.hess, self.options)
+            return newton(self.func, self.x0, self.func_args, self.jac, self.hess, self.options, const_shift)
 
         #scipy.optimize functions
         if self.hess is not None:
