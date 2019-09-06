@@ -224,8 +224,9 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
       cout<<"nsub = "<<nsub<<"\n";
       for(int i=0; i<nsub; i++){
          cout<<"subspace "<<i+1<<":\n";
-         for(int j=0; j<sub[i].size(); j++)
-            cout<<sub[i][j]+1<<", ";
+         for(int j=0; j<sub[i].size(); j++){
+            if(mo_occ[sub[i][j]] > occ_tol) {cout<<sub[i][j]+1<<", ";}
+         }
          cout<<"\n";
       }
       cout<<endl;

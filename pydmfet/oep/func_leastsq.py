@@ -89,4 +89,3 @@ def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf,
     f = 0.5*np.dot(f,f)
     print("f = ", f)
     return f, grad
-
