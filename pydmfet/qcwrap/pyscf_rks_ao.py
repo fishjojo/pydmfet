@@ -128,11 +128,12 @@ class rks_ao(rks.RKS):
     '''
 
     def __init__(self, mol, xc_func = 'lda,vwn', vext_1e = None, extra_oei=None, \
-                 coredm = 0.0, dm0=None, smear_sigma = 0.0, add_coredm_ext_energy = False):
+                 coredm = 0.0, dm0=None, smear_sigma = 0.0, max_cycle = 50, add_coredm_ext_energy = False):
 
         self.smear_sigma = smear_sigma
         rks.RKS.__init__(self, mol)
         self.xc = xc_func
+        self.max_cycle = max_cycle
         self.vext_1e = vext_1e
         if extra_oei is not None:
             self.vext_1e += extra_oei

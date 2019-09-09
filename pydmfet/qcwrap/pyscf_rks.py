@@ -207,13 +207,14 @@ class rhf_pyscf(hf.RHF):
     '''
 
     def __init__(self, Ne, Norb, mol=None, vext_1e = None, oei=None, tei=None, ovlp=1, dm0=None, \
-                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
+                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0, max_cycle = 50):
 
         mol = _scf_common_init(self, Ne, Norb, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method='hf')
         self.smear_sigma = smear_sigma
         hf.RHF.__init__(self, mol)
         self.level_shift = level_shift
         self.e_fermi = 0.0
+        self.max_cycle = max_cycle
 
         if(self.tei is not None):
             self._eri = self.tei
@@ -249,12 +250,13 @@ class rks_pyscf(rks.RKS):
     '''
 
     def __init__(self, Ne, Norb, mf_method, mol=None, vext_1e = None, oei=None, tei=None, ovlp=1, dm0=None,\
-                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
+                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0, max_cycle=50):
 
         mol = _scf_common_init(self, Ne, Norb, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, mf_method)
         self.smear_sigma = smear_sigma
         rks.RKS.__init__(self, mol)
         self.xc = self.method
+        self.max_cycle = max_cycle
         self.level_shift = level_shift
         self.e_fermi = 0.0
 

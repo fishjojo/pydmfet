@@ -4,7 +4,9 @@ from .buildsub import fix_virt
 from pydmfet import tools
 
 def construct_subspace2(mf, mol_frag, ints, impurityOrbs, \
-                        dim_imp=None, dim_bath=None, threshold=1e-13, occ_tol=1e-6):
+                        dim_imp=None, dim_bath=None, threshold=1e-13, occ_tol=1e-8):
+
+    #loc2sub sequence: occ_imp, occ_bath, frac, virt_imp
 
     occ = mf.mo_occ.copy()
     for i in range(occ.size):

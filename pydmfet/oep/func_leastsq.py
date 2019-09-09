@@ -12,7 +12,7 @@ def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf,
     scf_args_env.update({'vext_1e':umat})
 
     mf_frag = scf_solver(use_suborb, nonscf=nonscf, **scf_args_frag)
-    mf_frag.init_guess = 'hcore'
+    #mf_frag.init_guess = 'hcore'
     mf_frag.kernel()
     #P_frag = mf_frag.make_rdm1()
     #E_frag = mf_frag.energy_elec(P_frag)[0]
@@ -20,7 +20,7 @@ def ObjFunc_LeastSq(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf,
     E_frag = mf_frag.elec_energy
 
     mf_env  = scf_solver(use_suborb, nonscf=nonscf, **scf_args_env)
-    mf_env.init_guess = 'hcore'
+    #mf_env.init_guess = 'hcore'
     mf_env.kernel()
     #P_env = mf_env.make_rdm1()
     #E_env = mf_env.energy_elec(P_env)[0]

@@ -19,6 +19,7 @@ def init_density_partition(dfet, umat=None, mol1=None, mol2=None, mf_method=None
         oei = umat + dfet.vnuc_bound_frag
     mf_frag = scf.EmbedSCF(mol1, oei, dfet.smear_sigma)
     mf_frag.xc = mf_method
+    mf_frag.max_cycle = dfet.scf_max_cycle
     mf_frag.scf(dm0 = dfet.P_imp)
     FRAG_1RDM = mf_frag.make_rdm1()
     mo_frag = mf_frag.mo_coeff
@@ -30,6 +31,7 @@ def init_density_partition(dfet, umat=None, mol1=None, mol2=None, mf_method=None
         oei = umat + dfet.vnuc_bound_env
     mf_env = scf.EmbedSCF(mol2, oei, dfet.smear_sigma)
     mf_env.xc = mf_method
+    mf_env.max_cycle = dfet.scf_max_cycle
     mf_env.scf(dm0 = dfet.P_bath)
     ENV_1RDM = mf_env.make_rdm1()
     mo_env = mf_env.mo_coeff
@@ -60,7 +62,7 @@ class DFET:
     def __init__(self, mf_full,mol_frag, mol_env, Ne_frag, Ne_env, boundary_atoms=None, boundary_atoms2=None, \
                  umat = None, oep_params = oep.OEPparams(), smear_sigma = 0.0,\
                  ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
-                 plot_dens = True):
+                 plot_dens = True, scf_max_cycle=50):
 
         self.mf_full = mf_full
         self.mol = self.mf_full.mol
@@ -70,6 +72,7 @@ class DFET:
 
         self.umat = umat
         self.smear_sigma = smear_sigma
+        self.scf_max_cycle = scf_max_cycle
 
         self.P_ref = self.mf_full.make_rdm1()
         self.P_imp = None

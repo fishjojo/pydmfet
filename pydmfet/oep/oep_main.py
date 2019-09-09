@@ -43,6 +43,8 @@ class OEP:
         self.mf_frag  = None
         self.mf_env   = None
 
+        self.scf_max_cycle = getattr(embedobj, 'scf_max_cycle', 50)
+
         self.P_ref    = getattr(embedobj, 'P_ref', None)
         if self.P_ref is None:
             raise RuntimeError("reference density not defined")
@@ -179,18 +181,18 @@ class OEP:
 
             scf_args_frag = {'mol':self.mol_frag, 'Ne':self.Ne_frag, 'Norb':dim, 'method':self.mf_method,\
                              'oei':self.oei_frag, 'tei':self.tei, 'dm0':dm0_frag, 'coredm':0.0, \
-                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,} 
+                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle} 
 
             scf_args_env  = {'mol':self.mol_env, 'Ne':self.Ne_env, 'Norb':dim, 'method':self.mf_method,\
                              'oei':self.oei_env, 'tei':self.tei, 'dm0':dm0_env, 'coredm':self.core1PDM_ao, \
-                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
+                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
 
         else:
             #dmfet (no frozen density)
             scf_args_frag = {'mol':self.mol_frag, 'xc_func':self.mf_method, 'dm0':dm0_frag, \
-                             'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,}
+                             'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
             scf_args_env  = {'mol':self.mol_env, 'xc_func':self.mf_method, 'dm0':dm0_env, \
-                             'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,}
+                             'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
 
         use_hess = False
         jac = True
@@ -259,27 +261,29 @@ class OEP:
                 ao2sub = self.ao2sub[:,:dim]
                 scf_args_frag = {'mol':self.mol_frag, 'Ne':self.Ne_frag, 'Norb':dim, 'method':self.mf_method,\
                                  'vext_1e':umat, 'oei':self.oei_frag, 'tei':self.tei, 'dm0':P_imp_old, 'coredm':0.0, \
-                                 'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
+                                 'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
                 mf_frag = qcwrap.qc_scf(True, nonscf=True, **scf_args_frag)
                 mf_frag.kernel()
                 self.P_imp = mf_frag.rdm1
 
                 scf_args_env  = {'mol':self.mol_env, 'Ne':self.Ne_env, 'Norb':dim, 'method':self.mf_method,\
                                  'vext_1e':umat, 'oei':self.oei_env, 'tei':self.tei, 'dm0':P_bath_old, 'coredm':self.core1PDM_ao, \
-                                 'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
+                                 'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
                 mf_env = qcwrap.qc_scf(True, nonscf=True, **scf_args_env)
                 mf_env.kernel()
                 self.P_bath = mf_env.rdm1
             else:
                 #dmfet
                 scf_args_frag = {'mol':self.mol_frag, 'xc_func':self.mf_method, 'dm0':P_imp_old, \
-                                 'vext_1e':umat, 'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,}
+                                 'vext_1e':umat, 'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,\
+                                 'max_cycle':self.scf_max_cycle}
                 mf_frag = qcwrap.qc_scf(False, nonscf=True, **scf_args_frag)
                 mf_frag.kernel()
                 self.P_imp = mf_frag.rdm1
 
                 scf_args_env  = {'mol':self.mol_env, 'xc_func':self.mf_method, 'dm0':P_bath_old, \
-                                 'vext_1e':umat, 'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,}
+                                 'vext_1e':umat, 'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,\
+                                 'max_cycle':self.scf_max_cycle}
                 mf_env = qcwrap.qc_scf(False, nonscf=True, **scf_args_env)
                 mf_env.kernel()
                 self.P_bath = mf_env.rdm1
@@ -326,11 +330,12 @@ class OEP:
             ao2sub = self.ao2sub[:,:dim]
             mf_frag = qcwrap.qc_scf(True, mol=self.mol_frag, Ne=Ne_frag, Norb=dim, method=self.mf_method,\
                                     vext_1e=umat, oei=self.oei_frag, tei=self.tei,\
-                                    dm0=dm0_frag, coredm=0.0, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
+                                    dm0=dm0_frag, coredm=0.0, ao2sub=ao2sub, smear_sigma = self.smear_sigma,\
+                                    max_cycle=self.scf_max_cycle)
         else:
             mf_frag = qcwrap.qc_scf(False, mol=self.mol_frag, xc_func=self.mf_method,\
                                     vext_1e=umat, extra_oei=self.vnuc_bound_frag_ao, \
-                                    dm0=dm0_frag, smear_sigma = self.smear_sigma)
+                                    dm0=dm0_frag, smear_sigma = self.smear_sigma, max_cycle=self.scf_max_cycle)
 
         #mf_frag.init_guess =  'minao'
         #mf_frag.conv_check = False
@@ -346,11 +351,12 @@ class OEP:
         if self.use_suborb:
             mf_env = qcwrap.qc_scf(True, mol=self.mol_env, Ne=Ne_env, Norb=dim, method=self.mf_method, \
                                    vext_1e=umat, oei=self.oei_env, tei=self.tei,\
-                                   dm0=dm0_env, coredm=coredm, ao2sub=ao2sub, smear_sigma = self.smear_sigma)
+                                   dm0=dm0_env, coredm=coredm, ao2sub=ao2sub, smear_sigma = self.smear_sigma,\
+                                   max_cycle=self.scf_max_cycle)
         else:
             mf_env = qcwrap.qc_scf(False, mol=self.mol_env, xc_func=self.mf_method, \
                                    vext_1e=umat, extra_oei=self.vnuc_bound_env_ao, \
-                                   dm0=dm0_env, smear_sigma = self.smear_sigma)
+                                   dm0=dm0_env, smear_sigma = self.smear_sigma, max_cycle=self.scf_max_cycle)
 
         #mf_env.init_guess =  'minao'
         #mf_env.conv_check = False
@@ -787,18 +793,20 @@ class OEP:
 
             scf_args_frag = {'mol':self.mol_frag, 'Ne':self.Ne_frag, 'Norb':dim, 'method':self.mf_method,\
                              'oei':self.oei_frag, 'tei':self.tei, 'dm0':dm0_frag, 'coredm':0.0, \
-                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
+                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
 
             scf_args_env  = {'mol':self.mol_env, 'Ne':self.Ne_env, 'Norb':dim, 'method':self.mf_method,\
                              'oei':self.oei_env, 'tei':self.tei, 'dm0':dm0_env, 'coredm':self.core1PDM_ao, \
-                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma,}
+                             'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
 
         else:
             #dmfet (no frozen density)
             scf_args_frag = {'mol':self.mol_frag, 'xc_func':self.mf_method, 'dm0':dm0_frag, \
-                             'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,}
+                             'extra_oei':self.vnuc_bound_frag_ao, 'smear_sigma':self.smear_sigma,\
+                             'max_cycle':self.scf_max_cycle}
             scf_args_env  = {'mol':self.mol_env, 'xc_func':self.mf_method, 'dm0':dm0_env, \
-                             'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,}
+                             'extra_oei':self.vnuc_bound_env_ao, 'smear_sigma':self.smear_sigma,\
+                             'max_cycle':self.scf_max_cycle}
 
 
         #func = MemoizeJac(ObjFunc_LeastSq)

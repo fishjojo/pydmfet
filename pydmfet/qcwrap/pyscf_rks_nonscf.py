@@ -65,9 +65,10 @@ def kernel(ks):
 class rks_nonscf(rks_pyscf):
 
     def __init__(self, Ne, Norb, mf_method, mol=None, vext_1e = None, oei=None, tei=None, ovlp=1, dm0=None,\
-                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0):
+                 coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0, max_cycle = 50):
 
         rks_pyscf.__init__(self, Ne, Norb, mf_method, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, level_shift, smear_sigma)
+        self.max_cycle = max_cycle
 
         if self.dm_guess is None:
             raise ValueError("dm0 has to be set since it's used as the fixed density")
