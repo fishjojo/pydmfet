@@ -66,9 +66,9 @@ class DMFET:
         tei_loc = ops_loc["locTEI"]
 
         mf = qcwrap.qc_scf(True, mol=self.mol, Ne=self.ints.Nelec, Norb=self.ints.NOrb, method=self.mf_method, \
-                           oei=oei_loc, tei=tei_loc, dm0=None, coredm=0.0,\
+                           oei=oei_loc, tei=tei_loc, dm0=self.OneDM_loc, coredm=0.0,\
                            ao2sub=self.ints.ao2loc, smear_sigma = self.smear_sigma)
-        mf.init_guess = 'minao'
+        #mf.init_guess = 'minao'
         mf.kernel()
         energy = mf.elec_energy + self.ints.energy_nuc()
         print('total scf energy = %.15g ' % energy)

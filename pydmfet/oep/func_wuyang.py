@@ -67,15 +67,17 @@ def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, 
     '''
 
     if calc_hess:
-        from pydmfet.libcpp import oep_hess, symmtrize_hess
+        from pydmfet.libcpp import oep_hess, symmtrize_hess, fd_hess
         size = dim*(dim+1)//2
         smear_sigma = getattr(mf_frag, 'smear_sigma', 0.0)
         Ne = int(np.sum(mf_frag.mo_occ))
         hess_frag = oep_hess(mf_frag.mo_coeff, mf_frag.mo_energy, size, dim, Ne//2, mf_frag.mo_occ, smear_sigma, sym_tab)
+        #hess_frag = fd_hess(umat,v2m, scf_solver, use_suborb, nonscf, scf_args_frag)
 
         smear_sigma = getattr(mf_env, 'smear_sigma', 0.0)
         Ne = int(np.sum(mf_env.mo_occ))
         hess_env = oep_hess(mf_env.mo_coeff, mf_env.mo_energy, size, dim, Ne//2, mf_env.mo_occ, smear_sigma, sym_tab)
+        #hess_env = fd_hess(umat,v2m, scf_solver, use_suborb, nonscf, scf_args_env)
 
         hess = -hess_frag - hess_env
 
@@ -83,6 +85,7 @@ def ObjFunc_WuYang(x, v2m, sym_tab, scf_solver, P_ref, dim, use_suborb, nonscf, 
             hess = symmtrize_hess(hess,sym_tab,size)
 
         return f,grad,hess
+
 
     return f, grad
 
