@@ -366,6 +366,8 @@ class rks_pyscf(rks.RKS):
 
 def get_vxc(ks, mol, dm, n_core_elec=0.0, hermi=1):
 
+    t0 = tools.time0()
+
     ground_state = (isinstance(dm, np.ndarray) and dm.ndim == 2)
     if(not ground_state):
         raise Exception("fatal error")
@@ -381,9 +383,11 @@ def get_vxc(ks, mol, dm, n_core_elec=0.0, hermi=1):
     if hermi == 2:  # because rho = 0
         n, exc, vxc = 0, 0, 0
     else:
-        n, exc, vxc = ks._numint.nr_rks(mol, ks.grids, ks.xc, dm)
+        n, exc, vxc = ks._numint.nr_rks(mol, ks.grids, ks.xc, dm, hermi=hermi)
 
     hyb = ks._numint.hybrid_coeff(ks.xc, spin=mol.spin)
+
+    t1 = tools.timer("vxc construction", t0)
 
     return n, exc, vxc, hyb
 

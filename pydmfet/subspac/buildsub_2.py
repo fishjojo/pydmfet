@@ -3,19 +3,19 @@ import numpy as np
 from .buildsub import fix_virt
 from pydmfet import tools
 
-def construct_subspace2(mf, mol_frag, ints, impurityOrbs, \
+def construct_subspace2(mo_coeff, mo_occ, mol_frag, ints, impurityOrbs, \
                         dim_imp=None, dim_bath=None, threshold=1e-13, occ_tol=1e-8):
 
     #loc2sub sequence: occ_imp, occ_bath, frac, virt_imp
 
-    occ = mf.mo_occ.copy()
+    occ = mo_occ.copy()
     for i in range(occ.size):
         if(occ[i] > 2-occ_tol):
             occ[i] = 2.0
         else:
             occ[i] = 0.0
 
-    mocc = mf.mo_coeff[:,occ>0]
+    mocc = mo_coeff[:,occ>0]
     rdm1_loc = np.dot(mocc * occ[occ>0], mocc.T.conj())
 
     numImpOrbs = np.sum(impurityOrbs)
@@ -57,7 +57,7 @@ def construct_subspace2(mf, mol_frag, ints, impurityOrbs, \
     embeddingOrbs = 1 - impurityOrbs
     nbath = np.sum(embeddingOrbs)
     isbath = np.outer(embeddingOrbs,isocc) == 1
-    mocc = np.reshape(mf.mo_coeff[isbath],(nbath,nocc))
+    mocc = np.reshape(mo_coeff[isbath],(nbath,nocc))
     s = 2.0*np.dot(mocc.T, mocc)
     eigenvals_bath, eigenvecs_bath = np.linalg.eigh(s)
 
@@ -118,10 +118,10 @@ def construct_subspace2(mf, mol_frag, ints, impurityOrbs, \
         assert( counter == numImpOrbs )
 
 
-    isfrac = np.logical_and(mf.mo_occ>occ_tol, mf.mo_occ<2.0-occ_tol)
+    isfrac = np.logical_and(mo_occ>occ_tol, mo_occ<2.0-occ_tol)
     nfrac = np.sum(isfrac)
-    mo_frac = mf.mo_coeff[:,isfrac].copy()
-    occ_frac = mf.mo_occ[isfrac].copy()
+    mo_frac = mo_coeff[:,isfrac].copy()
+    occ_frac = mo_occ[isfrac].copy()
 
 
     Occupations = np.hstack((eigenvals_imp, eigenvals_bath))

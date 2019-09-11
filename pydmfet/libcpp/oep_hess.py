@@ -50,7 +50,7 @@ def oep_hess(jCa, orb_Ea, size, NOrb, NAlpha=None, mo_occ=None, smear=0.0, sym_t
     e_tol = 1e-4
     occ_tol = 1e-8 #this should be small enough?
 
-    t0 = (time.clock(),time.time())
+    t0 = tools.time0()
 
     if smear < 1e-8:
         if NAlpha is None: 

@@ -1,11 +1,10 @@
-import time
 import numpy as np
 from pydmfet import tools
 
 
 def build_locops(mol_frag, mol_env, ints, core1PDM_loc, Kcoeff = 1.0, Ne_core=0):
 
-    t0 = (time.clock(), time.time())
+    t0 = tools.time0()
 
     locKin = ints.frag_kin_loc()
 
@@ -36,7 +35,7 @@ def build_locops(mol_frag, mol_env, ints, core1PDM_loc, Kcoeff = 1.0, Ne_core=0)
 
 def build_subops(impAtom, mol_frag, mol_env, boundary_atoms1, boundary_atoms2, ints, loc2sub, core1PDM_loc, dim, Kcoeff = 1.0, Ne_core=0):
 
-    t0 = (time.clock(), time.time())
+    t0 = tools.time0()
 
     subKin = frag_kin_sub( ints, loc2sub, dim )
     #subVnuc1 = frag_vnuc_sub( ints, impAtom, loc2sub, dim)
@@ -94,7 +93,7 @@ def frag_vnuc_sub(mol, ints, loc2sub, numActive):
 
 def coreJK_sub(ints, loc2sub, numActive, coreDMloc, Ne_core, Kcoeff = 1.0):
 
-    t0 = (time.clock(), time.time())
+    t0 = tools.time0()
     sub_coreJK = None
     if(Ne_core == 0):
         sub_coreJK = 0.0        

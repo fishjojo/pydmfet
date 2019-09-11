@@ -249,7 +249,7 @@ class OEP:
             diffP=(self.P_imp+self.P_bath-self.P_ref)
             gtol = np.amax(np.absolute(diffP))
             gtol_min = min(gtol,gtol_min)
-            #self.params.options["gtol"] = max(gtol_min/5.0, gtol0)  #gradually reduce gtol
+            self.params.options["gtol"] = max(gtol_min/5.0, gtol0)  #gradually reduce gtol
 
             if do_leastsq:
                 umat = self.oep_leastsq(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
@@ -324,7 +324,7 @@ class OEP:
         Ne_env = self.Ne_env
         dim = self.dim
 
-        dm0_frag = None
+        dm0_frag = self.P_imp
         if self.use_suborb:
             coredm = self.core1PDM_ao
             ao2sub = self.ao2sub[:,:dim]
@@ -347,7 +347,7 @@ class OEP:
 
         #mf_frag.stability(internal=True, external=False, verbose=5)
 
-        dm0_env = None
+        dm0_env = self.P_bath
         if self.use_suborb:
             mf_env = qcwrap.qc_scf(True, mol=self.mol_env, Ne=Ne_env, Norb=dim, method=self.mf_method, \
                                    vext_1e=umat, oei=self.oei_env, tei=self.tei,\

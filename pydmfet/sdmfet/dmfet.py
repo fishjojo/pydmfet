@@ -13,7 +13,7 @@ class DMFET:
                  umat = None, P_frag_ao = None, P_env_ao = None, \
                  dim_imp =None, dim_bath = None, dim_big = None, smear_sigma = 0.0, \
                  sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
-                 plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False, use_umat_ao = False):
+                 plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False, use_umat_ao = False, scf_max_cycle=50):
 
         self.use_suborb = True
         self.ints = ints
@@ -29,6 +29,7 @@ class DMFET:
         self.deproton = deproton
         self.plot_dens = plot_dens
         self.plot_mo = plot_mo
+        self.scf_max_cycle = scf_max_cycle
 
         self.P_ref_ao = mf_full.make_rdm1()
         self.P_frag_ao = P_frag_ao
@@ -58,6 +59,7 @@ class DMFET:
         self.OneDM_loc, mo_coeff = self.ints.build_1pdm_loc()
         #tools.MatPrint(self.OneDM_loc,"self.OneDM_loc")
 
+        '''
         ##########################
         # SCF with local orbitals
         ##########################
@@ -73,9 +75,12 @@ class DMFET:
         energy = mf.elec_energy + self.ints.energy_nuc()
         print('total scf energy = %.15g ' % energy)
         ##########################
+        '''
+
+        mo_coeff_loc,mo_occ_loc,_ = self.ints.get_loc_mo(self.smear_sigma)
 
         self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, occ_imp, occ_bath = \
-        subspac.construct_subspace2(mf, self.mol_frag, self.ints, self.cluster,dim_imp,dim_bath,self.sub_threshold)
+        subspac.construct_subspace2(mo_coeff_loc,mo_occ_loc, self.mol_frag, self.ints, self.cluster,dim_imp,dim_bath,self.sub_threshold)
 
 
         self.P_frag_loc = None
@@ -178,14 +183,14 @@ class DMFET:
         print ('P_bath idem:',np.linalg.norm(np.dot(self.P_bath,self.P_bath) - 2.0*self.P_bath))
 
 
-        if(self.umat is not None):
-            self.umat = tools.op_ao2sub(self.umat, self.ao2sub[:,:dim])
-            print ('|umat| = ', np.linalg.norm(self.umat)) 
-        else:
+        #if(self.umat is not None):
+        #    self.umat = tools.op_ao2sub(self.umat, self.ao2sub[:,:dim])
+        if self.umat is None:
             #self.umat = np.random.rand(dim,dim)
             #self.umat = 0.5*(self.umat+self.umat.T)
             #self.umat = self.umat - np.eye( self.umat.shape[ 0 ] ) * np.average( np.diag( self.umat ) )
             self.umat = np.zeros((dim,dim))
+        print ('|umat| = ', np.linalg.norm(self.umat))
 
         '''
         #density partition

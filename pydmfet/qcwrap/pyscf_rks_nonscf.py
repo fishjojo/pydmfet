@@ -78,8 +78,9 @@ class rks_nonscf(rks_pyscf):
         Kcoeff = self._numint.hybrid_coeff(self.xc)
         self.vhxc = tools.dm2jk(self.dm_guess, self.tei, Kcoeff)
         if(self.method != 'hf'):
+            t0 = tools.time0()
             vxc_ao = get_vxc(self, self.mol, self.coredm + tools.dm_sub2ao(self.dm_guess, ao2sub))[2]
             self.vhxc += tools.op_ao2sub(vxc_ao, ao2sub)
-
+            t1 = tools.timer("vxc construction", t0)
 
     kernel = kernel 

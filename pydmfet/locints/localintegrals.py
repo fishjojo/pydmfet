@@ -6,7 +6,7 @@ from pyscf.tools import molden
 from pydmfet.locints import iao_helper
 from pydmfet import tools
 import numpy as np
-import copy,time
+import copy
 from functools import reduce
 
 
@@ -180,11 +180,51 @@ class LocalIntegrals:
         FOCKloc = self.activeOEI + JK_loc
         return FOCKloc
 
+    def get_loc_mo(self, smear_sigma):
+
+        from pydmfet.qcwrap.fermi import find_efermi       
+ 
+        fock = self.activeFOCK
+        eigenvals, eigenvecs = np.linalg.eigh( fock )
+        idx = np.argmax(abs(eigenvecs), axis=0)
+        eigenvecs[:,eigenvecs[ idx, np.arange(len(eigenvals)) ]<0] *= -1
+        Nocc = self.Nelec//2  #closed shell
+
+        e_homo = eigenvals[Nocc-1]
+        e_lumo = eigenvals[Nocc]
+        print ('HOMO: ', e_homo, 'LUMO: ', e_lumo)
+        print ("mo_energy:")
+        print (eigenvals[:Nocc+5])
+
+        e_fermi = e_homo
+        mo_occ = np.zeros((self.NOrb))
+
+        if(smear_sigma < 1e-8): #T=0
+            mo_occ[:Nocc] = 1.0
+        else: #finite T
+            e_fermi, mo_occ = find_efermi(eigenvals, smear_sigma, Nocc, self.NOrb)
+
+        mo_occ*=2.0 #closed shell
+
+        Ne_error = np.sum(mo_occ) - self.Nelec
+        if(Ne_error > 1e-8):
+            print ('Ne error = ', Ne_error)
+        print ("fermi energy: ", e_fermi)
+        np.set_printoptions(precision=4)
+        flag = mo_occ > 1e-4
+        print (mo_occ[flag])
+        np.set_printoptions()
+
+        mo_coeff = eigenvecs
+        mo_energy = eigenvals
+
+        return mo_coeff, mo_occ, mo_energy
+
 
     def tei_loc( self ):
 
         if ( self.ERIinMEM == False ):
-            t0 = (time.clock(),time.time())
+            t0 = tools.time0()
             #print "LocalIntegrals.tei_loc : ERI of the localized orbitals are not stored in memory."
             if(self.mol.cart):
                 intor='int2e_cart'
@@ -225,7 +265,7 @@ class LocalIntegrals:
 
         TEIdmet_8 = None
 
-        t0 = (time.clock(),time.time()) 
+        t0 = tools.time0() 
         if ( self.ERIinMEM == False ):
             transfo = np.dot( self.ao2loc, loc2dmet[:,:numAct] )
             #TEIdmet = ao2mo.outcore.full_iofree(self.mol, transfo, compact=False).reshape(numAct, numAct, numAct, numAct)

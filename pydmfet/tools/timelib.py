@@ -1,8 +1,14 @@
 import time
 
+def time0():
+
+    t0 = (time.process_time(), time.perf_counter())
+
+    return t0
+
 def timer(name, t0):
 
-    t1 = (time.clock(), time.time())
+    t1 = (time.process_time(), time.perf_counter())
     tcpu = t1[0] - t0[0]
     twall = t1[1] - t0[1]
 
