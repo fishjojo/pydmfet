@@ -13,7 +13,7 @@ class DMFET:
                  umat = None, P_frag_ao = None, P_env_ao = None, \
                  dim_imp =None, dim_bath = None, dim_big = None, smear_sigma = 0.0, \
                  sub_threshold = 1e-13, oep_params = oep.OEPparams(), ecw_method = 'HF', mf_method = 'HF', ex_nroots = 1, \
-                 plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False, use_umat_ao = False, scf_max_cycle=50):
+                 plot_dens=True, plot_mo = True, deproton=None, use_bath_virt = False, use_umat_ao = False, scf_max_cycle=50, frac_occ_tol=1e-6):
 
         self.use_suborb = True
         self.ints = ints
@@ -80,7 +80,8 @@ class DMFET:
         mo_coeff_loc,mo_occ_loc,_ = self.ints.get_loc_mo(self.smear_sigma)
 
         self.dim_imp, self.dim_bath, self.Occupations, self.loc2sub, occ_imp, occ_bath = \
-        subspac.construct_subspace2(mo_coeff_loc,mo_occ_loc, self.mol_frag, self.ints, self.cluster,dim_imp,dim_bath,self.sub_threshold)
+        subspac.construct_subspace2(mo_coeff_loc,mo_occ_loc, self.mol_frag, self.ints, self.cluster,dim_imp,dim_bath,self.sub_threshold,\
+                                    occ_tol = frac_occ_tol)
 
 
         self.P_frag_loc = None
@@ -176,11 +177,12 @@ class DMFET:
         self.P_ref_sub = tools.dm_loc2sub(self.OneDM_loc - self.core1PDM_loc, loc2sub[:,:dim])
         #tools.MatPrint(self.P_ref_sub, "P_ref")
 
+
         self.P_imp = np.dot(np.dot(self.loc2sub[:,:dim].T,self.P_frag_loc),self.loc2sub[:,:dim])
         self.P_bath = np.dot(np.dot(self.loc2sub[:,:dim].T,self.P_env_loc),self.loc2sub[:,:dim])
-        print ('|diffP| = ',  np.linalg.norm(self.P_imp + self.P_bath - self.P_ref_sub))
-        print ('P_imp idem:', np.linalg.norm(np.dot(self.P_imp,self.P_imp) - 2.0*self.P_imp))
-        print ('P_bath idem:',np.linalg.norm(np.dot(self.P_bath,self.P_bath) - 2.0*self.P_bath))
+        #print ('|diffP| = ',  np.linalg.norm(self.P_imp + self.P_bath - self.P_ref_sub))
+        #print ('P_imp idem:', np.linalg.norm(np.dot(self.P_imp,self.P_imp) - 2.0*self.P_imp))
+        #print ('P_bath idem:',np.linalg.norm(np.dot(self.P_bath,self.P_bath) - 2.0*self.P_bath))
 
 
         #if(self.umat is not None):
@@ -243,7 +245,6 @@ class DMFET:
 
         self.total_scf_energy()
         self.P_ref = self.P_ref_sub
-
 
 
     def calc_umat(self):

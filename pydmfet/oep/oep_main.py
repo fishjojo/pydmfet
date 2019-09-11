@@ -4,7 +4,7 @@ import numpy as np
 from scipy import optimize
 from pyscf import lib, scf, mp, lo
 from pyscf.tools import cubegen
-import time,copy
+import copy
 from pydmfet import qcwrap,tools,subspac, libgen
 from pydmfet.libcpp import oep_hess, mkl_svd
 from pydmfet.opt import newton
@@ -83,6 +83,10 @@ class OEP:
         self.tei      = None
         self.oei_frag = None
         self.oei_env  = None
+
+        self.vhxc_frag = None #hack
+        self.vhxc_env  = None #hack
+
         if self.use_suborb:
             #frequently used operators
             ops = self.ops
@@ -164,7 +168,7 @@ class OEP:
         JCP, 134, 154110 (2011)
         '''
 
-        t0 = (time.clock(),time.time())
+        t0 = tools.time0()
        
         params = self.params
         print("gtol = ", params.options["gtol"])
@@ -186,6 +190,21 @@ class OEP:
             scf_args_env  = {'mol':self.mol_env, 'Ne':self.Ne_env, 'Norb':dim, 'method':self.mf_method,\
                              'oei':self.oei_env, 'tei':self.tei, 'dm0':dm0_env, 'coredm':self.core1PDM_ao, \
                              'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
+
+            if nonscf: #hack to compute vhxc here
+                from pydmfet.qcwrap.pyscf_rks_nonscf import rks_nonscf
+                mf_frag = rks_nonscf(self.Ne_frag, dim, self.mf_method.lower(), mol=self.mol_frag,\
+                                     oei=self.oei_frag,tei=self.tei,dm0=dm0_frag,coredm=0.0,\
+                                     ao2sub=ao2sub,smear_sigma=self.smear_sigma,max_cycle=self.scf_max_cycle)
+                self.vhxc_frag = copy.copy(mf_frag.vhxc)
+                scf_args_frag.update({'vhxc':self.vhxc_frag})
+
+                mf_env = rks_nonscf(self.Ne_env, dim, self.mf_method.lower(), mol=self.mol_env,\
+                                     oei=self.oei_env,tei=self.tei,dm0=dm0_env,coredm=self.core1PDM_ao,\
+                                     ao2sub=ao2sub,smear_sigma=self.smear_sigma,max_cycle=self.scf_max_cycle)
+                self.vhxc_env = copy.copy(mf_env.vhxc)
+                scf_args_env.update({'vhxc':self.vhxc_env})
+
 
         else:
             #dmfet (no frozen density)
@@ -228,7 +247,7 @@ class OEP:
         oep with split loops
         '''
 
-        t0 = (time.clock(),time.time())
+        t0 = tools.time0()
 
         params = self.params
         gtol0 = copy.copy(params.options["gtol"])
@@ -251,6 +270,10 @@ class OEP:
             gtol_min = min(gtol,gtol_min)
             self.params.options["gtol"] = max(gtol_min/5.0, gtol0)  #gradually reduce gtol
 
+            if self.use_suborb and it ==1:
+                gtol_min = 0.25 #hack
+                self.params.options["gtol"] = max(gtol_min/5.0, gtol0)
+
             if do_leastsq:
                 umat = self.oep_leastsq(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
             else:
@@ -260,14 +283,14 @@ class OEP:
                 #sdmfet
                 ao2sub = self.ao2sub[:,:dim]
                 scf_args_frag = {'mol':self.mol_frag, 'Ne':self.Ne_frag, 'Norb':dim, 'method':self.mf_method,\
-                                 'vext_1e':umat, 'oei':self.oei_frag, 'tei':self.tei, 'dm0':P_imp_old, 'coredm':0.0, \
+                                 'vext_1e':umat, 'oei':self.oei_frag, 'vhxc':self.vhxc_frag, 'tei':self.tei, 'dm0':P_imp_old, 'coredm':0.0, \
                                  'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
                 mf_frag = qcwrap.qc_scf(True, nonscf=True, **scf_args_frag)
                 mf_frag.kernel()
                 self.P_imp = mf_frag.rdm1
 
                 scf_args_env  = {'mol':self.mol_env, 'Ne':self.Ne_env, 'Norb':dim, 'method':self.mf_method,\
-                                 'vext_1e':umat, 'oei':self.oei_env, 'tei':self.tei, 'dm0':P_bath_old, 'coredm':self.core1PDM_ao, \
+                                 'vext_1e':umat, 'oei':self.oei_env, 'vhxc':self.vhxc_env, 'tei':self.tei, 'dm0':P_bath_old, 'coredm':self.core1PDM_ao, \
                                  'ao2sub':ao2sub, 'smear_sigma':self.smear_sigma, 'max_cycle':self.scf_max_cycle}
                 mf_env = qcwrap.qc_scf(True, nonscf=True, **scf_args_env)
                 mf_env.kernel()
@@ -880,7 +903,7 @@ class OEP:
 
     def oep_calc_diffP_derivative(self, x, dim, Ne_frag, Ne_env, P_ref, ops):
 
-        t0 = (time.clock(),time.time())
+        t0 = tools.time0()
         size = dim*(dim+1)//2
 
         hess_frag = oep_calc_dPdV(self.frag_mo[:,:-1],self.frag_mo[:,-1],size,self.Ne_frag//2,dim)

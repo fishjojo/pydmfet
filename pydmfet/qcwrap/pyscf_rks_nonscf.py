@@ -64,7 +64,7 @@ def kernel(ks):
 
 class rks_nonscf(rks_pyscf):
 
-    def __init__(self, Ne, Norb, mf_method, mol=None, vext_1e = None, oei=None, tei=None, ovlp=1, dm0=None,\
+    def __init__(self, Ne, Norb, mf_method, mol=None, vext_1e = None, oei=None, vhxc=None, tei=None, ovlp=1, dm0=None,\
                  coredm=0.0, ao2sub=1.0, level_shift=0.0, smear_sigma = 0.0, max_cycle = 50):
 
         rks_pyscf.__init__(self, Ne, Norb, mf_method, mol, vext_1e, oei, tei, ovlp, dm0, coredm, ao2sub, level_shift, smear_sigma)
@@ -76,11 +76,11 @@ class rks_nonscf(rks_pyscf):
             raise ValueError("tei has to be set")
 
         Kcoeff = self._numint.hybrid_coeff(self.xc)
-        self.vhxc = tools.dm2jk(self.dm_guess, self.tei, Kcoeff)
-        if(self.method != 'hf'):
-            t0 = tools.time0()
-            vxc_ao = get_vxc(self, self.mol, self.coredm + tools.dm_sub2ao(self.dm_guess, ao2sub))[2]
-            self.vhxc += tools.op_ao2sub(vxc_ao, ao2sub)
-            t1 = tools.timer("vxc construction", t0)
+        self.vhxc = vhxc
+        if self.vhxc is None:
+            self.vhxc = tools.dm2jk(self.dm_guess, self.tei, Kcoeff)
+            if(self.method != 'hf'):
+                vxc_ao = get_vxc(self, self.mol, self.coredm + tools.dm_sub2ao(self.dm_guess, ao2sub))[2]
+                self.vhxc += tools.op_ao2sub(vxc_ao, ao2sub)
 
     kernel = kernel 
