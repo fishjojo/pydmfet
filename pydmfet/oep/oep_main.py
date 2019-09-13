@@ -270,9 +270,11 @@ class OEP:
             gtol_min = min(gtol,gtol_min)
             self.params.options["gtol"] = max(gtol_min/5.0, gtol0)  #gradually reduce gtol
 
+            '''
             if self.use_suborb and it ==1:
                 gtol_min = 0.25 #hack
                 self.params.options["gtol"] = max(gtol_min/5.0, gtol0)
+            '''
 
             if do_leastsq:
                 umat = self.oep_leastsq(umat, nonscf=True, dm0_frag=P_imp_old, dm0_env=P_bath_old)
@@ -342,7 +344,6 @@ class OEP:
         print (' SCF with converged embedding potential ')
         print ('========================================')
 
-        ops = self.ops
         Ne_frag = self.Ne_frag
         Ne_env = self.Ne_env
         dim = self.dim

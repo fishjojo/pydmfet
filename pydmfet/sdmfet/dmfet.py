@@ -245,7 +245,7 @@ class DMFET:
 
         self.total_scf_energy()
         self.P_ref = self.P_ref_sub
-
+        self.P_imp, self.P_bath = oep.init_dens_par(self, self.dim_sub, True)
 
     def calc_umat(self):
       
@@ -347,8 +347,10 @@ class DMFET:
 
         #tools.MatPrint(P_imp_ao,'P_frag')
 
-        umat_plot = reduce(np.dot, (ao2sub, self.umat, ao2sub.T))
-        #tools.MatPrint(umat_plot,"umat_plot")
+        umat_ao = reduce(np.dot, (ao2sub, self.umat, ao2sub.T))
+
+        diffP = P_imp_ao + P_bath_ao + self.core1PDM_ao - self.P_ref_ao
+        print ('|diffP_ao| = ', np.linalg.norm(diffP), 'max(diffP_ao) = ', np.max(diffP))
 
         if(self.plot_dens):
             cubegen.density(self.mol, "tot_dens.cube", self.P_ref_ao, nx=100, ny=100, nz=100)
@@ -356,15 +358,13 @@ class DMFET:
             cubegen.density(self.mol, "bath_dens.cube", P_bath_ao, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "core_dens.cube", self.core1PDM_ao, nx=100, ny=100, nz=100)
             cubegen.density(self.mol, "env_dens.cube", P_bath_ao + self.core1PDM_ao, nx=100, ny=100, nz=100)
-            cubegen.density(self.mol, "vemb.cube", umat_plot, nx=100, ny=100, nz=100)
+            cubegen.density(self.mol, "vemb.cube", umat_ao, nx=100, ny=100, nz=100)
+            cubegen.density(self.mol, "error_dens.cube", diffP, nx=100, ny=100, nz=100)
 
-
-        diffP = P_imp_ao + P_bath_ao + self.core1PDM_ao - self.P_ref_ao
-        print ('|diffP_ao| = ', np.linalg.norm(diffP), 'max(diffP_ao) = ', np.max(diffP))
         
         #return self.umat
-        s = self.mf_full.get_ovlp(self.mol)
-        return reduce(np.dot, (s,umat_plot,s))
+        #s = self.mf_full.get_ovlp(self.mol)
+        #return reduce(np.dot, (s,umat_plot,s))
 
 
     def correction_energy(self):

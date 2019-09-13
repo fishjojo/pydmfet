@@ -111,7 +111,8 @@ class DFET:
         if(self.plot_dens):
             cubegen.density(self.mol, "tot_dens.cube", self.P_ref, nx=100, ny=100, nz=100)
 
-        self.P_imp, self.P_bath = init_density_partition(self)
+        #self.P_imp, self.P_bath = init_density_partition(self)
+        self.P_imp, self.P_bath = oep.init_dens_par(self, self.dim, False)
 
     bound_vnuc_ao = bound_vnuc_ao
 
