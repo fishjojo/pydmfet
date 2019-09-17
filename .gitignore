@@ -1,5 +1,7 @@
 *.pyc
 *.out*
 *.molden
+*.cube
+*.chk
 tmp*
 *.dat

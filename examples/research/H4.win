@@ -1,0 +1,61 @@
+## Valence states ##
+num_wann        = 4 
+####################
+
+## Valence + conduction states ##
+#num_wann        = 32
+#num_bands       = 32
+#dis_froz_max    = -17.0
+#dis_win_max     =  4.0
+#dis_num_iter    =  100
+#################################
+
+num_iter        = 100
+conv_tol        = 1e-10
+conv_window     = 5
+
+translate_home_cell=true
+
+guiding_centres = true
+
+iprint          = 2
+
+## Plotting #################
+#restart             = plot
+#wannier_plot        = true
+#wannier_plot_format = cube
+#wannier_plot_list   = 1,7,13
+#############################
+
+
+
+
+## Valence states ##
+#use_bloch_phases = true
+begin projections
+#random
+H:s
+end projections
+####################
+
+## Valence + conduction states ##
+#begin projections
+#Bohr
+#H:s
+#c=  13.0,  12.7,  15.0 : s
+#c=  13.0,  17.3,  15.0 : s
+#c=  11.0,  16.1,  15.0 : s
+#c=  11.0,  13.9,  15.0 : s
+#c=  15.0,  13.9,  15.0 : s
+#c=  15.0,  16.1,  15.0 : s
+#C:pz
+#end projections
+#################################
+
+#restart = plot
+#write_u_matrices = true
+#wannier_plot = true
+#wannier_plot_format = cube
+wvfn_formatted=.true.
+wannier_plot_supercell = 1
+#wannier_plot_list = 1-16

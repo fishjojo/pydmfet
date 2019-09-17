@@ -1,0 +1,2 @@
+rotate y by -45
+rotate x by 30
