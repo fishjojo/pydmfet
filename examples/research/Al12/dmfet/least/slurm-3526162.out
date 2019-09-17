@@ -1,0 +1,11 @@
+<class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> does not have attributes  dm_guess coredm ne_frozen vext_1e add_coredm_ext_energy
+ECP stuttgartdz not found for  GHOST-Al
+ECP stuttgartdz not found for  GHOST-Al
+<class 'pydmfet.dfet_ao.scf.EmbedSCF'> does not have attributes  Ne
+/home/xingz/.local/lib/python3.7/site-packages/pydmfet/oep/oep_optimize.py:61: OptimizeWarning: Unknown solver options: svd_thresh
+  options=self.options)
+ This problem is unconstrained.
+
+ Warning:  more than 10 function and gradient
+   evaluations in the last line search.  Termination
+   may possibly be caused by a bad search direction.

@@ -1,0 +1,11 @@
+ECP stuttgartdz not found for  H
+Traceback (most recent call last):
+  File "CBVN.py", line 31, in <module>
+    opt1 = geomopt.optimize(mf)
+  File "/home/xingz/.local/lib/python3.7/site-packages/pyscf/geomopt/__init__.py", line 19, in optimize
+    return berny_solver.optimize(method, *args, **kwargs)
+  File "/home/xingz/.local/lib/python3.7/site-packages/pyscf/geomopt/berny_solver.py", line 157, in optimize
+    optimizer.send((energy, gradients))
+  File "/home/xingz/.local/lib/python3.7/site-packages/berny/berny.py", line 144, in send
+    raise RuntimeError('The trust radius got too small, check forces?')
+RuntimeError: The trust radius got too small, check forces?

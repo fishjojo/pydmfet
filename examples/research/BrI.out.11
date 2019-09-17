@@ -1,0 +1,1131 @@
+/usr/licensed/anaconda/5.0.1/lib/python2.7/site-packages/h5py/__init__.py:34: FutureWarning: Conversion of the second argument of issubdtype from `float` to `np.floating` is deprecated. In future, it will be treated as `np.float64 == np.dtype(float).type`.
+  from ._conv import register_converters as _register_converters
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/BrI.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo,lo, cc
+import numpy as np
+from pyscf.tools import molden
+import time
+from pydmfet import dfet_ao
+from pydmfet.dfet_ao import dfet
+
+bas = "lanl2dz"
+ecp = {"Br":"lanl2dz","I":"lanl2dz"}
+
+#bas = "ccpvdz"
+
+mol = gto.Mole()
+mol.atom = open('BrI.xyz').read()
+mol.basis = bas
+mol.ecp = ecp
+mol.charge = -1
+mol.build(max_memory = 4000, verbose=4)
+
+#print(mol.intor_symmetric('ECPscalar'))
+
+mf = scf.RKS(mol)
+mf.xc = "b3lyp"
+mf.max_cycle = 50
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+'''
+hf=scf.RHF(mol)
+hf.scf()
+mycc = cc.CCSD(hf)
+mycc.kernel()
+et = mycc.ccsd_t()
+energy = hf.energy_tot() + mycc.e_corr + et
+print "total system ccsd(t) energy: ", energy
+'''
+
+'''
+nocc = mf.mol.nelectron // 2
+mo_pipek = lo.pipek.PM(mol).kernel(mf.mo_coeff[:,:nocc], verbose=4)
+
+
+with open( 'BrI_mo.molden', 'w' ) as thefile:
+    molden.header(mf.mol, thefile)
+    molden.orbital_coeff(mf.mol, thefile, mo_pipek)
+
+exit()
+'''
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(4):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+#mol_frag=gto.Mole()
+#mol_frag.atom = open('BrI.xyz').read()
+mol_frag.basis = bas
+mol_frag.ecp = ecp
+mol_frag.charge = -3
+mol_frag.build(max_memory = 4000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+#mol_env=gto.Mole()
+#mol_env.atom = open('BrI.xyz').read()
+mol_env.basis =  bas
+mol_env.ecp = ecp
+mol_env.charge = 2
+mol_env.build(max_memory = 4000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 12
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+
+boundary_atoms[4] = 7
+boundary_atoms[5] = 7
+boundary_atoms2[0] = 6
+boundary_atoms2[1:3] = 1
+#boundary_atoms2[4] = -1
+#boundary_atoms2[5] = -1
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1.0e-5,diffP_tol= 1.0e-5, outer_maxit = 0, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+
+#theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+#                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+#                     oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+#umat = theDMFET.embedding_potential()
+
+#params.algorithm='2011'
+#params.gtol=1.e-4
+#params.diffP_tol=1.e-4
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = None, dim_imp =nbas, dim_bath=nbas, dim_big =None, smear_sigma = 0.00, oep_params=params,ecw_method='ccsd(t)', mf_method = mf.xc,\
+			 use_umat_ao=False)
+
+umat = theDMFET.embedding_potential()
+
+e=theDMFET.correction_energy()
+print 'corr energy = ',e
+
+#Myoep = dfet_ao.oep.OEPao(theDMFET,params)
+#umat = Myoep.kernel() 
+
+'''
+params.algorithm='2011'
+params.maxit=1
+params.outer_maxit=1
+theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                     umat = umat, oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+'''
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-957.10.1.el7.x86_64', '#1 SMP Thu Mar 14 07:31:46 EDT 2019', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Tue Apr  9 20:45:08 2019
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 6
+[INPUT] num. electrons = 24
+[INPUT] charge = -1
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 C     -0.064002810000  -0.001484890000  -0.008883770000 AA   -0.120947782103  -0.002806035425  -0.016787892254 Bohr
+[INPUT]  2 H      0.094200220000   1.029018030000   0.076013990000 AA    0.178012616674   1.944562253939   0.143645622735 Bohr
+[INPUT]  3 H     -0.256517910000  -0.576312960000   0.851655770000 AA   -0.484748595946  -1.089073656437   1.609396157706 Bohr
+[INPUT]  4 H      0.030342270000  -0.476487860000  -0.943533510000 AA    0.057338580298  -0.900431557080  -1.783019923250 Bohr
+[INPUT]  5 Br    -2.574971610000   0.395717130000  -0.290121180000 AA   -4.865991121430   0.747796998499  -0.548249573136 Bohr
+[INPUT]  6 I      2.771385570000  -0.371351500000   0.313201240000 AA    5.237159712872  -0.701752630946   0.591864565474 Bohr
+
+nuclear repulsion = 38.7687331958371
+number of shells = 19
+number of NR pGTOs = 61
+number of NR cGTOs = 31
+basis = lanl2dz
+ecp = {'I': 'lanl2dz', 'Br': 'lanl2dz'}
+CPU time:         4.53
+
+
+******** <class 'pyscf.dft.rks.RKS'> flags ********
+method = RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpNch5iZ
+max_memory 4000 MB (current use 65 MB)
+XC functionals = b3lyp
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2b0a25f2bd70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2b0a25f2bc80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 86188
+init E= -50.1762475986065
+  HOMO = -0.024786373292625  LUMO = 0.0232539009415325
+cycle= 1 E= -63.6695009173445  delta_E= -13.5  |g|= 1.26  |ddm|= 5.77
+  HOMO = 0.0162305013386552  LUMO = 0.258432231318615
+cycle= 2 E= -63.6800682741028  delta_E= -0.0106  |g|= 1.36  |ddm|= 3.05
+  HOMO = -0.0384628338290328  LUMO = 0.0483462674374632
+cycle= 3 E= -64.3975638413678  delta_E= -0.717  |g|= 0.323  |ddm|= 1.62
+  HOMO = -0.0483147531282857  LUMO = 0.0980455455675584
+cycle= 4 E= -64.4436784742436  delta_E= -0.0461  |g|= 0.196  |ddm|= 1.07
+  HOMO = -0.0662198619750373  LUMO = 0.0827262996848828
+cycle= 5 E= -64.4649079998329  delta_E= -0.0212  |g|= 0.0197  |ddm|= 0.413
+  HOMO = -0.0719520660768123  LUMO = 0.0797789554746159
+cycle= 6 E= -64.4650581929952  delta_E= -0.00015  |g|= 0.00714  |ddm|= 0.0405
+  HOMO = -0.0704955696739674  LUMO = 0.0806748324364531
+cycle= 7 E= -64.4650785705688  delta_E= -2.04e-05  |g|= 0.00255  |ddm|= 0.0103
+  HOMO = -0.0705098822494344  LUMO = 0.0807020389220947
+cycle= 8 E= -64.4650812700708  delta_E= -2.7e-06  |g|= 0.000369  |ddm|= 0.0034
+  HOMO = -0.0704928845616897  LUMO = 0.0806574496990568
+cycle= 9 E= -64.465081332992  delta_E= -6.29e-08  |g|= 4.23e-05  |ddm|= 0.000586
+  HOMO = -0.0704929673392063  LUMO = 0.0806626535277132
+cycle= 10 E= -64.4650813337413  delta_E= -7.49e-10  |g|= 1.48e-06  |ddm|= 6.77e-05
+  HOMO = -0.0704932353259681  LUMO = 0.0806624413870165
+Extra cycle  E= -64.4650813337396  delta_E= 1.65e-12  |g|= 2.55e-06  |ddm|= 8.03e-06
+converged SCF energy = -64.4650813337396
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/BrI.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo,lo, cc
+import numpy as np
+from pyscf.tools import molden
+import time
+from pydmfet import dfet_ao
+from pydmfet.dfet_ao import dfet
+
+bas = "lanl2dz"
+ecp = {"Br":"lanl2dz","I":"lanl2dz"}
+
+#bas = "ccpvdz"
+
+mol = gto.Mole()
+mol.atom = open('BrI.xyz').read()
+mol.basis = bas
+mol.ecp = ecp
+mol.charge = -1
+mol.build(max_memory = 4000, verbose=4)
+
+#print(mol.intor_symmetric('ECPscalar'))
+
+mf = scf.RKS(mol)
+mf.xc = "b3lyp"
+mf.max_cycle = 50
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+'''
+hf=scf.RHF(mol)
+hf.scf()
+mycc = cc.CCSD(hf)
+mycc.kernel()
+et = mycc.ccsd_t()
+energy = hf.energy_tot() + mycc.e_corr + et
+print "total system ccsd(t) energy: ", energy
+'''
+
+'''
+nocc = mf.mol.nelectron // 2
+mo_pipek = lo.pipek.PM(mol).kernel(mf.mo_coeff[:,:nocc], verbose=4)
+
+
+with open( 'BrI_mo.molden', 'w' ) as thefile:
+    molden.header(mf.mol, thefile)
+    molden.orbital_coeff(mf.mol, thefile, mo_pipek)
+
+exit()
+'''
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(4):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+#mol_frag=gto.Mole()
+#mol_frag.atom = open('BrI.xyz').read()
+mol_frag.basis = bas
+mol_frag.ecp = ecp
+mol_frag.charge = -3
+mol_frag.build(max_memory = 4000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+#mol_env=gto.Mole()
+#mol_env.atom = open('BrI.xyz').read()
+mol_env.basis =  bas
+mol_env.ecp = ecp
+mol_env.charge = 2
+mol_env.build(max_memory = 4000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 12
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+
+boundary_atoms[4] = 7
+boundary_atoms[5] = 7
+boundary_atoms2[0] = 6
+boundary_atoms2[1:3] = 1
+#boundary_atoms2[4] = -1
+#boundary_atoms2[5] = -1
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1.0e-5,diffP_tol= 1.0e-5, outer_maxit = 0, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+
+#theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+#                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+#                     oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+#umat = theDMFET.embedding_potential()
+
+#params.algorithm='2011'
+#params.gtol=1.e-4
+#params.diffP_tol=1.e-4
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = None, dim_imp =nbas, dim_bath=nbas, dim_big =None, smear_sigma = 0.00, oep_params=params,ecw_method='ccsd(t)', mf_method = mf.xc,\
+			 use_umat_ao=False)
+
+umat = theDMFET.embedding_potential()
+
+e=theDMFET.correction_energy()
+print 'corr energy = ',e
+
+#Myoep = dfet_ao.oep.OEPao(theDMFET,params)
+#umat = Myoep.kernel() 
+
+'''
+params.algorithm='2011'
+params.maxit=1
+params.outer_maxit=1
+theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                     umat = umat, oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+'''
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-957.10.1.el7.x86_64', '#1 SMP Thu Mar 14 07:31:46 EDT 2019', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Tue Apr  9 20:45:11 2019
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 6
+[INPUT] num. electrons = 12
+[INPUT] charge = -3
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 C     -0.064002810000  -0.001484890000  -0.008883770000 AA   -0.120947782103  -0.002806035425  -0.016787892254 Bohr
+[INPUT]  2 H      0.094200220000   1.029018030000   0.076013990000 AA    0.178012616674   1.944562253939   0.143645622735 Bohr
+[INPUT]  3 H     -0.256517910000  -0.576312960000   0.851655770000 AA   -0.484748595946  -1.089073656437   1.609396157706 Bohr
+[INPUT]  4 H      0.030342270000  -0.476487860000  -0.943533510000 AA    0.057338580298  -0.900431557080  -1.783019923250 Bohr
+[INPUT]  5 GHOST-Br  -2.574971610000   0.395717130000  -0.290121180000 AA   -4.865991121430   0.747796998499  -0.548249573136 Bohr
+[INPUT]  6 GHOST-I   2.771385570000  -0.371351500000   0.313201240000 AA    5.237159712872  -0.701752630946   0.591864565474 Bohr
+
+nuclear repulsion = 9.94063652614953
+number of shells = 19
+number of NR pGTOs = 61
+number of NR cGTOs = 31
+basis = lanl2dz
+ecp = {'I': 'lanl2dz', 'Br': 'lanl2dz'}
+CPU time:       115.70
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/BrI.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo,lo, cc
+import numpy as np
+from pyscf.tools import molden
+import time
+from pydmfet import dfet_ao
+from pydmfet.dfet_ao import dfet
+
+bas = "lanl2dz"
+ecp = {"Br":"lanl2dz","I":"lanl2dz"}
+
+#bas = "ccpvdz"
+
+mol = gto.Mole()
+mol.atom = open('BrI.xyz').read()
+mol.basis = bas
+mol.ecp = ecp
+mol.charge = -1
+mol.build(max_memory = 4000, verbose=4)
+
+#print(mol.intor_symmetric('ECPscalar'))
+
+mf = scf.RKS(mol)
+mf.xc = "b3lyp"
+mf.max_cycle = 50
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+'''
+hf=scf.RHF(mol)
+hf.scf()
+mycc = cc.CCSD(hf)
+mycc.kernel()
+et = mycc.ccsd_t()
+energy = hf.energy_tot() + mycc.e_corr + et
+print "total system ccsd(t) energy: ", energy
+'''
+
+'''
+nocc = mf.mol.nelectron // 2
+mo_pipek = lo.pipek.PM(mol).kernel(mf.mo_coeff[:,:nocc], verbose=4)
+
+
+with open( 'BrI_mo.molden', 'w' ) as thefile:
+    molden.header(mf.mol, thefile)
+    molden.orbital_coeff(mf.mol, thefile, mo_pipek)
+
+exit()
+'''
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(4):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+#mol_frag=gto.Mole()
+#mol_frag.atom = open('BrI.xyz').read()
+mol_frag.basis = bas
+mol_frag.ecp = ecp
+mol_frag.charge = -3
+mol_frag.build(max_memory = 4000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+#mol_env=gto.Mole()
+#mol_env.atom = open('BrI.xyz').read()
+mol_env.basis =  bas
+mol_env.ecp = ecp
+mol_env.charge = 2
+mol_env.build(max_memory = 4000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 12
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+
+boundary_atoms[4] = 7
+boundary_atoms[5] = 7
+boundary_atoms2[0] = 6
+boundary_atoms2[1:3] = 1
+#boundary_atoms2[4] = -1
+#boundary_atoms2[5] = -1
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1.0e-5,diffP_tol= 1.0e-5, outer_maxit = 0, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+
+#theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+#                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+#                     oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+#umat = theDMFET.embedding_potential()
+
+#params.algorithm='2011'
+#params.gtol=1.e-4
+#params.diffP_tol=1.e-4
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = None, dim_imp =nbas, dim_bath=nbas, dim_big =None, smear_sigma = 0.00, oep_params=params,ecw_method='ccsd(t)', mf_method = mf.xc,\
+			 use_umat_ao=False)
+
+umat = theDMFET.embedding_potential()
+
+e=theDMFET.correction_energy()
+print 'corr energy = ',e
+
+#Myoep = dfet_ao.oep.OEPao(theDMFET,params)
+#umat = Myoep.kernel() 
+
+'''
+params.algorithm='2011'
+params.maxit=1
+params.outer_maxit=1
+theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                     umat = umat, oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+'''
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-957.10.1.el7.x86_64', '#1 SMP Thu Mar 14 07:31:46 EDT 2019', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Tue Apr  9 20:45:11 2019
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 6
+[INPUT] num. electrons = 12
+[INPUT] charge = 2
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 GHOST-C  -0.064002810000  -0.001484890000  -0.008883770000 AA   -0.120947782103  -0.002806035425  -0.016787892254 Bohr
+[INPUT]  2 GHOST-H   0.094200220000   1.029018030000   0.076013990000 AA    0.178012616674   1.944562253939   0.143645622735 Bohr
+[INPUT]  3 GHOST-H  -0.256517910000  -0.576312960000   0.851655770000 AA   -0.484748595946  -1.089073656437   1.609396157706 Bohr
+[INPUT]  4 GHOST-H   0.030342270000  -0.476487860000  -0.943533510000 AA    0.057338580298  -0.900431557080  -1.783019923250 Bohr
+[INPUT]  5 Br    -2.574971610000   0.395717130000  -0.290121180000 AA   -4.865991121430   0.747796998499  -0.548249573136 Bohr
+[INPUT]  6 I      2.771385570000  -0.371351500000   0.313201240000 AA    5.237159712872  -0.701752630946   0.591864565474 Bohr
+
+nuclear repulsion = 4.77113722460475
+number of shells = 19
+number of NR pGTOs = 61
+number of NR cGTOs = 31
+basis = lanl2dz
+ecp = {'I': 'lanl2dz', 'Br': 'lanl2dz'}
+CPU time:       116.51
+mo energy:
+[-10.09628043  -0.58048466  -0.51688297  -0.44655175  -0.31226416
+  -0.31059894  -0.14708796  -0.09267172  -0.09259349  -0.07122178
+  -0.07118781  -0.07049301   0.08066291   0.27496634   0.33643868
+   0.33721598   0.41565232   0.41688165   0.53765004   0.57873496
+   0.57881125   0.62979837   0.70449439   0.70488675   0.74023574
+   0.92392119   1.18688435   1.29780735   1.30443108   9.7904798
+  18.15480755]
+Ne_frag_loc =  9.065425475260056
+Ne_env_loc =  14.934574524739945
+occ_imp
+[9.66014780e-01 3.90968998e-02 2.28331200e-02 1.99809105e-02
+ 1.96735638e-02 1.99792728e+00 4.27607113e-04 1.99961194e+00
+ 1.99961271e+00 2.15090293e-04 3.15935944e-05 1.99999999e+00
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00]
+occ_bath
+[1.03398522e+00 1.96090310e+00 1.97716688e+00 1.98001909e+00
+ 1.98032644e+00 2.07272474e-03 1.99957239e+00 3.88061598e-04
+ 3.87288738e-04 1.99978491e+00 1.99996841e+00 1.44022103e-08
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00]
+dimension of subspace: imp, bath 15 16
+Ne_frag, Ne_env, Ne_core
+12 12 0
+|diffP| =  0.0
+1.2476640094272593
+1.0525907531880754
+time of coreJK_sub : 0.000  (cpu),  0.000  (wall) 
+time of locints.dmet_tei : 0.240  (cpu),  0.007  (wall) 
+time of libgen.build_subops : 0.800  (cpu),  0.022  (wall) 
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmprx0gMb
+max_memory 4000 MB (current use 268 MB)
+XC functionals = b3lyp
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2b0a25f2bd70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2b0a25f2bc80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 86188
+No. of dropped grids =  10482
+init E= -103.233814529516
+HOMO: -0.07049300783271795 LUMO: 0.08066290901003087
+-0.07049300783271795
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+cycle= 1 E= -103.233814529511  delta_E= 5.39e-12  |g|= 4.36e-06  |ddm|= 1.17e-05
+HOMO: -0.07049328747833673 LUMO: 0.08066200531338961
+-0.07049328747833673
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+Extra cycle  E= -103.233814529495  delta_E= 1.57e-11  |g|= 7.57e-06  |ddm|= 1.86e-05
+converged SCF energy = -103.233814529495
+3.517410984255065e-06
+7.151057724215506e-06
+total scf energy = -64.4650813336578 
+-103.233814529495, 0, 38.7687331958371
+entering oep_main.init_density_partition()
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpg6LQAh
+max_memory 4000 MB (current use 307 MB)
+XC functionals = b3lyp
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2b0a25f2bd70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2b0a25f2bc80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 70574
+init E= -73.6643022129559
+HOMO: -4.262060570096678 LUMO: -4.262011494958785
+-4.262060570096678
+[2. 2. 2. 2. 2. 2.]
+cycle= 1 E= -95.8471772840376  delta_E= -22.2  |g|= 1.17  |ddm|= 5.78
+HOMO: -4.530972153591593 LUMO: -4.327635390884736
+-4.530972153591593
+[2. 2. 2. 2. 2. 2.]
+cycle= 2 E= -100.987230552019  delta_E= -5.14  |g|= 2.06  |ddm|=  4.9
+HOMO: -3.8320723296135406 LUMO: -3.8282885330851557
+-3.8320723296135406
+[2. 2. 2. 2. 2. 2.]
+cycle= 3 E= -102.539006805699  delta_E= -1.55  |g|= 0.963  |ddm|= 2.88
+HOMO: -3.6593664458124424 LUMO: -3.5449314440971014
+-3.6593664458124424
+[2. 2. 2. 2. 2. 2.]
+cycle= 4 E= -101.906948918044  delta_E= 0.632  |g|= 1.29  |ddm|=  2.9
+HOMO: -3.4096842642647593 LUMO: -3.390509033904517
+-3.4096842642647593
+[2. 2. 2. 2. 2. 2.]
+cycle= 5 E= -103.287669148748  delta_E= -1.38  |g|= 0.434  |ddm|=  2.9
+HOMO: -3.272167017184827 LUMO: -3.2612626779174447
+-3.272167017184827
+[2. 2. 2. 2. 2. 2.]
+cycle= 6 E= -102.933777429312  delta_E= 0.354  |g|= 0.505  |ddm|= 2.88
+HOMO: -3.23990159968639 LUMO: -3.2232659286555636
+-3.23990159968639
+[2. 2. 2. 2. 2. 2.]
+cycle= 7 E= -103.238187606484  delta_E= -0.304  |g|= 0.336  |ddm|= 1.25
+HOMO: -3.3134550008633035 LUMO: -3.2766096528284137
+-3.3134550008633035
+[2. 2. 2. 2. 2. 2.]
+cycle= 8 E= -103.374627768034  delta_E= -0.136  |g|= 0.284  |ddm|= 2.81
+HOMO: -3.2686584986348657 LUMO: -3.22606819609763
+-3.2686584986348657
+[2. 2. 2. 2. 2. 2.]
+cycle= 9 E= -103.022323425338  delta_E= 0.352  |g|= 0.488  |ddm|= 2.78
+HOMO: -3.2619222004886703 LUMO: -3.2311309898021063
+-3.2619222004886703
+[2. 2. 2. 2. 2. 2.]
+cycle= 10 E= -103.176846134491  delta_E= -0.155  |g|= 0.432  |ddm|= 0.617
+HOMO: -3.268497541057647 LUMO: -3.2352851093540136
+-3.268497541057647
+[2. 2. 2. 2. 2. 2.]
+cycle= 11 E= -103.198211087388  delta_E= -0.0214  |g|= 0.454  |ddm|= 1.66
+HOMO: -3.266738547884395 LUMO: -3.2441512663108503
+-3.266738547884395
+[2. 2. 2. 2. 2. 2.]
+cycle= 12 E= -103.32504909714  delta_E= -0.127  |g|= 0.363  |ddm|= 0.73
+HOMO: -3.268088132233873 LUMO: -3.245653405469152
+-3.268088132233873
+[2. 2. 2. 2. 2. 2.]
+cycle= 13 E= -103.285216200143  delta_E= 0.0398  |g|= 0.437  |ddm|= 0.404
+HOMO: -3.2725746349863445 LUMO: -3.2486703021721155
+-3.2725746349863445
+[2. 2. 2. 2. 2. 2.]
+cycle= 14 E= -103.337272066244  delta_E= -0.0521  |g|= 0.332  |ddm|= 0.654
+HOMO: -3.2722769797844533 LUMO: -3.2489101125370765
+-3.2722769797844533
+[2. 2. 2. 2. 2. 2.]
+cycle= 15 E= -103.337459837682  delta_E= -0.000188  |g|= 0.338  |ddm|= 0.089
+HOMO: -3.266142079089999 LUMO: -3.2470591750468043
+-3.266142079089999
+[2. 2. 2. 2. 2. 2.]
+cycle= 16 E= -103.299471526998  delta_E= 0.038  |g|= 0.443  |ddm|= 0.572
+HOMO: -3.36860291093193 LUMO: -3.3314940149971846
+-3.36860291093193
+[2. 2. 2. 2. 2. 2.]
+cycle= 17 E= -101.42696685503  delta_E= 1.87  |g|= 0.97  |ddm|= 3.04
+HOMO: -3.401177008025697 LUMO: -3.360288301875252
+-3.401177008025697
+[2. 2. 2. 2. 2. 2.]
+cycle= 18 E= -103.327693705899  delta_E= -1.9  |g|= 0.386  |ddm|= 2.81
+HOMO: -3.283118769728958 LUMO: -3.251297215216282
+-3.283118769728958
+[2. 2. 2. 2. 2. 2.]
+cycle= 19 E= -103.408489324425  delta_E= -0.0808  |g|= 0.275  |ddm|= 0.565
+HOMO: -3.256264016010997 LUMO: -3.2355864556339644
+-3.256264016010997
+[2. 2. 2. 2. 2. 2.]
+cycle= 20 E= -103.47042446729  delta_E= -0.0619  |g|= 0.325  |ddm|= 2.28
+HOMO: -3.2576857817411273 LUMO: -3.228376903625176
+-3.2576857817411273
+[2. 2. 2. 2. 2. 2.]
+cycle= 21 E= -103.354315510738  delta_E= 0.116  |g|= 0.415  |ddm|= 0.54
+HOMO: -3.248675675025608 LUMO: -3.2152665323302867
+-3.248675675025608
+[2. 2. 2. 2. 2. 2.]
+cycle= 22 E= -103.303906854057  delta_E= 0.0504  |g|= 0.455  |ddm|= 0.219
+HOMO: -3.2581859655486114 LUMO: -3.2288692594259163
+-3.2581859655486114
+[2. 2. 2. 2. 2. 2.]
+cycle= 23 E= -103.536038445239  delta_E= -0.232  |g|= 0.213  |ddm|= 1.18
+HOMO: -3.258215634560574 LUMO: -3.2285805434865584
+-3.258215634560574
+[2. 2. 2. 2. 2. 2.]
+cycle= 24 E= -103.537153116949  delta_E= -0.00111  |g|= 0.215  |ddm|= 0.122
+HOMO: -3.2515066241727575 LUMO: -3.2223491282838532
+-3.2515066241727575
+[2. 2. 2. 2. 2. 2.]
+cycle= 25 E= -103.439687409972  delta_E= 0.0975  |g|= 0.346  |ddm|= 0.556
+HOMO: -3.256897037027954 LUMO: -3.2216203827431094
+-3.256897037027954
+[2. 2. 2. 2. 2. 2.]
+cycle= 26 E= -103.508165982118  delta_E= -0.0685  |g|= 0.303  |ddm|= 0.488
+HOMO: -3.2575589595421035 LUMO: -3.2233653592485734
+-3.2575589595421035
+[2. 2. 2. 2. 2. 2.]
+cycle= 27 E= -103.498837607577  delta_E= 0.00933  |g|= 0.305  |ddm|= 0.142
+HOMO: -3.264619774324541 LUMO: -3.2204853725866176
+-3.264619774324541
+[2. 2. 2. 2. 2. 2.]
+cycle= 28 E= -103.579997798855  delta_E= -0.0812  |g|= 0.0296  |ddm|= 0.754
+HOMO: -3.2657830997869985 LUMO: -3.22086782984656
+-3.2657830997869985
+[2. 2. 2. 2. 2. 2.]
+cycle= 29 E= -103.580666055973  delta_E= -0.000668  |g|= 0.0109  |ddm|= 0.113
+HOMO: -3.264837574737515 LUMO: -3.2206625574663965
+-3.264837574737515
+[2. 2. 2. 2. 2. 2.]
+cycle= 30 E= -103.580808214772  delta_E= -0.000142  |g|= 0.00703  |ddm|= 0.0598
+HOMO: -3.2648583403456146 LUMO: -3.2207046808025748
+-3.2648583403456146
+[2. 2. 2. 2. 2. 2.]
+cycle= 31 E= -103.580847140848  delta_E= -3.89e-05  |g|= 0.00583  |ddm|= 0.0175
+HOMO: -3.2651719169501727 LUMO: -3.2205888798976425
+-3.2651719169501727
+[2. 2. 2. 2. 2. 2.]
+cycle= 32 E= -103.581047275636  delta_E= -0.0002  |g|= 0.00265  |ddm|= 0.153
+HOMO: -3.265241070993477 LUMO: -3.220624620017639
+-3.265241070993477
+[2. 2. 2. 2. 2. 2.]
+cycle= 33 E= -103.581074886788  delta_E= -2.76e-05  |g|= 0.00298  |ddm|= 0.0419
+HOMO: -3.265349500936407 LUMO: -3.220628577580424
+-3.265349500936407
+[2. 2. 2. 2. 2. 2.]
+cycle= 34 E= -103.581113913639  delta_E= -3.9e-05  |g|= 0.00109  |ddm|= 0.0881
+HOMO: -3.2651790692352405 LUMO: -3.22062764271863
+-3.2651790692352405
+[2. 2. 2. 2. 2. 2.]
+cycle= 35 E= -103.581117007897  delta_E= -3.09e-06  |g|= 0.000508  |ddm|= 0.0306
+HOMO: -3.2651931698238243 LUMO: -3.220609514003818
+-3.2651931698238243
+[2. 2. 2. 2. 2. 2.]
+cycle= 36 E= -103.581117089656  delta_E= -8.18e-08  |g|= 0.00029  |ddm|= 0.00228
+HOMO: -3.265209326743691 LUMO: -3.2206223433751826
+-3.265209326743691
+[2. 2. 2. 2. 2. 2.]
+cycle= 37 E= -103.581117182477  delta_E= -9.28e-08  |g|= 7.1e-05  |ddm|= 0.00237
+HOMO: -3.265202071840013 LUMO: -3.2206235623709087
+-3.265202071840013
+[2. 2. 2. 2. 2. 2.]
+cycle= 38 E= -103.581117190587  delta_E= -8.11e-09  |g|= 2e-05  |ddm|= 0.00053
+HOMO: -3.265201590419326 LUMO: -3.220623196098685
+-3.265201590419326
+[2. 2. 2. 2. 2. 2.]
+cycle= 39 E= -103.581117193415  delta_E= -2.83e-09  |g|= 8.6e-06  |ddm|= 0.000497
+HOMO: -3.2652019449837595 LUMO: -3.2206230130138693
+-3.2652019449837595
+[2. 2. 2. 2. 2. 2.]
+cycle= 40 E= -103.581117194433  delta_E= -1.02e-09  |g|= 4.36e-06  |ddm|= 0.000515
+HOMO: -3.2652014226491843 LUMO: -3.2206230553596904
+-3.2652014226491843
+[2. 2. 2. 2. 2. 2.]
+cycle= 41 E= -103.581117194498  delta_E= -6.47e-11  |g|= 3.74e-06  |ddm|= 0.000157
+HOMO: -3.2652024275962264 LUMO: -3.2206229537481224
+-3.2652024275962264
+[2. 2. 2. 2. 2. 2.]
+Extra cycle  E= -103.581117193563  delta_E= 9.35e-10  |g|= 3.58e-05  |ddm|= 9.62e-05
+converged SCF energy = -103.581117193563
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp1Ga18l
+max_memory 4000 MB (current use 308 MB)
+XC functionals = b3lyp
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2b0a25f2bd70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2b0a25f2bc80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 95414
+init E= -36.7722781907223
+HOMO: -3.1067780033321575 LUMO: -3.0853043154972233
+-3.1067780033321575
+[2. 2. 2. 2. 2. 2.]
+cycle= 1 E= -68.6573080425171  delta_E= -31.9  |g|= 2.76  |ddm|= 6.98
+HOMO: -2.9399256520611474 LUMO: -2.6362941471422827
+-2.9399256520611474
+[2. 2. 2. 2. 2. 2.]
+cycle= 2 E= -74.633588318837  delta_E= -5.98  |g|= 1.59  |ddm|= 6.32
+HOMO: -2.8902597139875543 LUMO: -2.888814599795774
+-2.8902597139875543
+[2. 2. 2. 2. 2. 2.]
+cycle= 3 E= -78.1160701161564  delta_E= -3.48  |g|= 1.26  |ddm|= 5.72
+HOMO: -2.6927181892978713 LUMO: -2.6440874060583663
+-2.6927181892978713
+[2. 2. 2. 2. 2. 2.]
+cycle= 4 E= -81.7127498727551  delta_E= -3.6  |g|= 1.15  |ddm|= 3.64
+HOMO: -2.629058272709741 LUMO: -2.561035846648934
+-2.629058272709741
+[2. 2. 2. 2. 2. 2.]
+cycle= 5 E= -81.8486566385142  delta_E= -0.136  |g|= 0.983  |ddm|= 1.03
+HOMO: -2.6199075008495045 LUMO: -2.5298703449723443
+-2.6199075008495045
+[2. 2. 2. 2. 2. 2.]
+cycle= 6 E= -81.980993262661  delta_E= -0.132  |g|= 0.836  |ddm|= 0.521
+HOMO: -2.7092068379205894 LUMO: -2.673017780548386
+-2.7092068379205894
+[2. 2. 2. 2. 2. 2.]
+cycle= 7 E= -82.3989078026755  delta_E= -0.418  |g|= 0.337  |ddm|= 2.48
+HOMO: -2.5997735350064417 LUMO: -2.545891620674987
+-2.5997735350064417
+[2. 2. 2. 2. 2. 2.]
+cycle= 8 E= -82.1152639676245  delta_E= 0.284  |g|= 0.559  |ddm|= 2.55
+HOMO: -2.5929649548373015 LUMO: -2.541930564462721
+-2.5929649548373015
+[2. 2. 2. 2. 2. 2.]
+cycle= 9 E= -82.4987226580762  delta_E= -0.383  |g|= 0.233  |ddm|= 1.28
+HOMO: -2.6104040767769647 LUMO: -2.55123436822257
+-2.6104040767769647
+[2. 2. 2. 2. 2. 2.]
+cycle= 10 E= -82.201548546301  delta_E= 0.297  |g|= 0.553  |ddm|= 1.06
+HOMO: -2.6061737580625053 LUMO: -2.5488574347383683
+-2.6061737580625053
+[2. 2. 2. 2. 2. 2.]
+cycle= 11 E= -82.4719191095686  delta_E= -0.27  |g|= 0.292  |ddm|= 0.885
+HOMO: -2.6183301960215233 LUMO: -2.5409528651558224
+-2.6183301960215233
+[2. 2. 2. 2. 2. 2.]
+cycle= 12 E= -82.5332943979742  delta_E= -0.0614  |g|= 0.0853  |ddm|= 0.995
+HOMO: -2.6100905831595664 LUMO: -2.547038548719686
+-2.6100905831595664
+[2. 2. 2. 2. 2. 2.]
+cycle= 13 E= -82.5407467537518  delta_E= -0.00745  |g|= 0.0339  |ddm|= 0.392
+HOMO: -2.6119521699411647 LUMO: -2.545616143612997
+-2.6119521699411647
+[2. 2. 2. 2. 2. 2.]
+cycle= 14 E= -82.5418267757037  delta_E= -0.00108  |g|= 0.00338  |ddm|= 0.107
+HOMO: -2.61182946746953 LUMO: -2.5456966628921998
+-2.61182946746953
+[2. 2. 2. 2. 2. 2.]
+cycle= 15 E= -82.5418356608875  delta_E= -8.89e-06  |g|= 0.000864  |ddm|= 0.0111
+HOMO: -2.6118871976410296 LUMO: -2.5456167157968475
+-2.6118871976410296
+[2. 2. 2. 2. 2. 2.]
+cycle= 16 E= -82.5418359457403  delta_E= -2.85e-07  |g|= 0.000771  |ddm|= 0.00534
+HOMO: -2.6118438508434942 LUMO: -2.545648801558075
+-2.6118438508434942
+[2. 2. 2. 2. 2. 2.]
+cycle= 17 E= -82.5418365210976  delta_E= -5.75e-07  |g|= 3.57e-05  |ddm|= 0.00239
+HOMO: -2.6118464213691284 LUMO: -2.545647346312184
+-2.6118464213691284
+[2. 2. 2. 2. 2. 2.]
+cycle= 18 E= -82.5418365224178  delta_E= -1.32e-09  |g|= 6.78e-06  |ddm|= 0.000141
+HOMO: -2.611845966133811 LUMO: -2.5456475623884303
+-2.611845966133811
+[2. 2. 2. 2. 2. 2.]
+cycle= 19 E= -82.5418365224614  delta_E= -4.36e-11  |g|= 2.3e-06  |ddm|= 2.85e-05
+HOMO: -2.6118467724194208 LUMO: -2.54564712764434
+-2.6118467724194208
+[2. 2. 2. 2. 2. 2.]
+Extra cycle  E= -82.5418365223192  delta_E= 1.42e-10  |g|= 1.26e-05  |ddm|= 4.3e-05
+converged SCF energy = -82.5418365223192
+Pipek-Mezey density partition
+
+
+******** <class 'pyscf.lo.pipek.PipekMezey'> flags ********
+conv_tol = 1e-06
+conv_tol_grad = None
+max_cycle = 100
+max_stepsize = 0.05
+max_iters = 20
+kf_interval = 5
+kf_trust_region = 5
+ah_start_tol = 1000000000.0
+ah_start_cycle = 1
+ah_level_shift = 0
+ah_conv_tol = 1e-12
+ah_lindep = 1e-14
+ah_max_cycle = 40
+ah_trust_region = 3
+init_guess = atomic
+pop_method = meta_lowdin
+Set conv_tol_grad to 0.000316228
+macro= 1  f(x)= 9.1930164527777  delta_f= 9.19302  |g|= 0.641371  3 KF 20 Hx
+macro= 2  f(x)= 9.3721677073362  delta_f= 0.179151  |g|= 0.101559  4 KF 24 Hx
+macro= 3  f(x)= 9.3750875703665  delta_f= 0.00291986  |g|= 0.0120868  3 KF 11 Hx
+macro= 4  f(x)= 9.3753360028003  delta_f= 0.000248432  |g|= 0.000373295  5 KF 23 Hx
+macro= 5  f(x)= 9.3753361148342  delta_f= 1.12034e-07  |g|= 0.000373295  1 KF 3 Hx
+macro= 6  f(x)= 9.3753361148931  delta_f= 5.88471e-11  |g|= 1.21652e-05  1 KF 1 Hx
+macro X = 6  f(x)= 9.3753361148931  |g|= 1.21652e-05  12 intor 17 KF 82 Hx
+initialize density partition
+Ne_imp =  11.999999999999996
+Ne_bath =  12.000000000000014
+|P_imp + P_bath - P_ref| =  1.3516830065193305e-14
+max(P_imp + P_bath - P_ref) 6.661338147750939e-15
+time of oep : 427.410  (cpu),  12.044  (wall) 
+sum (diag(umat)) = 
+0.0
+|P_imp-P_imp_0| 0.0 0.0
+|P_bath-P_bath_0| 0.0 0.0
+|diffP_ao| =  7.3856132555778e-13 max(diffP_ao) =  1.9603763057318702e-13
+Performing ECW energy calculation
+time of coreJK_sub : 0.140  (cpu),  0.004  (wall) 
+tot grids = 70574
+No. of dropped grids =  13081
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp9xZDDr
+max_memory 4000 MB (current use 313 MB)
+XC functionals = b3lyp
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2b0a25f2bd70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2b0a25f2bc80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 70574
+No. of dropped grids =  13081
+init E= -55.9418556770234
+HOMO: -0.09732223087736742 LUMO: 0.08066290899494007
+-0.09732223087736742
+[2. 2. 2. 2. 2. 2.]
+cycle= 1 E= -55.9418561945557  delta_E= -5.18e-07  |g|= 2.96e-06  |ddm|= 1.04e-05
+HOMO: -0.09732245194006321 LUMO: 0.08066224259388753
+-0.09732245194006321
+[2. 2. 2. 2. 2. 2.]
+cycle= 2 E= -55.9418561945523  delta_E= 3.34e-12  |g|= 4.17e-06  |ddm|= 1.01e-05
+HOMO: -0.09732206487410658 LUMO: 0.08066352910065416
+-0.09732206487410658
+[2. 2. 2. 2. 2. 2.]
+Extra cycle  E= -55.9418561945362  delta_E= 1.61e-11  |g|= 6.2e-06  |ddm|= 1.28e-05
+converged SCF energy = -55.9418561945362
+|diffP| =  1.2088477949380909e-05
+embeded imp scf (electron) energy =  -55.94185619453623
+level shift energy contribution:  5.175143315749678e-07
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpNOu9xk
+max_memory 4000 MB (current use 315 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -55.5454899555466
+HOMO: -0.1504169603996475 LUMO: 0.22865097018489425
+-0.1504169603996475
+[2. 2. 2. 2. 2. 2.]
+cycle= 1 E= -55.5520931442679  delta_E= -0.0066  |g|= 0.051  |ddm|= 0.177
+HOMO: -0.1569931855269163 LUMO: 0.21441603433923306
+-0.1569931855269163
+[2. 2. 2. 2. 2. 2.]
+cycle= 2 E= -55.5529475635593  delta_E= -0.000854  |g|= 0.0167  |ddm|= 0.0565
+HOMO: -0.15578594093434064 LUMO: 0.22217942808702354
+-0.15578594093434064
+[2. 2. 2. 2. 2. 2.]
+cycle= 3 E= -55.5531009353263  delta_E= -0.000153  |g|= 0.00697  |ddm|= 0.0277
+HOMO: -0.1566299859100813 LUMO: 0.2220197801254395
+-0.1566299859100813
+[2. 2. 2. 2. 2. 2.]
+cycle= 4 E= -55.5531325589881  delta_E= -3.16e-05  |g|= 0.000613  |ddm|= 0.0143
+HOMO: -0.15665754612292043 LUMO: 0.22210639276361416
+-0.15665754612292043
+[2. 2. 2. 2. 2. 2.]
+cycle= 5 E= -55.5531329639468  delta_E= -4.05e-07  |g|= 5.06e-05  |ddm|= 0.00198
+HOMO: -0.1566603641990609 LUMO: 0.22210385272659466
+-0.1566603641990609
+[2. 2. 2. 2. 2. 2.]
+cycle= 6 E= -55.5531329661028  delta_E= -2.16e-09  |g|= 7.21e-06  |ddm|= 0.000135
+HOMO: -0.15666023421652805 LUMO: 0.22210368116928791
+-0.15666023421652805
+[2. 2. 2. 2. 2. 2.]
+cycle= 7 E= -55.5531329661855  delta_E= -8.27e-11  |g|= 1.13e-06  |ddm|= 1.9e-05
+HOMO: -0.15666021522725793 LUMO: 0.2221036047671161
+-0.15666021522725793
+[2. 2. 2. 2. 2. 2.]
+Extra cycle  E= -55.5531329662799  delta_E= -9.44e-11  |g|= 5.28e-07  |ddm|= 1.88e-06
+converged SCF energy = -55.5531329662799
+exc =  -0.25550366904790395
+
+******** <class 'pyscf.cc.ccsd.CCSD'> flags ********
+CC2 = 0
+CCSD nocc = 6, nmo = 31
+max_cycle = 200
+direct = 0
+conv_tol = 1e-07
+conv_tol_normt = 1e-05
+diis_space = 6
+diis_start_cycle = 0
+diis_start_energy_diff = 1e+09
+max_memory 4000 MB (current use 315 MB)
+Init t2, MP2 energy = -0.0915116909132633
+Init E(CCSD) = -0.0915116909134308
+cycle = 1  E(CCSD) = -0.103985475133893  dE = -0.0124737842  norm(t1,t2) = 0.0528577
+cycle = 2  E(CCSD) = -0.109594513508134  dE = -0.00560903837  norm(t1,t2) = 0.0238126
+cycle = 3  E(CCSD) = -0.112887873490789  dE = -0.00329335998  norm(t1,t2) = 0.0126201
+cycle = 4  E(CCSD) = -0.113454264220222  dE = -0.000566390729  norm(t1,t2) = 0.00296302
+cycle = 5  E(CCSD) = -0.113287725390859  dE = 0.000166538829  norm(t1,t2) = 0.000742816
+cycle = 6  E(CCSD) = -0.113280720909223  dE = 7.00448164e-06  norm(t1,t2) = 0.000165075
+cycle = 7  E(CCSD) = -0.113283377900074  dE = -2.65699085e-06  norm(t1,t2) = 7.07052e-05
+cycle = 8  E(CCSD) = -0.11328291916333  dE = 4.58736744e-07  norm(t1,t2) = 2.42178e-05
+cycle = 9  E(CCSD) = -0.113282384775211  dE = 5.34388119e-07  norm(t1,t2) = 1.05828e-05
+cycle = 10  E(CCSD) = -0.113282606614913  dE = -2.21839702e-07  norm(t1,t2) = 2.843e-06
+cycle = 11  E(CCSD) = -0.113282640824767  dE = -3.42098536e-08  norm(t1,t2) = 8.03395e-07
+CCSD converged
+E(CCSD) = -55.66641560710465  E_corr = -0.1132826408247667
+CCSD(T) correction
+CCSD(T) correction = -0.00272623148934695
+corr energy =  0.5282180249901314

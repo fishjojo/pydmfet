@@ -1,5 +1,4 @@
 *.pyc
-*.out*
 *.molden
 *.cube
 *.chk

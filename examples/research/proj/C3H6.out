@@ -1,0 +1,271 @@
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/proj/C3H6.py ****
+from pydmfet import proj_ao
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto,scf
+import numpy as np
+from pyscf.tools import molden
+from pyscf import lo
+from pyscf.lo import iao,orth
+from functools import reduce
+import math
+
+bas ='ccpvdz'
+temp = 0.01
+
+mol = gto.Mole()
+mol.atom = open('C3H6.xyz').read()
+mol.basis = bas
+mol.charge = 0
+mol.build(max_memory = 4000, verbose=4)
+
+
+#mf = scf.RKS(mol)
+mf = rks_ao(mol,smear_sigma = temp)
+mf.xc = "pbe,pbe"
+mf.max_cycle = 50
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(5):
+    impAtom[i] = 1
+
+
+embed = proj_ao.proj_embed(mf,impAtom, Ne_env = 10)
+embed.pop_method = 'meta_lowdin'
+embed.make_frozen_orbs(norb = 11)
+embed.embedding_potential()
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.21.2.el7.x86_64', version='#1 SMP Tue Jun 4 15:19:05 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Wed Jun 26 00:11:32 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 9
+[INPUT] num. electrons = 24
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 C     -2.049940000000   0.081840000000  -0.063900000000 AA   -3.873825171791   0.154655186034  -0.120753499360 Bohr
+[INPUT]  2 H     -2.587820000000  -0.608210000000  -0.707340000000 AA   -4.890271059672  -1.149350326222  -1.336678876950 Bohr
+[INPUT]  3 H     -2.692570000000   0.779660000000   0.464830000000 AA   -5.088219871220   1.473343870278   0.878401394482 Bohr
+[INPUT]  4 C     -0.734140000000   0.072840000000   0.063900000000 AA   -1.387323537088   0.137647650913   0.120753499360 Bohr
+[INPUT]  5 H     -0.214950000000  -0.519660000000   0.811500000000 AA   -0.406196630475  -0.982015077891   1.533512750085 Bohr
+[INPUT]  6 C     -0.072940000000   0.657480000000  -0.569030000000 AA   -0.137836623526   1.242457132379  -1.075310856661 Bohr
+[INPUT]  7 H     -0.654020000000   1.211360000000  -1.276460000000 AA   -1.235918679988   2.289138638253  -2.412159808962 Bohr
+[INPUT]  8 H      0.493050000000   1.334770000000   0.035810000000 AA    0.931729465717   2.522349739286   0.067671092521 Bohr
+[INPUT]  9 H      0.593560000000   0.002290000000  -1.090010000000 AA    1.121665838497   0.004327472825  -2.059820373037 Bohr
+
+nuclear repulsion = 79.4757652109179
+number of shells = 33
+number of NR pGTOs = 120
+number of NR cGTOs = 72
+basis = ccpvdz
+ecp = {}
+CPU time:         4.71
+rks_ao.ne_frozen =  0
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> flags ********
+method = rks_ao-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = False
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/proj/tmpg8g_4ue0
+max_memory 4000 MB (current use 69 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ba03218d9d8>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ba03218d950>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 101850
+init E= -118.367307685082
+HOMO:  -0.2608992452901807 LUMO:  -0.23380410385656655
+Fermi energy:      -0.2473516738
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.5898 0.4102]
+entropy correction =  -0.020295340386739982
+cycle= 1 E= -117.078917621017  delta_E= 1.29  |g|= 1.18  |ddm|= 2.98
+HOMO:  0.049285878383111374 LUMO:  0.07277397302923978
+Fermi energy:       0.0609883003
+[2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00
+ 2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00 1.5264e+00
+ 4.7062e-01 2.6168e-03 3.1441e-04]
+entropy correction =  -0.02209871817570907
+cycle= 2 E= -116.414021736017  delta_E= 0.665  |g|= 1.98  |ddm|= 4.49
+HOMO:  -0.14946107742392525 LUMO:  -0.0880163761818097
+Fermi energy:      -0.1187387079
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.9115 0.0885]
+entropy correction =  -0.007251121907560764
+cycle= 3 E= -117.264252389111  delta_E= -0.85  |g|= 0.626  |ddm|= 4.35
+HOMO:  -0.11318840678686684 LUMO:  -0.0992795735991566
+Fermi energy:      -0.1062339980
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.3344 0.6656]
+entropy correction =  -0.025446530157956327
+cycle= 4 E= -117.308730213418  delta_E= -0.0445  |g|= 0.472  |ddm|= 1.67
+HOMO:  -0.11275013973297827 LUMO:  -0.08931420798830003
+Fermi energy:      -0.1010321818
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.5269 0.4731]
+entropy correction =  -0.021882007422705664
+cycle= 5 E= -117.375062321982  delta_E= -0.0663  |g|= 0.186  |ddm|= 1.12
+HOMO:  -0.11098389885132373 LUMO:  -0.09653764219429878
+Fermi energy:      -0.1037607753
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.3462 0.6538]
+entropy correction =  -0.02527808235348346
+cycle= 6 E= -117.38604622947  delta_E= -0.011  |g|= 0.0486  |ddm|= 0.246
+HOMO:  -0.1099957749392026 LUMO:  -0.09827521438779509
+Fermi energy:      -0.1041354999
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.2849 0.7151]
+entropy correction =  -0.026079839053331923
+cycle= 7 E= -117.386697863675  delta_E= -0.000652  |g|= 0.00978  |ddm|= 0.085
+HOMO:  -0.1105475283290817 LUMO:  -0.09836616596354036
+Fermi energy:      -0.1044568523
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.2955 0.7045]
+entropy correction =  -0.025953759083102493
+cycle= 8 E= -117.386729054385  delta_E= -3.12e-05  |g|= 0.00147  |ddm|= 0.0171
+HOMO:  -0.11045159208452109 LUMO:  -0.09817443221548554
+Fermi energy:      -0.1043130173
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.2976 0.7024]
+entropy correction =  -0.02592704686464241
+cycle= 9 E= -117.386729504008  delta_E= -4.5e-07  |g|= 0.000677  |ddm|= 0.00354
+HOMO:  -0.11042238187365477 LUMO:  -0.0981898673521554
+Fermi energy:      -0.1043061298
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.2966 0.7034]
+entropy correction =  -0.025939517384794795
+cycle= 10 E= -117.386729673925  delta_E= -1.7e-07  |g|= 4.89e-05  |ddm|= 0.00138
+HOMO:  -0.11042035605792701 LUMO:  -0.09818692165876126
+Fermi energy:      -0.1043036440
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.2966 0.7034]
+entropy correction =  -0.02593926083713589
+cycle= 11 E= -117.386729674397  delta_E= -4.72e-10  |g|= 2.79e-05  |ddm|= 6.57e-05
+HOMO:  -0.11042926753505729 LUMO:  -0.09818383656353014
+Fermi energy:      -0.1043065572
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     1.2969 0.7031]
+entropy correction =  -0.02593591333576232
+Extra cycle  E= -117.386729663053  delta_E= 1.13e-08  |g|= 0.000181  |ddm|= 0.000365
+converged SCF energy = -117.386729663053
+
+
+******** <class 'pyscf.lo.pipek.PipekMezey'> flags ********
+conv_tol = 1e-06
+conv_tol_grad = None
+max_cycle = 100
+max_stepsize = 0.05
+max_iters = 20
+kf_interval = 5
+kf_trust_region = 5
+ah_start_tol = 1000000000.0
+ah_start_cycle = 1
+ah_level_shift = 0
+ah_conv_tol = 1e-12
+ah_lindep = 1e-14
+ah_max_cycle = 40
+ah_trust_region = 3
+init_guess = atomic
+pop_method = meta_lowdin
+Set conv_tol_grad to 0.000316228
+macro= 1  f(x)= 4.9281135361218  delta_f= 4.92811  |g|= 0.650054  3 KF 20 Hx
+macro= 2  f(x)= 5.927665704939  delta_f= 0.999552  |g|= 0.578935  4 KF 21 Hx
+macro= 3  f(x)= 6.3795454585069  delta_f= 0.45188  |g|= 0.202166  4 KF 23 Hx
+macro= 4  f(x)= 6.3861821531708  delta_f= 0.00663669  |g|= 0.0013526  3 KF 9 Hx
+macro= 5  f(x)= 6.3861821513197  delta_f= -1.85111e-09  |g|= 9.89374e-05  1 KF 2 Hx
+macro X = 5  f(x)= 6.3861821513197  |g|= 9.89374e-05  10 intor 15 KF 75 Hx
+  sorted Mulliken popupaltion: 1.0 for fully occupied
+9.976764e-01 9.768923e-01 8.895559e-01 8.895082e-01 4.852642e-01 
+4.603236e-03 3.231157e-03 2.699961e-03 2.324528e-03 6.444349e-04 
+-1.170963e-02 
+ 5 enviroment orbitals kept frozen.
+rks_ao.ne_frozen =  10
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> flags ********
+method = rks_ao-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = False
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/proj/tmpczfg0eno
+max_memory 4000 MB (current use 277 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ba03218d9d8>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ba03218d950>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 101850
+init E= -117.608965813281
+HOMO:  -0.11037565049346798 LUMO:  -0.0982076339328242
+Fermi energy:      -0.1042916479
+[2.     2.     2.     2.     2.     2.     1.2952 0.7048]
+entropy correction =  -0.025957458648778724
+cycle= 1 E= -117.386729219937  delta_E= 0.222  |g|= 0.00114  |ddm|= 2.76
+HOMO:  -0.11071228570933081 LUMO:  -0.09805541862048923
+Fermi energy:      -0.1043838578
+[2.     2.     2.     2.     2.     2.     1.3063 0.6937]
+entropy correction =  -0.025819484351250366
+cycle= 2 E= -117.386711325555  delta_E= 1.79e-05  |g|= 0.00719  |ddm|= 2.76
+HOMO:  -0.1104225079821883 LUMO:  -0.09818727175439745
+Fermi energy:      -0.1043048956
+[2.     2.     2.     2.     2.     2.     1.2967 0.7033]
+entropy correction =  -0.02593874928707841
+cycle= 3 E= -117.38672968113  delta_E= -1.84e-05  |g|= 8e-06  |ddm|= 2.76
+HOMO:  -0.11042190968492235 LUMO:  -0.09818693970192809
+Fermi energy:      -0.1043044304
+[2.     2.     2.     2.     2.     2.     1.2967 0.7033]
+entropy correction =  -0.0259388235607401
+cycle= 4 E= -117.38672968056  delta_E= 5.7e-10  |g|= 2.93e-06  |ddm|= 2.76
+HOMO:  -0.11042141201185957 LUMO:  -0.09818762622043628
+Fermi energy:      -0.1043045248
+[2.     2.     2.     2.     2.     2.     1.2967 0.7033]
+entropy correction =  -0.025939153881726625
+Extra cycle  E= -117.386729681118  delta_E= -5.58e-10  |g|= 1.72e-05  |ddm|= 2.76
+converged SCF energy = -117.386729681118
+<class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> does not have attributes  ne_frozen add_coredm_ext_energy coredm vext_1e
+level shift energy: 7.467230164065475e-09
+|P_frag + P_bath - P_ref| / N =  4.890862167820567e-06
+max(P_frag + P_bath - P_ref) =  5.7447138829436195e-05

@@ -1,0 +1,2368 @@
+/usr/licensed/anaconda/5.0.1/lib/python2.7/site-packages/h5py/__init__.py:34: FutureWarning: Conversion of the second argument of issubdtype from `float` to `np.floating` is deprecated. In future, it will be treated as `np.float64 == np.dtype(float).type`.
+  from ._conv import register_converters as _register_converters
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/h10.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo
+import numpy as np
+from pyscf.tools import molden
+import time
+
+bas = 'sto-6g'
+
+t0 = (time.clock(), time.time())
+mol = gto.Mole()
+mol.atom = open('h10.xyz').read()
+mol.basis = bas
+mol.charge = 0
+mol.build(max_memory = 4000, verbose=4)
+
+mf = scf.RHF(mol)
+mf.max_cycle = 100
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+t1 = tools.timer("full scf", t0)
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.loc_molden( 'ao2loc.molden' )
+myInts.TI_OK = False
+
+t2 = tools.timer("localize orbitals", t1)
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(2):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+mol_frag.build(max_memory = 4000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+mol_env.build(max_memory = 4000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 2
+#boundary_atoms = np.zeros([natoms])
+#boundary_atoms[6:12]=1.0
+#boundary_atoms2 = np.zeros([natoms])
+#boundary_atoms2[:6] = -1.0
+boundary_atoms=None
+boundary_atoms2=None
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1e-6,diffP_tol=1e-6, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         dim_imp =2, dim_bath=8, dim_big =None, smear_sigma = 0.00, oep_params=params,ecw_method='hf', mf_method = 'hf',plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+
+t3 = tools.timer("sdmfet", t2)
+t4 = tools.timer("total calc", t0)
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-862.14.4.el7.x86_64', '#1 SMP Wed Sep 26 07:01:37 EDT 2018', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Wed Dec 19 20:05:00 2018
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 10
+[INPUT] num. electrons = 10
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 H      0.000000000000   0.000000000000  -0.370000000000 AA    0.000000000000   0.000000000000  -0.699198666089 Bohr
+[INPUT]  2 H      0.000000000000   0.000000000000   0.370000000000 AA    0.000000000000   0.000000000000   0.699198666089 Bohr
+[INPUT]  3 H      0.000000000000   0.000000000000  -3.330000000000 AA    0.000000000000   0.000000000000  -6.292787994802 Bohr
+[INPUT]  4 H      0.000000000000   0.000000000000  -2.590000000000 AA    0.000000000000   0.000000000000  -4.894390662624 Bohr
+[INPUT]  5 H      0.000000000000   0.000000000000  -1.850000000000 AA    0.000000000000   0.000000000000  -3.495993330445 Bohr
+[INPUT]  6 H      0.000000000000   0.000000000000  -1.110000000000 AA    0.000000000000   0.000000000000  -2.097595998267 Bohr
+[INPUT]  7 H      0.000000000000   0.000000000000   1.110000000000 AA    0.000000000000   0.000000000000   2.097595998267 Bohr
+[INPUT]  8 H      0.000000000000   0.000000000000   1.850000000000 AA    0.000000000000   0.000000000000   3.495993330445 Bohr
+[INPUT]  9 H      0.000000000000   0.000000000000   2.590000000000 AA    0.000000000000   0.000000000000   4.894390662624 Bohr
+[INPUT] 10 H      0.000000000000   0.000000000000   3.330000000000 AA    0.000000000000   0.000000000000   6.292787994802 Bohr
+
+nuclear repulsion = 13.7941356836235
+number of shells = 10
+number of NR pGTOs = 60
+number of NR cGTOs = 10
+basis = sto-6g
+ecp = {}
+CPU time:         4.87
+
+
+******** <class 'pyscf.scf.hf.RHF'> flags ********
+method = RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp1ZUd7a
+max_memory 4000 MB (current use 64 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -5.12898272299126
+  HOMO = -0.0787872591378055  LUMO = 0.265581672927054
+cycle= 1 E= -5.08361875760209  delta_E= 0.0454  |g|= 0.147  |ddm|= 2.68
+  HOMO = -0.235637925879452  LUMO = 0.299163540476163
+cycle= 2 E= -5.09517197421748  delta_E= -0.0116  |g|= 0.0442  |ddm|= 0.423
+  HOMO = -0.236271222768161  LUMO = 0.319869271290691
+cycle= 3 E= -5.09639550723993  delta_E= -0.00122  |g|= 0.013  |ddm|= 0.115
+  HOMO = -0.241643065585594  LUMO = 0.322424535885701
+cycle= 4 E= -5.09650941892396  delta_E= -0.000114  |g|= 0.000586  |ddm|= 0.0498
+  HOMO = -0.241673625519825  LUMO = 0.322383526302114
+cycle= 5 E= -5.09650956792541  delta_E= -1.49e-07  |g|= 0.000109  |ddm|= 0.00102
+  HOMO = -0.241699621245633  LUMO = 0.322356009993212
+cycle= 6 E= -5.09650957259441  delta_E= -4.67e-09  |g|= 5.96e-06  |ddm|= 0.000188
+  HOMO = -0.241700765697085  LUMO = 0.322357534829266
+cycle= 7 E= -5.09650957261317  delta_E= -1.88e-11  |g|= 4.2e-07  |ddm|= 1.52e-05
+  HOMO = -0.241700610054079  LUMO = 0.322357480203825
+Extra cycle  E= -5.09650957261323  delta_E= -6.04e-14  |g|= 8.25e-08  |ddm|= 7.7e-07
+converged SCF energy = -5.09650957261323
+time of full scf : 3.980  (cpu),  0.343  (wall) 
+time of localize orbitals : 6.800  (cpu),  0.206  (wall) 
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/h10.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo
+import numpy as np
+from pyscf.tools import molden
+import time
+
+bas = 'sto-6g'
+
+t0 = (time.clock(), time.time())
+mol = gto.Mole()
+mol.atom = open('h10.xyz').read()
+mol.basis = bas
+mol.charge = 0
+mol.build(max_memory = 4000, verbose=4)
+
+mf = scf.RHF(mol)
+mf.max_cycle = 100
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+t1 = tools.timer("full scf", t0)
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.loc_molden( 'ao2loc.molden' )
+myInts.TI_OK = False
+
+t2 = tools.timer("localize orbitals", t1)
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(2):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+mol_frag.build(max_memory = 4000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+mol_env.build(max_memory = 4000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 2
+#boundary_atoms = np.zeros([natoms])
+#boundary_atoms[6:12]=1.0
+#boundary_atoms2 = np.zeros([natoms])
+#boundary_atoms2[:6] = -1.0
+boundary_atoms=None
+boundary_atoms2=None
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1e-6,diffP_tol=1e-6, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         dim_imp =2, dim_bath=8, dim_big =None, smear_sigma = 0.00, oep_params=params,ecw_method='hf', mf_method = 'hf',plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+
+t3 = tools.timer("sdmfet", t2)
+t4 = tools.timer("total calc", t0)
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-862.14.4.el7.x86_64', '#1 SMP Wed Sep 26 07:01:37 EDT 2018', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Wed Dec 19 20:05:01 2018
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 10
+[INPUT] num. electrons = 2
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 H      0.000000000000   0.000000000000  -0.370000000000 AA    0.000000000000   0.000000000000  -0.699198666089 Bohr
+[INPUT]  2 H      0.000000000000   0.000000000000   0.370000000000 AA    0.000000000000   0.000000000000   0.699198666089 Bohr
+[INPUT]  3 ghostH   0.000000000000   0.000000000000  -3.330000000000 AA    0.000000000000   0.000000000000  -6.292787994802 Bohr
+[INPUT]  4 ghostH   0.000000000000   0.000000000000  -2.590000000000 AA    0.000000000000   0.000000000000  -4.894390662624 Bohr
+[INPUT]  5 ghostH   0.000000000000   0.000000000000  -1.850000000000 AA    0.000000000000   0.000000000000  -3.495993330445 Bohr
+[INPUT]  6 ghostH   0.000000000000   0.000000000000  -1.110000000000 AA    0.000000000000   0.000000000000  -2.097595998267 Bohr
+[INPUT]  7 ghostH   0.000000000000   0.000000000000   1.110000000000 AA    0.000000000000   0.000000000000   2.097595998267 Bohr
+[INPUT]  8 ghostH   0.000000000000   0.000000000000   1.850000000000 AA    0.000000000000   0.000000000000   3.495993330445 Bohr
+[INPUT]  9 ghostH   0.000000000000   0.000000000000   2.590000000000 AA    0.000000000000   0.000000000000   4.894390662624 Bohr
+[INPUT] 10 ghostH   0.000000000000   0.000000000000   3.330000000000 AA    0.000000000000   0.000000000000   6.292787994802 Bohr
+
+nuclear repulsion = 0.715104339081081
+number of shells = 10
+number of NR pGTOs = 60
+number of NR cGTOs = 10
+basis = sto-6g
+ecp = {}
+CPU time:        15.92
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/h10.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo
+import numpy as np
+from pyscf.tools import molden
+import time
+
+bas = 'sto-6g'
+
+t0 = (time.clock(), time.time())
+mol = gto.Mole()
+mol.atom = open('h10.xyz').read()
+mol.basis = bas
+mol.charge = 0
+mol.build(max_memory = 4000, verbose=4)
+
+mf = scf.RHF(mol)
+mf.max_cycle = 100
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+t1 = tools.timer("full scf", t0)
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.loc_molden( 'ao2loc.molden' )
+myInts.TI_OK = False
+
+t2 = tools.timer("localize orbitals", t1)
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(2):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+mol_frag.build(max_memory = 4000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+mol_env.build(max_memory = 4000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 2
+#boundary_atoms = np.zeros([natoms])
+#boundary_atoms[6:12]=1.0
+#boundary_atoms2 = np.zeros([natoms])
+#boundary_atoms2[:6] = -1.0
+boundary_atoms=None
+boundary_atoms2=None
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1e-6,diffP_tol=1e-6, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         dim_imp =2, dim_bath=8, dim_big =None, smear_sigma = 0.00, oep_params=params,ecw_method='hf', mf_method = 'hf',plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+
+t3 = tools.timer("sdmfet", t2)
+t4 = tools.timer("total calc", t0)
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-862.14.4.el7.x86_64', '#1 SMP Wed Sep 26 07:01:37 EDT 2018', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Wed Dec 19 20:05:01 2018
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 10
+[INPUT] num. electrons = 8
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 ghostH   0.000000000000   0.000000000000  -0.370000000000 AA    0.000000000000   0.000000000000  -0.699198666089 Bohr
+[INPUT]  2 ghostH   0.000000000000   0.000000000000   0.370000000000 AA    0.000000000000   0.000000000000   0.699198666089 Bohr
+[INPUT]  3 H      0.000000000000   0.000000000000  -3.330000000000 AA    0.000000000000   0.000000000000  -6.292787994802 Bohr
+[INPUT]  4 H      0.000000000000   0.000000000000  -2.590000000000 AA    0.000000000000   0.000000000000  -4.894390662624 Bohr
+[INPUT]  5 H      0.000000000000   0.000000000000  -1.850000000000 AA    0.000000000000   0.000000000000  -3.495993330445 Bohr
+[INPUT]  6 H      0.000000000000   0.000000000000  -1.110000000000 AA    0.000000000000   0.000000000000  -2.097595998267 Bohr
+[INPUT]  7 H      0.000000000000   0.000000000000   1.110000000000 AA    0.000000000000   0.000000000000   2.097595998267 Bohr
+[INPUT]  8 H      0.000000000000   0.000000000000   1.850000000000 AA    0.000000000000   0.000000000000   3.495993330445 Bohr
+[INPUT]  9 H      0.000000000000   0.000000000000   2.590000000000 AA    0.000000000000   0.000000000000   4.894390662624 Bohr
+[INPUT] 10 H      0.000000000000   0.000000000000   3.330000000000 AA    0.000000000000   0.000000000000   6.292787994802 Bohr
+
+nuclear repulsion = 8.26399546139652
+number of shells = 10
+number of NR pGTOs = 60
+number of NR cGTOs = 10
+basis = sto-6g
+ecp = {}
+CPU time:        16.25
+mo energy:
+[-0.8945984  -0.81214803 -0.67855499 -0.48919503 -0.24170061  0.32235747
+  0.71316259  1.19153334  1.73984729  2.24281495]
+Ne_frag_loc =  1.9778506244890244
+Ne_env_loc =  8.022149375510988
+occ_imp
+[1.75985282 0.21799781]
+occ_bath
+[0.24014718 1.78200219 2.         2.         2.         0.
+ 0.         0.        ]
+dimension of subspace: imp, bath 2 8
+Ne_frag, Ne_env, Ne_core
+2 8 0
+|diffP| =  0.0
+0.913751105287081
+0.9325405570221215
+time of coreJK_sub : 0.000  (cpu),  0.000  (wall) 
+time of locints.dmet_tei : 4.670  (cpu),  0.118  (wall) 
+time of libgen.build_subops : 4.890  (cpu),  0.124  (wall) 
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpeYwTi8
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -18.8906452562368
+HOMO: -0.24170060730724016 LUMO: 0.3223574689569887
+-0.24170060730724016
+[2. 2. 2. 2. 2.]
+cycle= 1 E= -18.8906452562368  delta_E= 3.55e-15  |g|= 2.01e-08  |ddm|= 7.38e-08
+HOMO: -0.24170060343617472 LUMO: 0.32235746779077845
+-0.24170060343617472
+[2. 2. 2. 2. 2.]
+Extra cycle  E= -18.8906452562368  delta_E= 3.55e-15  |g|= 5.88e-09  |ddm|= 2.1e-08
+converged SCF energy = -18.8906452562368
+3.091808532511129e-08
+9.382566032826915e-08
+total scf energy = -5.09650957261324 
+-18.8906452562368, 0, 13.7941356836235
+entering oep_main.init_density_partition()
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpLQjxRu
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.50594391186264
+HOMO: -0.5347214804861303 LUMO: 0.34340435750529924
+-0.5347214804861303
+[2.]
+cycle= 1 E= -1.84022595002947  delta_E= -0.334  |g|= 0.0365  |ddm|= 0.426
+HOMO: -0.5852281673076873 LUMO: 0.3888429436443298
+-0.5852281673076873
+[2.]
+cycle= 2 E= -1.84072077121168  delta_E= -0.000495  |g|= 0.00659  |ddm|= 0.0339
+HOMO: -0.5823677867979493 LUMO: 0.39104096731363286
+-0.5823677867979493
+[2.]
+cycle= 3 E= -1.84073946152069  delta_E= -1.87e-05  |g|= 0.000223  |ddm|= 0.0081
+HOMO: -0.5823213979659113 LUMO: 0.3910887919092002
+-0.5823213979659113
+[2.]
+cycle= 4 E= -1.84073948338815  delta_E= -2.19e-08  |g|= 5.35e-06  |ddm|= 0.000293
+HOMO: -0.5823221096155721 LUMO: 0.3910897424099716
+-0.5823221096155721
+[2.]
+cycle= 5 E= -1.84073948339921  delta_E= -1.11e-11  |g|= 2.17e-07  |ddm|= 6.04e-06
+HOMO: -0.5823220302766124 LUMO: 0.3910897018648417
+-0.5823220302766124
+[2.]
+Extra cycle  E= -1.84073948339923  delta_E= -1.8e-14  |g|= 3.67e-08  |ddm|= 2.11e-07
+converged SCF energy = -1.84073948339923
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpVedUHu
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.0038199849475
+HOMO: -0.278216665655757 LUMO: 0.30135928792739225
+-0.278216665655757
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4897003781744  delta_E= -0.486  |g|= 0.143  |ddm|= 1.66
+HOMO: -0.4134685274723811 LUMO: 0.36789997282329134
+-0.4134685274723811
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4968209984384  delta_E= -0.00712  |g|= 0.0251  |ddm|= 0.131
+HOMO: -0.4147388589817731 LUMO: 0.3733248053896657
+-0.4147388589817731
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4971113268498  delta_E= -0.00029  |g|= 0.00446  |ddm|= 0.0292
+HOMO: -0.41581865472301077 LUMO: 0.374285241223893
+-0.41581865472301077
+[2. 2. 2. 2.]
+cycle= 4 E= -12.4971212691108  delta_E= -9.94e-06  |g|= 0.00011  |ddm|= 0.00647
+HOMO: -0.4158599473184606 LUMO: 0.3742439192557558
+-0.4158599473184606
+[2. 2. 2. 2.]
+cycle= 5 E= -12.4971212740014  delta_E= -4.89e-09  |g|= 9.26e-06  |ddm|= 0.00013
+HOMO: -0.4158587702633836 LUMO: 0.37424738718842904
+-0.4158587702633836
+[2. 2. 2. 2.]
+cycle= 6 E= -12.4971212740402  delta_E= -3.87e-11  |g|= 7.03e-07  |ddm|= 1.2e-05
+HOMO: -0.41585876938030475 LUMO: 0.3742472178846868
+-0.41585876938030475
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4971212740404  delta_E= -2.42e-13  |g|= 1.42e-07  |ddm|= 8.45e-07
+converged SCF energy = -12.4971212740404
+initialize density partition
+Ne_imp =  2.000000000000001
+Ne_bath =  8.000000000000004
+|P_imp + P_bath - P_ref| =  1.7032613738459803
+max(P_imp + P_bath - P_ref) 0.8027930534065726
+|umat| =  0.0
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpTV2AZP
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.84073948339923
+HOMO: -0.5823220177339792 LUMO: 0.39108971172919726
+-0.5823220177339792
+[2.]
+cycle= 1 E= -1.84073948339923  delta_E= 6.66e-16  |g|= 7.02e-09  |ddm|= 3.97e-08
+HOMO: -0.5823220153544151 LUMO: 0.39108971367310186
+-0.5823220153544151
+[2.]
+Extra cycle  E= -1.84073948339923  delta_E= -8.88e-16  |g|= 1.4e-09  |ddm|= 7.91e-09
+converged SCF energy = -1.84073948339923
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpnoUcfk
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4971212740404
+HOMO: -0.4158587616098832 LUMO: 0.37424720358377167
+-0.4158587616098832
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4971212740404  delta_E= -5.33e-15  |g|= 3.02e-08  |ddm|= 1.84e-07
+HOMO: -0.4158587594236413 LUMO: 0.37424720087451924
+-0.4158587594236413
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4971212740404  delta_E= -1.07e-14  |g|= 6.59e-09  |ddm|= 4.01e-08
+converged SCF energy = -12.4971212740404
+2-norm (grad),       max(grad):
+1.2243334418361198 ,  0.8027931145103762
+W =  14.337860757439655
+|umat| =  1.3911745483485791
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpZtE_Pe
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -0.784929614624106
+HOMO: -0.6239407143354178 LUMO: 0.19198997328763698
+-0.6239407143354178
+[2.]
+cycle= 1 E= -2.1195417308024  delta_E= -1.33  |g|= 0.259  |ddm|= 1.71
+HOMO: -0.7820934523260094 LUMO: 0.16276604778964462
+-0.7820934523260094
+[2.]
+cycle= 2 E= -2.1400058443247  delta_E= -0.0205  |g|= 0.0447  |ddm|= 0.197
+HOMO: -0.7932607447208363 LUMO: 0.15564629126787446
+-0.7932607447208363
+[2.]
+cycle= 3 E= -2.14054289165362  delta_E= -0.000537  |g|= 0.001  |ddm|= 0.0349
+HOMO: -0.791922050952071 LUMO: 0.1571506341423444
+-0.791922050952071
+[2.]
+cycle= 4 E= -2.140543103348  delta_E= -2.12e-07  |g|= 2.55e-05  |ddm|= 0.000639
+HOMO: -0.7919414197302636 LUMO: 0.15712070947673235
+-0.7919414197302636
+[2.]
+cycle= 5 E= -2.14054310351661  delta_E= -1.69e-10  |g|= 1.37e-06  |ddm|= 1.99e-05
+HOMO: -0.7919414872432862 LUMO: 0.1571207754627846
+-0.7919414872432862
+[2.]
+Extra cycle  E= -2.14054310351726  delta_E= -6.5e-13  |g|= 1.7e-07  |ddm|= 1.23e-06
+converged SCF energy = -2.14054310351726
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpKH_Uts
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -11.3614165650229
+HOMO: -0.43547410568431927 LUMO: 0.45199772869951854
+-0.43547410568431927
+[2. 2. 2. 2.]
+cycle= 1 E= -13.3704834091087  delta_E= -2.01  |g|= 0.289  |ddm|= 2.24
+HOMO: -0.42967554452802464 LUMO: 0.5112148944726673
+-0.42967554452802464
+[2. 2. 2. 2.]
+cycle= 2 E= -13.3997732667161  delta_E= -0.0293  |g|= 0.0547  |ddm|= 0.266
+HOMO: -0.4169141304056677 LUMO: 0.501022040856316
+-0.4169141304056677
+[2. 2. 2. 2.]
+cycle= 3 E= -13.4009624427088  delta_E= -0.00119  |g|= 0.0104  |ddm|= 0.0539
+HOMO: -0.4171038369337284 LUMO: 0.49924469244362973
+-0.4171038369337284
+[2. 2. 2. 2.]
+cycle= 4 E= -13.4010144442352  delta_E= -5.2e-05  |g|= 0.00124  |ddm|= 0.0137
+HOMO: -0.41691766870669145 LUMO: 0.4990113907710189
+-0.41691766870669145
+[2. 2. 2. 2.]
+cycle= 5 E= -13.4010150155713  delta_E= -5.71e-07  |g|= 2.85e-05  |ddm|= 0.00142
+HOMO: -0.4169357893383748 LUMO: 0.49900796859181445
+-0.4169357893383748
+[2. 2. 2. 2.]
+cycle= 6 E= -13.4010150158524  delta_E= -2.81e-10  |g|= 3.23e-06  |ddm|= 2.93e-05
+HOMO: -0.4169346054626209 LUMO: 0.4990081301728919
+-0.4169346054626209
+[2. 2. 2. 2.]
+Extra cycle  E= -13.4010150158554  delta_E= -3.01e-12  |g|= 5.59e-07  |ddm|= 2.43e-06
+converged SCF energy = -13.4010150158554
+2-norm (grad),       max(grad):
+1.7291412834302293 ,  1.115732520826114
+W =  15.363538617221852
+|umat| =  0.24225274314498527
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmplB2aWH
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.03910679589204
+HOMO: -0.5075920696400318 LUMO: 0.35360809413887573
+-0.5075920696400318
+[2.]
+cycle= 1 E= -1.65864941822838  delta_E= -0.62  |g|= 0.246  |ddm|= 1.29
+HOMO: -0.478493712895802 LUMO: 0.39438792721565846
+-0.478493712895802
+[2.]
+cycle= 2 E= -1.68763699211014  delta_E= -0.029  |g|= 0.0633  |ddm|= 0.27
+HOMO: -0.4916710324696282 LUMO: 0.3829450272736516
+-0.4916710324696282
+[2.]
+cycle= 3 E= -1.68971149410607  delta_E= -0.00207  |g|= 0.00187  |ddm|= 0.0948
+HOMO: -0.4918048867495485 LUMO: 0.38192109983822375
+-0.4918048867495485
+[2.]
+cycle= 4 E= -1.68971305032053  delta_E= -1.56e-06  |g|= 0.000195  |ddm|= 0.00238
+HOMO: -0.4918090108485751 LUMO: 0.38199795672630527
+-0.4918090108485751
+[2.]
+cycle= 5 E= -1.68971307294555  delta_E= -2.26e-08  |g|= 3.45e-06  |ddm|= 0.000333
+HOMO: -0.49180883109900336 LUMO: 0.3819967508462865
+-0.49180883109900336
+[2.]
+cycle= 6 E= -1.68971307294891  delta_E= -3.36e-12  |g|= 4.71e-08  |ddm|= 2.9e-06
+HOMO: -0.49180882257511477 LUMO: 0.38199672820033703
+-0.49180882257511477
+[2.]
+Extra cycle  E= -1.68971307294891  delta_E= -1.78e-15  |g|= 7.33e-09  |ddm|= 2.96e-08
+converged SCF energy = -1.68971307294891
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpiSQzdr
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -11.7659694682493
+HOMO: -0.2875643730886926 LUMO: 0.2767186459661103
+-0.2875643730886926
+[2. 2. 2. 2.]
+cycle= 1 E= -12.2965871337958  delta_E= -0.531  |g|= 0.255  |ddm|=  1.5
+HOMO: -0.3686326274241017 LUMO: 0.2792874682640429
+-0.3686326274241017
+[2. 2. 2. 2.]
+cycle= 2 E= -12.3521687776977  delta_E= -0.0556  |g|= 0.079  |ddm|= 0.486
+HOMO: -0.39194757940852526 LUMO: 0.3078634856277585
+-0.39194757940852526
+[2. 2. 2. 2.]
+cycle= 3 E= -12.3569082009056  delta_E= -0.00474  |g|= 0.00707  |ddm|= 0.167
+HOMO: -0.39068596018115154 LUMO: 0.3026236139760746
+-0.39068596018115154
+[2. 2. 2. 2.]
+cycle= 4 E= -12.3569340033724  delta_E= -2.58e-05  |g|= 0.00034  |ddm|= 0.0115
+HOMO: -0.39079266886213515 LUMO: 0.30298877666578694
+-0.39079266886213515
+[2. 2. 2. 2.]
+cycle= 5 E= -12.3569340609333  delta_E= -5.76e-08  |g|= 4.05e-05  |ddm|= 0.000526
+HOMO: -0.39077776795147134 LUMO: 0.3029644589052921
+-0.39077776795147134
+[2. 2. 2. 2.]
+cycle= 6 E= -12.3569340616088  delta_E= -6.75e-10  |g|= 4.68e-06  |ddm|= 4.94e-05
+HOMO: -0.39077848576605007 LUMO: 0.3029659514759378
+-0.39077848576605007
+[2. 2. 2. 2.]
+Extra cycle  E= -12.3569340616198  delta_E= -1.1e-11  |g|= 1.19e-06  |ddm|= 5.92e-06
+converged SCF energy = -12.3569340616198
+2-norm (grad),       max(grad):
+0.6699043055527636 ,  0.3948535946577838
+W =  14.015647636496686
+|umat| =  0.5684485235682126
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpesfJYZ
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58332437567951
+HOMO: -0.46871896666541274 LUMO: 0.32088528824042756
+-0.46871896666541274
+[2.]
+cycle= 1 E= -1.65510896012922  delta_E= -0.0718  |g|= 0.0784  |ddm|= 0.425
+HOMO: -0.48169472315650846 LUMO: 0.3237300370464638
+-0.48169472315650846
+[2.]
+cycle= 2 E= -1.65826961076758  delta_E= -0.00316  |g|= 0.02  |ddm|= 0.0926
+HOMO: -0.48409405027960206 LUMO: 0.32491173931426215
+-0.48409405027960206
+[2.]
+cycle= 3 E= -1.65849423868745  delta_E= -0.000225  |g|= 0.00131  |ddm|= 0.031
+HOMO: -0.48370828614277456 LUMO: 0.32524653350241345
+-0.48370828614277456
+[2.]
+cycle= 4 E= -1.65849491481279  delta_E= -6.76e-07  |g|= 1.38e-05  |ddm|= 0.00165
+HOMO: -0.4837077011334787 LUMO: 0.32525883432266317
+-0.4837077011334787
+[2.]
+cycle= 5 E= -1.65849491486552  delta_E= -5.27e-11  |g|= 6.89e-07  |ddm|= 1.19e-05
+HOMO: -0.4837078640778495 LUMO: 0.32525812613696375
+-0.4837078640778495
+[2.]
+Extra cycle  E= -1.65849491486564  delta_E= -1.26e-13  |g|= 5.97e-08  |ddm|= 5.17e-07
+converged SCF energy = -1.65849491486564
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpUatuai
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.2059759131857
+HOMO: -0.3729969785624592 LUMO: 0.1934404381784602
+-0.3729969785624592
+[2. 2. 2. 2.]
+cycle= 1 E= -12.3187063245987  delta_E= -0.113  |g|= 0.117  |ddm|= 0.664
+HOMO: -0.3725336776989605 LUMO: 0.21716981826351353
+-0.3725336776989605
+[2. 2. 2. 2.]
+cycle= 2 E= -12.3302750173362  delta_E= -0.0116  |g|= 0.0407  |ddm|= 0.221
+HOMO: -0.3701320875137695 LUMO: 0.22137578329870597
+-0.3701320875137695
+[2. 2. 2. 2.]
+cycle= 3 E= -12.3320397583191  delta_E= -0.00176  |g|= 0.00442  |ddm|= 0.119
+HOMO: -0.3688924160803347 LUMO: 0.2189657677898904
+-0.3688924160803347
+[2. 2. 2. 2.]
+cycle= 4 E= -12.3320565946449  delta_E= -1.68e-05  |g|= 0.000363  |ddm|= 0.0124
+HOMO: -0.3689982822889427 LUMO: 0.219048464381996
+-0.3689982822889427
+[2. 2. 2. 2.]
+cycle= 5 E= -12.332056634526  delta_E= -3.99e-08  |g|= 9.45e-05  |ddm|= 0.000407
+HOMO: -0.36897019634819667 LUMO: 0.21903586195446922
+-0.36897019634819667
+[2. 2. 2. 2.]
+cycle= 6 E= -12.3320566374851  delta_E= -2.96e-09  |g|= 1.17e-05  |ddm|= 8.43e-05
+HOMO: -0.3689650569738955 LUMO: 0.21903243609961354
+-0.3689650569738955
+[2. 2. 2. 2.]
+cycle= 7 E= -12.332056637542  delta_E= -5.69e-11  |g|= 7.9e-07  |ddm|= 1.51e-05
+HOMO: -0.36896518542413814 LUMO: 0.2190329019415834
+-0.36896518542413814
+[2. 2. 2. 2.]
+Extra cycle  E= -12.3320566375423  delta_E= -2.93e-13  |g|= 1.39e-07  |ddm|= 1.08e-06
+converged SCF energy = -12.3320566375423
+2-norm (grad),       max(grad):
+0.537966417917213 ,  0.293962898596496
+W =  13.911140383665497
+|umat| =  0.5353816243900056
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpX934QO
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.6226819800166
+HOMO: -0.46762857684652603 LUMO: 0.31133782696849455
+-0.46762857684652603
+[2.]
+cycle= 1 E= -1.62726118493308  delta_E= -0.00458  |g|= 0.0255  |ddm|= 0.106
+HOMO: -0.4678444176304092 LUMO: 0.309625506106083
+-0.4678444176304092
+[2.]
+cycle= 2 E= -1.62757147975244  delta_E= -0.00031  |g|= 0.00681  |ddm|= 0.028
+HOMO: -0.4681966883405022 LUMO: 0.3085703125933228
+-0.4681966883405022
+[2.]
+cycle= 3 E= -1.62759632485435  delta_E= -2.48e-05  |g|= 0.000173  |ddm|= 0.0105
+HOMO: -0.4682027748537465 LUMO: 0.3085252151650485
+-0.4682027748537465
+[2.]
+cycle= 4 E= -1.62759634365281  delta_E= -1.88e-08  |g|= 3.74e-06  |ddm|= 0.000306
+HOMO: -0.4682007962902047 LUMO: 0.3085289421065069
+-0.4682007962902047
+[2.]
+cycle= 5 E= -1.62759634366059  delta_E= -7.78e-12  |g|= 1.02e-07  |ddm|= 6.15e-06
+HOMO: -0.4682007809876676 LUMO: 0.3085288481671445
+-0.4682007809876676
+[2.]
+Extra cycle  E= -1.6275963436606  delta_E= -5.11e-15  |g|= 1.37e-08  |ddm|= 6.41e-08
+converged SCF energy = -1.6275963436606
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp27fUwX
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.3158858226384
+HOMO: -0.36800335271455425 LUMO: 0.19544714203343092
+-0.36800335271455425
+[2. 2. 2. 2.]
+cycle= 1 E= -12.3291469837362  delta_E= -0.0133  |g|= 0.0434  |ddm|= 0.253
+HOMO: -0.37235678663555427 LUMO: 0.20546716138726678
+-0.37235678663555427
+[2. 2. 2. 2.]
+cycle= 2 E= -12.33089344335  delta_E= -0.00175  |g|= 0.0163  |ddm|= 0.0885
+HOMO: -0.37463806786724846 LUMO: 0.2079164897317594
+-0.37463806786724846
+[2. 2. 2. 2.]
+cycle= 3 E= -12.3311714686328  delta_E= -0.000278  |g|= 0.000515  |ddm|= 0.0517
+HOMO: -0.3744855520913449 LUMO: 0.20771028767907437
+-0.3744855520913449
+[2. 2. 2. 2.]
+cycle= 4 E= -12.331171587916  delta_E= -1.19e-07  |g|= 8.22e-05  |ddm|= 0.000767
+HOMO: -0.3745270548977845 LUMO: 0.20771724635522998
+-0.3745270548977845
+[2. 2. 2. 2.]
+cycle= 5 E= -12.3311715903881  delta_E= -2.47e-09  |g|= 2.06e-05  |ddm|= 7.41e-05
+HOMO: -0.3745371561408582 LUMO: 0.20772560427406783
+-0.3745371561408582
+[2. 2. 2. 2.]
+cycle= 6 E= -12.3311715906077  delta_E= -2.2e-10  |g|= 1.09e-06  |ddm|= 3.32e-05
+HOMO: -0.3745365520968384 LUMO: 0.20772513616930768
+-0.3745365520968384
+[2. 2. 2. 2.]
+Extra cycle  E= -12.3311715906082  delta_E= -5.51e-13  |g|= 1.8e-07  |ddm|= 1.41e-06
+converged SCF energy = -12.3311715906082
+2-norm (grad),       max(grad):
+0.2406630924215578 ,  0.09796208997062239
+W =  13.86509950905279
+|umat| =  0.6067980703605748
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpxbIDgk
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.60177957469742
+HOMO: -0.45764708945745647 LUMO: 0.26580276558811683
+-0.45764708945745647
+[2.]
+cycle= 1 E= -1.60735492145105  delta_E= -0.00558  |g|= 0.0248  |ddm|= 0.0998
+HOMO: -0.46423133333046895 LUMO: 0.2585285433592006
+-0.46423133333046895
+[2.]
+cycle= 2 E= -1.60760055908331  delta_E= -0.000246  |g|= 0.00593  |ddm|= 0.0239
+HOMO: -0.4652759503904923 LUMO: 0.25696575399744237
+-0.4652759503904923
+[2.]
+cycle= 3 E= -1.60761880828757  delta_E= -1.82e-05  |g|= 0.000386  |ddm|= 0.00854
+HOMO: -0.4652147244720578 LUMO: 0.25695859304535684
+-0.4652147244720578
+[2.]
+cycle= 4 E= -1.60761890076004  delta_E= -9.25e-08  |g|= 1.21e-05  |ddm|= 0.000676
+HOMO: -0.4652170748623929 LUMO: 0.2569560931756782
+-0.4652170748623929
+[2.]
+cycle= 5 E= -1.60761890084644  delta_E= -8.64e-11  |g|= 1.95e-07  |ddm|= 2.05e-05
+HOMO: -0.4652169617104028 LUMO: 0.2569560431209156
+-0.4652169617104028
+[2.]
+Extra cycle  E= -1.60761890084646  delta_E= -1.04e-14  |g|= 2.65e-08  |ddm|= 1.34e-07
+converged SCF energy = -1.60761890084646
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpw25KwT
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.3449219586262
+HOMO: -0.3846860054107147 LUMO: 0.15280101234178536
+-0.3846860054107147
+[2. 2. 2. 2.]
+cycle= 1 E= -12.3547956893691  delta_E= -0.00987  |g|= 0.0302  |ddm|= 0.205
+HOMO: -0.3859406371253104 LUMO: 0.16549660908988106
+-0.3859406371253104
+[2. 2. 2. 2.]
+cycle= 2 E= -12.3554529571997  delta_E= -0.000657  |g|= 0.0102  |ddm|= 0.0528
+HOMO: -0.38682439169776883 LUMO: 0.16663238761546134
+-0.38682439169776883
+[2. 2. 2. 2.]
+cycle= 3 E= -12.355552014933  delta_E= -9.91e-05  |g|= 0.000845  |ddm|= 0.0286
+HOMO: -0.3868740104960191 LUMO: 0.16673848645153005
+-0.3868740104960191
+[2. 2. 2. 2.]
+cycle= 4 E= -12.3555526232106  delta_E= -6.08e-07  |g|= 6.19e-05  |ddm|= 0.00233
+HOMO: -0.3868998775448794 LUMO: 0.16671822837707523
+-0.3868998775448794
+[2. 2. 2. 2.]
+cycle= 5 E= -12.3555526249568  delta_E= -1.75e-09  |g|= 1.03e-05  |ddm|= 7.83e-05
+HOMO: -0.38690160610012087 LUMO: 0.1667217637836178
+-0.38690160610012087
+[2. 2. 2. 2.]
+cycle= 6 E= -12.3555526250132  delta_E= -5.63e-11  |g|= 6.91e-07  |ddm|= 1.74e-05
+HOMO: -0.3869014311499847 LUMO: 0.16672179715878002
+-0.3869014311499847
+[2. 2. 2. 2.]
+Extra cycle  E= -12.3555526250135  delta_E= -3.25e-13  |g|= 1.73e-07  |ddm|= 1.2e-06
+converged SCF energy = -12.3555526250135
+2-norm (grad),       max(grad):
+0.14927347147169284 ,  0.056848023418069125
+W =  13.840420475820931
+|umat| =  0.6854968867760066
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmppzSiPK
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.591142544691
+HOMO: -0.45800947361463407 LUMO: 0.22845566566475617
+-0.45800947361463407
+[2.]
+cycle= 1 E= -1.59338909227151  delta_E= -0.00225  |g|= 0.0097  |ddm|= 0.0593
+HOMO: -0.46305139654224947 LUMO: 0.22324335552284158
+-0.46305139654224947
+[2.]
+cycle= 2 E= -1.59341205532512  delta_E= -2.3e-05  |g|= 0.00142  |ddm|= 0.00631
+HOMO: -0.46356063394150704 LUMO: 0.2226299387797476
+-0.46356063394150704
+[2.]
+cycle= 3 E= -1.59341288812314  delta_E= -8.33e-07  |g|= 0.0002  |ddm|= 0.00157
+HOMO: -0.4635566113352128 LUMO: 0.22260826447066634
+-0.4635566113352128
+[2.]
+cycle= 4 E= -1.59341291218188  delta_E= -2.41e-08  |g|= 3.83e-06  |ddm|= 0.000341
+HOMO: -0.4635571787387067 LUMO: 0.22260716672738373
+-0.4635571787387067
+[2.]
+cycle= 5 E= -1.59341291219075  delta_E= -8.88e-12  |g|= 1.35e-07  |ddm|= 6.49e-06
+HOMO: -0.46355714960530425 LUMO: 0.2226071870866085
+-0.46355714960530425
+[2.]
+Extra cycle  E= -1.59341291219076  delta_E= -7.11e-15  |g|= 2.13e-08  |ddm|= 1.49e-07
+converged SCF energy = -1.59341291219076
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpnkQsdo
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.3798418446276
+HOMO: -0.3980377963020436 LUMO: 0.13014983852942974
+-0.3980377963020436
+[2. 2. 2. 2.]
+cycle= 1 E= -12.3818437335265  delta_E= -0.002  |g|= 0.0084  |ddm|= 0.0572
+HOMO: -0.39939730044491983 LUMO: 0.12969611653487823
+-0.39939730044491983
+[2. 2. 2. 2.]
+cycle= 2 E= -12.3818656996559  delta_E= -2.2e-05  |g|= 0.00143  |ddm|= 0.00846
+HOMO: -0.39938049236058537 LUMO: 0.1294248866913168
+-0.39938049236058537
+[2. 2. 2. 2.]
+cycle= 3 E= -12.3818672423451  delta_E= -1.54e-06  |g|= 0.000342  |ddm|= 0.00294
+HOMO: -0.3993368865633239 LUMO: 0.12937974933298904
+-0.3993368865633239
+[2. 2. 2. 2.]
+cycle= 4 E= -12.3818673659723  delta_E= -1.24e-07  |g|= 1.95e-05  |ddm|= 0.00109
+HOMO: -0.39933528930631756 LUMO: 0.12937808165940545
+-0.39933528930631756
+[2. 2. 2. 2.]
+cycle= 5 E= -12.3818673662373  delta_E= -2.65e-10  |g|= 8.51e-07  |ddm|= 4.65e-05
+HOMO: -0.3993350040560776 LUMO: 0.1293786667223798
+-0.3993350040560776
+[2. 2. 2. 2.]
+Extra cycle  E= -12.3818673662379  delta_E= -5.7e-13  |g|= 2.4e-07  |ddm|= 1.63e-06
+converged SCF energy = -12.3818673662379
+2-norm (grad),       max(grad):
+0.09710626332247468 ,  0.04787908031881071
+W =  13.8306014904694
+|umat| =  0.7406633310579988
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpGXyry1
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58147715245858
+HOMO: -0.4585030235050987 LUMO: 0.20923973035172524
+-0.4585030235050987
+[2.]
+cycle= 1 E= -1.58354845483994  delta_E= -0.00207  |g|= 0.0104  |ddm|= 0.0667
+HOMO: -0.4609463459973844 LUMO: 0.20803315970602512
+-0.4609463459973844
+[2.]
+cycle= 2 E= -1.58359477608727  delta_E= -4.63e-05  |g|= 0.00181  |ddm|= 0.0118
+HOMO: -0.4612192600400474 LUMO: 0.20800778663317865
+-0.4612192600400474
+[2.]
+cycle= 3 E= -1.5835968425085  delta_E= -2.07e-06  |g|= 0.00025  |ddm|= 0.00295
+HOMO: -0.4611954370556856 LUMO: 0.2080610473587889
+-0.4611954370556856
+[2.]
+cycle= 4 E= -1.58359687923157  delta_E= -3.67e-08  |g|= 1.36e-05  |ddm|= 0.000419
+HOMO: -0.46119500415130427 LUMO: 0.20806265868925022
+-0.46119500415130427
+[2.]
+cycle= 5 E= -1.58359687931461  delta_E= -8.3e-11  |g|= 7.48e-08  |ddm|= 1.77e-05
+HOMO: -0.46119507501475665 LUMO: 0.20806255278673758
+-0.46119507501475665
+[2.]
+Extra cycle  E= -1.58359687931462  delta_E= -2.44e-15  |g|= 1.11e-08  |ddm|= 7.7e-08
+converged SCF energy = -1.58359687931462
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpdH9g78
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4018376969928
+HOMO: -0.4072654728346888 LUMO: 0.11251987848509638
+-0.4072654728346888
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4065039560621  delta_E= -0.00467  |g|= 0.0179  |ddm|= 0.116
+HOMO: -0.4092499892426985 LUMO: 0.10420580472864037
+-0.4092499892426985
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4066437482465  delta_E= -0.00014  |g|= 0.00469  |ddm|= 0.0197
+HOMO: -0.4088611337681023 LUMO: 0.10374157605780698
+-0.4088611337681023
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4066586112259  delta_E= -1.49e-05  |g|= 0.000737  |ddm|= 0.00864
+HOMO: -0.40882058797281784 LUMO: 0.1035814144311759
+-0.40882058797281784
+[2. 2. 2. 2.]
+cycle= 4 E= -12.4066590971417  delta_E= -4.86e-07  |g|= 7e-05  |ddm|= 0.00193
+HOMO: -0.40881860443707435 LUMO: 0.10359843658048243
+-0.40881860443707435
+[2. 2. 2. 2.]
+cycle= 5 E= -12.406659102838  delta_E= -5.7e-09  |g|= 1.16e-05  |ddm|= 0.000218
+HOMO: -0.4088202434861688 LUMO: 0.10359418861846918
+-0.4088202434861688
+[2. 2. 2. 2.]
+cycle= 6 E= -12.4066591029614  delta_E= -1.23e-10  |g|= 1.13e-06  |ddm|= 3.47e-05
+HOMO: -0.4088202836482233 LUMO: 0.10359432360992864
+-0.4088202836482233
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4066591029619  delta_E= -5.44e-13  |g|= 2.88e-07  |ddm|= 1.18e-06
+converged SCF energy = -12.4066591029619
+2-norm (grad),       max(grad):
+0.08866128436032004 ,  0.06596352635659847
+W =  13.827277746773973
+|umat| =  0.7466183154253314
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpx5gDyH
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58040865677444
+HOMO: -0.46014511957406085 LUMO: 0.20420356709803492
+-0.46014511957406085
+[2.]
+cycle= 1 E= -1.58169709839352  delta_E= -0.00129  |g|= 0.00897  |ddm|= 0.0648
+HOMO: -0.4607003870585908 LUMO: 0.2028523216364803
+-0.4607003870585908
+[2.]
+cycle= 2 E= -1.58174603886681  delta_E= -4.89e-05  |g|= 0.00204  |ddm|= 0.0127
+HOMO: -0.4608331615452073 LUMO: 0.20242676844261978
+-0.4608331615452073
+[2.]
+cycle= 3 E= -1.58174881020708  delta_E= -2.77e-06  |g|= 0.000196  |ddm|= 0.00366
+HOMO: -0.4608367437993629 LUMO: 0.20240113750483593
+-0.4608367437993629
+[2.]
+cycle= 4 E= -1.58174883043512  delta_E= -2.02e-08  |g|= 4.16e-06  |ddm|= 0.0003
+HOMO: -0.46083837516501563 LUMO: 0.20240001023476908
+-0.46083837516501563
+[2.]
+cycle= 5 E= -1.58174883043881  delta_E= -3.69e-12  |g|= 5.68e-08  |ddm|= 2.66e-06
+HOMO: -0.4608384158391155 LUMO: 0.20239991608360808
+-0.4608384158391155
+[2.]
+Extra cycle  E= -1.58174883043882  delta_E= -2.66e-15  |g|= 4.77e-09  |ddm|= 3.39e-08
+converged SCF energy = -1.58174883043882
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp7c6etc
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4076462680392
+HOMO: -0.40902534990008804 LUMO: 0.10361744398987299
+-0.40902534990008804
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4096004337842  delta_E= -0.00195  |g|= 0.0123  |ddm|= 0.0941
+HOMO: -0.41065977501884704 LUMO: 0.10270855682543426
+-0.41065977501884704
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4097184016258  delta_E= -0.000118  |g|= 0.00345  |ddm|= 0.0231
+HOMO: -0.4111086968924858 LUMO: 0.10257700365447009
+-0.4111086968924858
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4097286671505  delta_E= -1.03e-05  |g|= 0.000333  |ddm|= 0.00887
+HOMO: -0.4111222579509557 LUMO: 0.1025170133441381
+-0.4111222579509557
+[2. 2. 2. 2.]
+cycle= 4 E= -12.4097287484039  delta_E= -8.13e-08  |g|= 4.91e-05  |ddm|= 0.000728
+HOMO: -0.4111188075237689 LUMO: 0.10252029264181536
+-0.4111188075237689
+[2. 2. 2. 2.]
+cycle= 5 E= -12.4097287507462  delta_E= -2.34e-09  |g|= 7.77e-06  |ddm|= 0.00013
+HOMO: -0.41111841448340314 LUMO: 0.10251723260467066
+-0.41111841448340314
+[2. 2. 2. 2.]
+cycle= 6 E= -12.4097287508181  delta_E= -7.19e-11  |g|= 1.75e-07  |ddm|= 2.82e-05
+HOMO: -0.4111184827371415 LUMO: 0.10251723557578084
+-0.4111184827371415
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4097287508181  delta_E= 7.11e-15  |g|= 2.51e-08  |ddm|= 2.32e-07
+converged SCF energy = -12.4097287508181
+2-norm (grad),       max(grad):
+0.05804839639879991 ,  0.03395311855669657
+W =  13.826241817227817
+|umat| =  0.7397466980764541
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpL5kBKn
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58278120496624
+HOMO: -0.46141669961076376 LUMO: 0.20387441916435758
+-0.46141669961076376
+[2.]
+cycle= 1 E= -1.58292587630734  delta_E= -0.000145  |g|= 0.00289  |ddm|= 0.0211
+HOMO: -0.4608524846936785 LUMO: 0.20476537339721845
+-0.4608524846936785
+[2.]
+cycle= 2 E= -1.58293077791945  delta_E= -4.9e-06  |g|= 0.000658  |ddm|= 0.00401
+HOMO: -0.4607889940730907 LUMO: 0.20492398967969477
+-0.4607889940730907
+[2.]
+cycle= 3 E= -1.58293106473935  delta_E= -2.87e-07  |g|= 6.42e-05  |ddm|= 0.00117
+HOMO: -0.460792275144591 LUMO: 0.2049273579945341
+-0.460792275144591
+[2.]
+cycle= 4 E= -1.58293106697274  delta_E= -2.23e-09  |g|= 2.78e-06  |ddm|= 9.96e-05
+HOMO: -0.46079127308214735 LUMO: 0.20492842486846988
+-0.46079127308214735
+[2.]
+cycle= 5 E= -1.58293106697519  delta_E= -2.45e-12  |g|= 6.06e-09  |ddm|= 2.68e-06
+HOMO: -0.46079127864515496 LUMO: 0.20492841440480708
+-0.46079127864515496
+[2.]
+Extra cycle  E= -1.58293106697519  delta_E= -4.44e-16  |g|= 6.58e-10  |ddm|= 3.52e-09
+converged SCF energy = -1.58293106697519
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpFuaO6f
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4055135828006
+HOMO: -0.4107740710180214 LUMO: 0.10468966745470824
+-0.4107740710180214
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4058634969119  delta_E= -0.00035  |g|= 0.00478  |ddm|= 0.0419
+HOMO: -0.40992202908253467 LUMO: 0.10683451667390141
+-0.40992202908253467
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4058830642629  delta_E= -1.96e-05  |g|= 0.0014  |ddm|= 0.00992
+HOMO: -0.4097591845339904 LUMO: 0.10708075089706318
+-0.4097591845339904
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4058851151391  delta_E= -2.05e-06  |g|= 0.000198  |ddm|= 0.00416
+HOMO: -0.40975671288709714 LUMO: 0.10709566262806026
+-0.40975671288709714
+[2. 2. 2. 2.]
+cycle= 4 E= -12.4058851518918  delta_E= -3.68e-08  |g|= 2.47e-05  |ddm|= 0.000557
+HOMO: -0.4097603560069696 LUMO: 0.10709458071334639
+-0.4097603560069696
+[2. 2. 2. 2.]
+cycle= 5 E= -12.4058851523682  delta_E= -4.76e-10  |g|= 3.49e-06  |ddm|= 5.37e-05
+HOMO: -0.40976018929797026 LUMO: 0.10709598471128082
+-0.40976018929797026
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4058851523766  delta_E= -8.44e-12  |g|= 1.19e-06  |ddm|= 5.78e-06
+converged SCF energy = -12.4058851523766
+2-norm (grad),       max(grad):
+0.011729248080503627 ,  0.0051251507914250585
+W =  13.825652168710606
+|umat| =  0.741011697827169
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp5kJV6S
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.5829152916512
+HOMO: -0.46078464539505537 LUMO: 0.20406998478788305
+-0.46078464539505537
+[2.]
+cycle= 1 E= -1.58291808653501  delta_E= -2.79e-06  |g|= 0.00038  |ddm|= 0.0023
+HOMO: -0.4607129156300996 LUMO: 0.2041999426074546
+-0.4607129156300996
+[2.]
+cycle= 2 E= -1.58291815480084  delta_E= -6.83e-08  |g|= 9.14e-05  |ddm|= 0.000437
+HOMO: -0.4607040694995687 LUMO: 0.20422232515058075
+-0.4607040694995687
+[2.]
+cycle= 3 E= -1.58291815990859  delta_E= -5.11e-09  |g|= 8.94e-06  |ddm|= 0.000148
+HOMO: -0.46070415639883544 LUMO: 0.2042230991731053
+-0.46070415639883544
+[2.]
+cycle= 4 E= -1.5829181599537  delta_E= -4.51e-11  |g|= 1.6e-07  |ddm|= 1.5e-05
+HOMO: -0.4607041380244927 LUMO: 0.2042231089694279
+-0.4607041380244927
+[2.]
+Extra cycle  E= -1.58291815995371  delta_E= -1.09e-14  |g|= 2.56e-08  |ddm|= 1.87e-07
+converged SCF energy = -1.58291815995371
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpjjFunv
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4061247288233
+HOMO: -0.40979692400764933 LUMO: 0.10778093133275218
+-0.40979692400764933
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4061323009478  delta_E= -7.57e-06  |g|= 0.000514  |ddm|= 0.00514
+HOMO: -0.4096506940033266 LUMO: 0.10825584036788133
+-0.4096506940033266
+[2. 2. 2. 2.]
+cycle= 2 E= -12.406132414087  delta_E= -1.13e-07  |g|= 9.04e-05  |ddm|= 0.000621
+HOMO: -0.40964658148540967 LUMO: 0.10828307237967535
+-0.40964658148540967
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4061324198846  delta_E= -5.8e-09  |g|= 1.66e-05  |ddm|= 0.000185
+HOMO: -0.4096463222690448 LUMO: 0.10828718234245785
+-0.4096463222690448
+[2. 2. 2. 2.]
+cycle= 4 E= -12.4061324201768  delta_E= -2.92e-10  |g|= 2.23e-06  |ddm|= 4.97e-05
+HOMO: -0.4096464969210942 LUMO: 0.10828669085858021
+-0.4096464969210942
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4061324201812  delta_E= -4.39e-12  |g|= 8.11e-07  |ddm|= 4.4e-06
+converged SCF energy = -12.4061324201812
+2-norm (grad),       max(grad):
+0.00800334679910763 ,  0.00411784642240979
+W =  13.82560023982163
+|umat| =  0.7437553133055278
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpcgKrUT
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58288161079009
+HOMO: -0.4606964141260545 LUMO: 0.20243467533391243
+-0.4606964141260545
+[2.]
+cycle= 1 E= -1.58290436283712  delta_E= -2.28e-05  |g|= 0.000887  |ddm|= 0.00559
+HOMO: -0.46046796837893256 LUMO: 0.20277231552679034
+-0.46046796837893256
+[2.]
+cycle= 2 E= -1.58290458857397  delta_E= -2.26e-07  |g|= 0.000151  |ddm|= 0.000663
+HOMO: -0.4604453736763191 LUMO: 0.20281244660658326
+-0.4604453736763191
+[2.]
+cycle= 3 E= -1.58290459952972  delta_E= -1.1e-08  |g|= 2.25e-05  |ddm|= 0.000186
+HOMO: -0.4604448217329204 LUMO: 0.2028153816372327
+-0.4604448217329204
+[2.]
+cycle= 4 E= -1.58290459982269  delta_E= -2.93e-10  |g|= 7.9e-07  |ddm|= 3.7e-05
+HOMO: -0.46044480542743554 LUMO: 0.20281548816445227
+-0.46044480542743554
+[2.]
+Extra cycle  E= -1.58290459982307  delta_E= -3.77e-13  |g|= 1.73e-07  |ddm|= 1.11e-06
+converged SCF energy = -1.58290459982307
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpu15jEP
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.406787144756
+HOMO: -0.409743264540854 LUMO: 0.11073105665741546
+-0.409743264540854
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068158931537  delta_E= -2.87e-05  |g|= 0.00113  |ddm|= 0.008
+HOMO: -0.40955273240804524 LUMO: 0.11147700294593733
+-0.40955273240804524
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4068163095794  delta_E= -4.16e-07  |g|= 0.000236  |ddm|= 0.000941
+HOMO: -0.40956667883143016 LUMO: 0.11152049444496072
+-0.40956667883143016
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4068163386162  delta_E= -2.9e-08  |g|= 3.96e-05  |ddm|= 0.000332
+HOMO: -0.40957064677594834 LUMO: 0.1115260772197491
+-0.40957064677594834
+[2. 2. 2. 2.]
+cycle= 4 E= -12.4068163398198  delta_E= -1.2e-09  |g|= 4.44e-06  |ddm|= 8.67e-05
+HOMO: -0.4095708927752216 LUMO: 0.1115255009580395
+-0.4095708927752216
+[2. 2. 2. 2.]
+cycle= 5 E= -12.40681633984  delta_E= -2.02e-11  |g|= 6.06e-07  |ddm|= 1.26e-05
+HOMO: -0.40957083184241755 LUMO: 0.11152573036359538
+-0.40957083184241755
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068163398403  delta_E= -3.38e-13  |g|= 2.14e-07  |ddm|= 1.27e-06
+converged SCF energy = -12.4068163398403
+2-norm (grad),       max(grad):
+0.0019785726273020628 ,  0.0009438957859201262
+W =  13.825539302481852
+|umat| =  0.7439438779480908
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp1WBXkY
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58295072860454
+HOMO: -0.46046862669259614 LUMO: 0.20243594117251934
+-0.46046862669259614
+[2.]
+cycle= 1 E= -1.58295234884069  delta_E= -1.62e-06  |g|= 0.000193  |ddm|= 0.00155
+HOMO: -0.46039669026153746 LUMO: 0.20252228016482896
+-0.46039669026153746
+[2.]
+cycle= 2 E= -1.58295235765241  delta_E= -8.81e-09  |g|= 1.79e-05  |ddm|= 0.000129
+HOMO: -0.4603916061265184 LUMO: 0.20252729177464465
+-0.4603916061265184
+[2.]
+cycle= 3 E= -1.58295235778441  delta_E= -1.32e-10  |g|= 1.85e-06  |ddm|= 2.09e-05
+HOMO: -0.460391687276797 LUMO: 0.2025269740189785
+-0.460391687276797
+[2.]
+Extra cycle  E= -1.58295235778657  delta_E= -2.16e-12  |g|= 4.72e-07  |ddm|= 2.65e-06
+converged SCF energy = -1.58295235778657
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpcrwyJU
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.406858304128
+HOMO: -0.4095838202767203 LUMO: 0.11222218097213009
+-0.4095838202767203
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068591444622  delta_E= -8.4e-07  |g|= 0.000276  |ddm|= 0.00135
+HOMO: -0.4096088323032029 LUMO: 0.11215264411018547
+-0.4096088323032029
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4068591735792  delta_E= -2.91e-08  |g|= 6.53e-05  |ddm|= 0.000287
+HOMO: -0.40960817662931553 LUMO: 0.11213796765678397
+-0.40960817662931553
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4068591761615  delta_E= -2.58e-09  |g|= 1e-05  |ddm|= 0.000115
+HOMO: -0.40960714856002284 LUMO: 0.11213726629942854
+-0.40960714856002284
+[2. 2. 2. 2.]
+cycle= 4 E= -12.4068591762563  delta_E= -9.49e-11  |g|= 7.65e-07  |ddm|= 2.79e-05
+HOMO: -0.4096071919916851 LUMO: 0.11213720176711353
+-0.4096071919916851
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068591762568  delta_E= -4.6e-13  |g|= 2.61e-07  |ddm|= 1.44e-06
+converged SCF energy = -12.4068591762568
+2-norm (grad),       max(grad):
+0.00056130743060288 ,  0.0002413250267922126
+W =  13.825536404520705
+|umat| =  0.7439028340824649
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpOK2HbH
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58296050834274
+HOMO: -0.4603957935165335 LUMO: 0.2025705647910579
+-0.4603957935165335
+[2.]
+cycle= 1 E= -1.58296054482509  delta_E= -3.65e-08  |g|= 3.67e-05  |ddm|= 0.000247
+HOMO: -0.4603956513010589 LUMO: 0.20257103137782195
+-0.4603956513010589
+[2.]
+cycle= 2 E= -1.58296054527306  delta_E= -4.48e-10  |g|= 4.86e-06  |ddm|= 3.46e-05
+HOMO: -0.4603957141394115 LUMO: 0.20257066338979532
+-0.4603957141394115
+[2.]
+Extra cycle  E= -1.58296054528554  delta_E= -1.25e-11  |g|= 9.56e-07  |ddm|= 6.33e-06
+converged SCF energy = -1.58296054528554
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpAZ5XHa
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4068457349932
+HOMO: -0.40960656098229364 LUMO: 0.11216030906605724
+-0.40960656098229364
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068459253277  delta_E= -1.9e-07  |g|= 0.000121  |ddm|= 0.00075
+HOMO: -0.40962696342535604 LUMO: 0.11213557199381892
+-0.40962696342535604
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4068459332002  delta_E= -7.87e-09  |g|= 3.45e-05  |ddm|= 0.000152
+HOMO: -0.40963098436831574 LUMO: 0.11213578902095886
+-0.40963098436831574
+[2. 2. 2. 2.]
+cycle= 3 E= -12.406845933931  delta_E= -7.31e-10  |g|= 3.49e-06  |ddm|= 5.96e-05
+HOMO: -0.409631159647774 LUMO: 0.11213619403051218
+-0.409631159647774
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068459339387  delta_E= -7.61e-12  |g|= 1.17e-06  |ddm|= 5.24e-06
+converged SCF energy = -12.4068459339387
+2-norm (grad),       max(grad):
+0.0003303571894213898 ,  0.00015652378641124813
+W =  13.825536257800245
+|umat| =  0.7439474674554405
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpXWfR4m
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58295248147099
+HOMO: -0.4603917001041201 LUMO: 0.2025483536728674
+-0.4603917001041201
+[2.]
+cycle= 1 E= -1.58295248365803  delta_E= -2.19e-09  |g|= 1.17e-05  |ddm|= 5.57e-05
+HOMO: -0.4603961657198551 LUMO: 0.2025435134119269
+-0.4603961657198551
+[2.]
+cycle= 2 E= -1.58295248369737  delta_E= -3.93e-11  |g|= 2.12e-06  |ddm|= 8.55e-06
+HOMO: -0.46039659324134063 LUMO: 0.20254295835617045
+-0.46039659324134063
+[2.]
+Extra cycle  E= -1.58295248369922  delta_E= -1.85e-12  |g|= 5.11e-07  |ddm|= 2.08e-06
+converged SCF energy = -1.58295248369922
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp73LZrN
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4068634989893
+HOMO: -0.40963243376438846 LUMO: 0.11209933891872942
+-0.40963243376438846
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068635176184  delta_E= -1.86e-08  |g|= 4.09e-05  |ddm|= 0.000253
+HOMO: -0.4096286874220893 LUMO: 0.11210342994699189
+-0.4096286874220893
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4068635186505  delta_E= -1.03e-09  |g|= 1.21e-05  |ddm|= 6.11e-05
+HOMO: -0.4096278011560013 LUMO: 0.1121027086836645
+-0.4096278011560013
+[2. 2. 2. 2.]
+cycle= 3 E= -12.4068635187653  delta_E= -1.15e-10  |g|= 1.67e-06  |ddm|= 2.69e-05
+HOMO: -0.40962773041339573 LUMO: 0.11210254319625551
+-0.40962773041339573
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068635187674  delta_E= -2.06e-12  |g|= 5.95e-07  |ddm|= 2.88e-06
+converged SCF energy = -12.4068635187674
+2-norm (grad),       max(grad):
+0.0001409156552226849 ,  5.119887810935714e-05
+W =  13.825536214846455
+|umat| =  0.7439517577493315
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp1HhOyp
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58294977705186
+HOMO: -0.46039529433263715 LUMO: 0.20255400824182743
+-0.46039529433263715
+[2.]
+cycle= 1 E= -1.58294977935244  delta_E= -2.3e-09  |g|= 1.11e-05  |ddm|= 5.87e-05
+HOMO: -0.46039928350786913 LUMO: 0.20255021662809577
+-0.46039928350786913
+[2.]
+cycle= 2 E= -1.58294977938452  delta_E= -3.21e-11  |g|= 1.53e-06  |ddm|= 7.76e-06
+HOMO: -0.46039965424501944 LUMO: 0.20254984381484686
+-0.46039965424501944
+[2.]
+Extra cycle  E= -1.58294977938529  delta_E= -7.71e-13  |g|= 2.7e-07  |ddm|= 1.28e-06
+converged SCF energy = -1.58294977938529
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpxPipaJ
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4068668599811
+HOMO: -0.4096276631532505 LUMO: 0.11206627022185688
+-0.4096276631532505
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068668671606  delta_E= -7.18e-09  |g|= 1.96e-05  |ddm|= 0.000123
+HOMO: -0.4096247217650291 LUMO: 0.11206763431090255
+-0.4096247217650291
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4068668673418  delta_E= -1.81e-10  |g|= 5.17e-06  |ddm|= 2.32e-05
+HOMO: -0.4096242316990419 LUMO: 0.11206772849692245
+-0.4096242316990419
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068668673577  delta_E= -1.59e-11  |g|= 1.66e-06  |ddm|= 7.17e-06
+converged SCF energy = -12.4068668673577
+2-norm (grad),       max(grad):
+5.4605420414829804e-05 ,  2.023536193722246e-05
+W =  13.825536200572621
+|umat| =  0.7439411656270147
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpNOISZn
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58295084109585
+HOMO: -0.46040022589651985 LUMO: 0.202562563107308
+-0.46040022589651985
+[2.]
+cycle= 1 E= -1.58295084136193  delta_E= -2.66e-10  |g|= 3.67e-06  |ddm|= 1.77e-05
+HOMO: -0.46040123384081344 LUMO: 0.20256164344607847
+-0.46040123384081344
+[2.]
+Extra cycle  E= -1.58295084136493  delta_E= -3e-12  |g|= 5.17e-07  |ddm|= 2.2e-06
+converged SCF energy = -1.58295084136493
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpgmFnY9
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4068639965259
+HOMO: -0.4096238266653893 LUMO: 0.11205817084839344
+-0.4096238266653893
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068639979663  delta_E= -1.44e-09  |g|= 6.54e-06  |ddm|= 5.03e-05
+HOMO: -0.4096228838145682 LUMO: 0.11205803326540972
+-0.4096228838145682
+[2. 2. 2. 2.]
+cycle= 2 E= -12.4068639979861  delta_E= -1.98e-11  |g|= 1.36e-06  |ddm|= 9.28e-06
+HOMO: -0.40962276799484154 LUMO: 0.11205830927554936
+-0.40962276799484154
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068639979878  delta_E= -1.7e-12  |g|= 4.67e-07  |ddm|= 2.92e-06
+converged SCF energy = -12.4068639979878
+2-norm (grad),       max(grad):
+1.3253948201056943e-05 ,  4.9272562359699256e-06
+W =  13.82553619848205
+|umat| =  0.7439386589478497
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpJBzsIl
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58295170915357
+HOMO: -0.4604017723712813 LUMO: 0.20256290096494592
+-0.4604017723712813
+[2.]
+cycle= 1 E= -1.5829517091876  delta_E= -3.4e-11  |g|= 2.22e-06  |ddm|= 9.31e-06
+HOMO: -0.4604016246013421 LUMO: 0.20256323685896413
+-0.4604016246013421
+[2.]
+Extra cycle  E= -1.58295170919013  delta_E= -2.53e-12  |g|= 6.06e-07  |ddm|= 2.6e-06
+converged SCF energy = -1.58295170919013
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp5yWVae
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4068619391625
+HOMO: -0.4096225924557582 LUMO: 0.11205991720171264
+-0.4096225924557582
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068619392952  delta_E= -1.33e-10  |g|= 3.49e-06  |ddm|= 1.79e-05
+HOMO: -0.40962284176802527 LUMO: 0.1120596212094253
+-0.40962284176802527
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068619393005  delta_E= -5.31e-12  |g|= 8.86e-07  |ddm|= 3.77e-06
+converged SCF energy = -12.4068619393005
+2-norm (grad),       max(grad):
+1.7112470274801192e-05 ,  1.0249314858267867e-05
+W =  13.825536198437238
+|umat| =  0.7439368418098677
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpWTEI_S
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58295161988692
+HOMO: -0.4604015459696672 LUMO: 0.20256311549155911
+-0.4604015459696672
+[2.]
+cycle= 1 E= -1.58295161991386  delta_E= -2.69e-11  |g|= 1.92e-06  |ddm|= 8.56e-06
+HOMO: -0.46040155239744324 LUMO: 0.2025629267806106
+-0.46040155239744324
+[2.]
+Extra cycle  E= -1.58295161991586  delta_E= -2e-12  |g|= 5.34e-07  |ddm|= 2.36e-06
+converged SCF energy = -1.58295161991586
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpgNSEpB
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4068621586152
+HOMO: -0.4096229030517243 LUMO: 0.11205908074293947
+-0.4096229030517243
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068621586724  delta_E= -5.72e-11  |g|= 2.98e-06  |ddm|= 1.62e-05
+HOMO: -0.4096229070471008 LUMO: 0.11205951614372538
+-0.4096229070471008
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068621586803  delta_E= -7.87e-12  |g|= 1.13e-06  |ddm|= 5.95e-06
+converged SCF energy = -12.4068621586803
+2-norm (grad),       max(grad):
+6.6055858218853155e-06 ,  3.1398748295217294e-06
+W =  13.825536198391399
+|umat| =  0.7439378636596823
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpupSwIS
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58295153486623
+HOMO: -0.46040152933335776 LUMO: 0.202562437994977
+-0.46040152933335776
+[2.]
+cycle= 1 E= -1.58295153486656  delta_E= -3.31e-13  |g|= 2.1e-07  |ddm|= 9.8e-07
+HOMO: -0.4604015233979139 LUMO: 0.2025624635263685
+-0.4604015233979139
+[2.]
+Extra cycle  E= -1.58295153486659  delta_E= -2.62e-14  |g|= 5.91e-08  |ddm|= 2.7e-07
+converged SCF energy = -1.58295153486659
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpgawS0s
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.40686238836
+HOMO: -0.40962295660516296 LUMO: 0.11205979215717618
+-0.40962295660516296
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068623883631  delta_E= -3.07e-12  |g|= 5.53e-07  |ddm|= 2.73e-06
+HOMO: -0.40962297368804845 LUMO: 0.11205965193904076
+-0.40962297368804845
+[2. 2. 2. 2.]
+Extra cycle  E= -12.4068623883633  delta_E= -1.72e-13  |g|= 1.72e-07  |ddm|= 7.52e-07
+converged SCF energy = -12.4068623883633
+2-norm (grad),       max(grad):
+3.9905892211016e-06 ,  1.714585629327344e-06
+W =  13.82553619837849
+sum (diag(umat)) = 
+-1.465763274643983e-13
+in verify_scf
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpfrOtZf
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -1.58295153486655
+HOMO: -0.46040152090362085 LUMO: 0.20256247181735337
+-0.46040152090362085
+[2.]
+cycle= 1 E= -1.58295153486656  delta_E= -2e-15  |g|= 1.66e-08  |ddm|= 7.51e-08
+converged SCF energy = -1.58295153486656
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpQuuest
+max_memory 4000 MB (current use 276 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -12.4068623883632
+HOMO: -0.40962296518503594 LUMO: 0.11205963274294281
+-0.40962296518503594
+[2. 2. 2. 2.]
+cycle= 1 E= -12.4068623883632  delta_E= -2.66e-14  |g|= 5.99e-08  |ddm|= 2.72e-07
+converged SCF energy = -12.4068623883632
+scf energies:
+-1.6338094876258822 -12.191728496605858 -13.82553798423174
+7.510747466462849e-08
+2.7174575861120807e-07
+|P_frag + P_env - P_ref| =  5.284882664204879e-06
+max element of (P_frag + P_env - P_ref) =  1.606248040618221e-06
+check orthogonality
+1.4084993186097322e-06 1.0126485413810768e-06
+|P_imp-P_imp_0| 0.7526874008292431 0.3139943820177572
+|P_bath-P_bath_0| 1.1601813448924996 0.4887972310183187
+  P_imp_loc
+             1            2            3            4            5            6 
+    1    0.8796756    0.8796756    0.1109967   -0.0553389   -0.1411975    0.2655692 
+    2    0.8796756    0.8796756    0.1109967   -0.0553389   -0.1411975    0.2655692 
+    3    0.1109967    0.1109967    0.0140055   -0.0069826   -0.0178162    0.0335093 
+    4   -0.0553389   -0.0553389   -0.0069826    0.0034813    0.0088825   -0.0167065 
+    5   -0.1411975   -0.1411975   -0.0178162    0.0088825    0.0226637   -0.0426268 
+    6    0.2655692    0.2655692    0.0335093   -0.0167065   -0.0426268    0.0801739 
+    7    0.2655692    0.2655692    0.0335093   -0.0167065   -0.0426268    0.0801739 
+    8   -0.1411975   -0.1411975   -0.0178162    0.0088825    0.0226637   -0.0426268 
+    9   -0.0553389   -0.0553389   -0.0069826    0.0034813    0.0088825   -0.0167065 
+   10    0.1109967    0.1109967    0.0140055   -0.0069826   -0.0178162    0.0335093 
+             7            8            9           10 
+    1    0.2655692   -0.1411975   -0.0553389    0.1109967 
+    2    0.2655692   -0.1411975   -0.0553389    0.1109967 
+    3    0.0335093   -0.0178162   -0.0069826    0.0140055 
+    4   -0.0167065    0.0088825    0.0034813   -0.0069826 
+    5   -0.0426268    0.0226637    0.0088825   -0.0178162 
+    6    0.0801739   -0.0426268   -0.0167065    0.0335093 
+    7    0.0801739   -0.0426268   -0.0167065    0.0335093 
+    8   -0.0426268    0.0226637    0.0088825   -0.0178162 
+    9   -0.0167065    0.0088825    0.0034813   -0.0069826 
+   10    0.0335093   -0.0178162   -0.0069826    0.0140055 
+  P_bath_loc+P_core_loc
+             1            2            3            4            5            6 
+    1    0.1092493   -0.1087479   -0.1119313   -0.0385989    0.1474154    0.2301658 
+    2   -0.1087479    0.1092493    0.1178601    0.0311274   -0.1713411   -0.2485826 
+    3   -0.1119313    0.1178601    1.0805210    0.8786687    0.0032871   -0.3950039 
+    4   -0.0385989    0.0311274    0.8786687    0.9361608    0.4643433    0.0525230 
+    5    0.1474154   -0.1713411    0.0032871    0.4643433    0.9793638    0.8233523 
+    6    0.2301658   -0.2485826   -0.3950039    0.0525230    0.8233523    0.8947051 
+    7   -0.2485826    0.2301658   -0.0251828    0.0513279    0.0308228   -0.1822879 
+    8   -0.1713411    0.1474154   -0.1478327    0.0087473    0.1790796    0.0308228 
+    9    0.0311274   -0.0385989   -0.0075089   -0.0163173    0.0087473    0.0513279 
+   10    0.1178601   -0.1119313    0.1282735   -0.0075089   -0.1478327   -0.0251828 
+             7            8            9           10 
+    1   -0.2485826   -0.1713411    0.0311274    0.1178601 
+    2    0.2301658    0.1474154   -0.0385989   -0.1119313 
+    3   -0.0251828   -0.1478327   -0.0075089    0.1282735 
+    4    0.0513279    0.0087473   -0.0163173   -0.0075089 
+    5    0.0308228    0.1790796    0.0087473   -0.1478327 
+    6   -0.1822879    0.0308228    0.0513279   -0.0251828 
+    7    0.8947051    0.8233523    0.0525230   -0.3950039 
+    8    0.8233523    0.9793638    0.4643433    0.0032871 
+    9    0.0525230    0.4643433    0.9361608    0.8786687 
+   10   -0.3950039    0.0032871    0.8786687    1.0805210 
+  P_sum_loc-P_tot_loc
+             1            2            3            4            5            6 
+    1   -0.0000004    0.0000002   -0.0000003    0.0000003    0.0000003    0.0000004 
+    2    0.0000002   -0.0000004   -0.0000004    0.0000008    0.0000010    0.0000010 
+    3   -0.0000003   -0.0000004   -0.0000004    0.0000004    0.0000004    0.0000003 
+    4    0.0000003    0.0000008    0.0000004    0.0000000   -0.0000007    0.0000000 
+    5    0.0000003    0.0000010    0.0000004   -0.0000007   -0.0000008    0.0000006 
+    6    0.0000004    0.0000010    0.0000003    0.0000000    0.0000006    0.0000015 
+    7    0.0000010    0.0000004   -0.0000003   -0.0000003    0.0000000    0.0000005 
+    8    0.0000010    0.0000003    0.0000006   -0.0000000   -0.0000000    0.0000000 
+    9    0.0000008    0.0000003    0.0000001   -0.0000002   -0.0000000   -0.0000003 
+   10   -0.0000004   -0.0000003   -0.0000005    0.0000001    0.0000006   -0.0000003 
+             7            8            9           10 
+    1    0.0000010    0.0000010    0.0000008   -0.0000004 
+    2    0.0000004    0.0000003    0.0000003   -0.0000003 
+    3   -0.0000003    0.0000006    0.0000001   -0.0000005 
+    4   -0.0000003   -0.0000000   -0.0000002    0.0000001 
+    5    0.0000000   -0.0000000   -0.0000000    0.0000006 
+    6    0.0000005    0.0000000   -0.0000003   -0.0000003 
+    7    0.0000015    0.0000006    0.0000000    0.0000003 
+    8    0.0000006   -0.0000008   -0.0000007    0.0000004 
+    9    0.0000000   -0.0000007    0.0000000    0.0000004 
+   10    0.0000003    0.0000004    0.0000004   -0.0000004 
+|diffP_ao| =  7.83938162169612e-06 max(diffP_ao) =  2.182930536664962e-06
+time of sdmfet : 85.610  (cpu),  3.940  (wall) 
+time of total calc : 96.390  (cpu),  4.489  (wall) 
+ This problem is unconstrained.
+RUNNING THE L-BFGS-B CODE
+
+           * * *
+
+Machine precision = 2.220D-16
+ N =           55     M =           10
+
+At X0         0 variables are exactly at the bounds
+
+At iterate    0    f=  1.43379D+01    |proj g|=  8.02793D-01
+
+At iterate    1    f=  1.40156D+01    |proj g|=  3.94854D-01
+
+At iterate    2    f=  1.39111D+01    |proj g|=  2.93963D-01
+
+At iterate    3    f=  1.38651D+01    |proj g|=  9.79621D-02
+
+At iterate    4    f=  1.38404D+01    |proj g|=  5.68480D-02
+
+At iterate    5    f=  1.38306D+01    |proj g|=  4.78791D-02
+
+At iterate    6    f=  1.38273D+01    |proj g|=  6.59635D-02
+
+At iterate    7    f=  1.38262D+01    |proj g|=  3.39531D-02
+
+At iterate    8    f=  1.38257D+01    |proj g|=  5.12515D-03
+
+At iterate    9    f=  1.38256D+01    |proj g|=  4.11785D-03
+
+At iterate   10    f=  1.38255D+01    |proj g|=  9.43896D-04
+
+At iterate   11    f=  1.38255D+01    |proj g|=  2.41325D-04
+
+At iterate   12    f=  1.38255D+01    |proj g|=  1.56524D-04
+
+At iterate   13    f=  1.38255D+01    |proj g|=  5.11989D-05
+
+At iterate   14    f=  1.38255D+01    |proj g|=  2.02354D-05
+
+At iterate   15    f=  1.38255D+01    |proj g|=  4.92726D-06
+
+At iterate   16    f=  1.38255D+01    |proj g|=  1.02493D-05
+
+At iterate   17    f=  1.38255D+01    |proj g|=  3.13987D-06
+
+At iterate   18    f=  1.38255D+01    |proj g|=  1.71459D-06
+
+           * * *
+
+Tit   = total number of iterations
+Tnf   = total number of function evaluations
+Tnint = total number of segments explored during Cauchy searches
+Skip  = number of BFGS updates skipped
+Nact  = number of active bounds at final generalized Cauchy point
+Projg = norm of the final projected gradient
+F     = final function value
+
+           * * *
+
+   N    Tit     Tnf  Tnint  Skip  Nact     Projg        F
+   55     18     20      1     0     0   1.715D-06   1.383D+01
+  F =   13.825536198378490     
+
+CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH             
+
+ Cauchy                time 0.000E+00 seconds.
+ Subspace minimization time 0.000E+00 seconds.
+ Line search           time 0.000E+00 seconds.
+
+ Total User time 0.000E+00 seconds.
+

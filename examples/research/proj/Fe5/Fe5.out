@@ -1,0 +1,142 @@
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/proj/Fe5/Fe5.py ****
+from pydmfet import proj_ao
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto,scf
+import numpy as np
+from pyscf.tools import molden
+from pyscf import lo
+from pyscf.lo import iao,orth
+from functools import reduce
+import math
+
+bas ='lanl2dz'
+ecp = 'lanl2dz'
+temp = 0.001
+
+mol = gto.Mole()
+mol.atom = open('Fe5.xyz').read()
+mol.basis = bas
+mol.ecp = ecp
+mol.charge = 0
+mol.build(max_memory = 4000, verbose=4)
+
+#_, mo_energy, mo_coeff, mo_occ, irrep_labels, spins = molden.load("graphene_mo.molden")
+
+#mf = scf.RKS(mol)
+mf = rks_ao(mol,smear_sigma = temp)
+mf.xc = "pbe,pbe"
+mf.max_cycle = 100
+
+'''
+mf.mo_energy = mo_energy
+mf.mo_occ = mo_occ
+mf.mo_coeff = mo_coeff
+'''
+
+#DMguess = mf.make_rdm1()
+DMguess = None
+mf.scf(dm0=DMguess)
+
+with open( 'Fe5_mo.molden', 'w' ) as thefile:
+    molden.header(mol, thefile)
+    molden.orbital_coeff(mol, thefile, mf.mo_coeff,ene=mf.mo_energy,occ=mf.mo_occ)
+
+exit()
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+impAtom[11-1] = 1
+impAtom[18-1] = 1
+impAtom[20-1] = 1
+
+
+embed = proj_ao.proj_embed(mf,impAtom, Ne_env = 176)
+embed.pop_method = 'meta_lowdin'
+embed.pm_exponent = 2
+embed.make_frozen_orbs(norb = 97)
+
+embed.embedding_potential()
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.21.2.el7.x86_64', version='#1 SMP Tue Jun 4 15:19:05 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Fri Jul  5 13:51:10 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 5
+[INPUT] num. electrons = 80
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 Fe     0.000000000000   1.142400000000   1.142400000000 AA    0.000000000000   2.158823124703   2.158823124703 Bohr
+[INPUT]  2 Fe     1.428000000000  -0.285600000000  -0.285600000000 AA    2.698528905879  -0.539705781176  -0.539705781176 Bohr
+[INPUT]  3 Fe    -1.428000000000  -0.285600000000  -0.285600000000 AA   -2.698528905879  -0.539705781176  -0.539705781176 Bohr
+[INPUT]  4 Fe     0.000000000000   1.142400000000  -1.713600000000 AA    0.000000000000   2.158823124703  -3.238234687055 Bohr
+[INPUT]  5 Fe     0.000000000000  -1.713600000000   1.142400000000 AA    0.000000000000  -3.238234687055   2.158823124703 Bohr
+
+nuclear repulsion = 504.467333479892
+number of shells = 35
+number of NR pGTOs = 225
+number of NR cGTOs = 110
+basis = lanl2dz
+ecp = lanl2dz
+CPU time:         3.97
+rks_ao.ne_frozen =  0
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> flags ********
+method = rks_ao-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 100
+direct_scf = False
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/proj/Fe5/tmpg249_wlg
+max_memory 4000 MB (current use 64 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2b7edb4ae9d8>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2b7edb4ae950>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 100200
+init E= -615.088373503526
+HOMO:  0.05144288216143342 LUMO:  0.053727835838043705
+Fermi energy:       0.0526201610
+[2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     2.     2.     2.     2.     2.     2.     2.     2.     2.
+ 2.     2.     2.     2.     2.     2.     2.     1.9992 1.7156 1.5289
+ 0.4966 0.2597]
+entropy correction =  -0.0038100158787698047
+cycle= 1 E= -554.849042666522  delta_E= 60.2  |g|=   12  |ddm|= 75.3
+<class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> does not have attributes  vext_1e ne_frozen coredm add_coredm_ext_energy
+HOMO:  -5.285463407816844 LUMO:  -5.2849182050316665
+Traceback (most recent call last):
+  File "Fe5.py", line 37, in <module>
+    mf.scf(dm0=DMguess)
+  File "/home/xingz/.local/lib/python3.7/site-packages/pyscf/scf/hf.py", line 1472, in scf
+    conv_check=self.conv_check, **kwargs)
+  File "/home/xingz/.local/lib/python3.7/site-packages/pyscf/scf/hf.py", line 164, in kernel
+    mo_occ = mf.get_occ(mo_energy, mo_coeff)
+  File "/home/xingz/.local/lib/python3.7/site-packages/pydmfet/qcwrap/pyscf_rks_ao.py", line 68, in get_occ
+    e_fermi, mo_occ = find_efermi(mo_energy, smear_sigma, Nocc, nmo)
+  File "/home/xingz/.local/lib/python3.7/site-packages/pydmfet/qcwrap/fermi.py", line 54, in find_efermi
+    raise Exception("fail 2!")
+Exception: fail 2!

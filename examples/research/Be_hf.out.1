@@ -1,0 +1,890 @@
+/usr/licensed/anaconda/5.0.1/lib/python2.7/site-packages/h5py/__init__.py:34: FutureWarning: Conversion of the second argument of issubdtype from `float` to `np.floating` is deprecated. In future, it will be treated as `np.float64 == np.dtype(float).type`.
+  from ._conv import register_converters as _register_converters
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/Be.py ****
+from pydmfet import locints, sdmfet, oep, tools
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy,time
+
+DMguess  = None
+
+bondlengths = np.arange(2.7, 2.9, 0.1)
+energies = []
+
+bas = 'sto-6g'
+
+for bondlength in bondlengths:
+
+    nat = 30
+    mol = gto.Mole()
+    mol.atom = []
+    r = 0.5 * bondlength / np.sin(np.pi/nat)
+    for i in range(nat):
+        theta = i * (2*np.pi/nat)
+        mol.atom.append(('Be', (r*np.cos(theta), r*np.sin(theta), 0)))
+
+    mol.basis = bas
+    mol.build(max_memory=16000, verbose=4)
+
+    mf = scf.RHF(mol)
+    #mf = dft.RKS(mol)
+    #mf.xc = 'pbe,pbe'
+    #mf.smear_sigma = 0.005
+    mf.max_cycle = 100
+    mf.scf()
+
+    #P=mf.make_rdm1()
+    #tools.MatPrint(P,"P_ref_ao")
+    #cubegen.density(mol, "h20_dens.cube", P, nx=100, ny=100, nz=100)
+    print 'e_mf = ',  mf.e_tot
+    continue
+    if ( True ):   
+#        ENUCL = mf.mol.energy_nuc()
+#        OEI   = np.dot(np.dot(mf.mo_coeff.T, mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')), mf.mo_coeff)
+#        TEI   = ao2mo.outcore.full_iofree(mol, mf.mo_coeff, compact=False).reshape(mol.nao_nr(), mol.nao_nr(), mol.nao_nr(), mol.nao_nr())
+#        import chemps2
+#        Energy, OneDM = chemps2.solve( ENUCL, OEI, OEI, TEI, mol.nao_nr(), mol.nelectron, mol.nao_nr(), 0.0, False )
+#        print "bl =", bondlength," and energy =", Energy
+
+        mycc = cc.CCSD(mf).run()
+	et=0.0
+        #et = mycc.ccsd_t()
+        e_hf = mf.e_tot
+        e_ccsd = e_hf + mycc.e_corr + et
+
+        print 'e_tot = ', e_ccsd    #-4.96124910741
+        
+    else:
+        myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+        #myInts.loc_molden( 'hydrogen-loc.molden' )
+        #myInts.TI_OK = True # Only s functions
+
+	nbas =  mol.nao_nr()
+	natoms = mol.natm
+
+	impAtom = np.zeros([natoms], dtype=int)
+	for i in range(20):
+	    impAtom[i] = 1
+
+	ghost_frag = 1-impAtom
+	ghost_env = 1-ghost_frag
+
+	mol_frag = gto.Mole()
+	mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+	mol_frag.basis = bas
+	mol_frag.build(max_memory = 16000,verbose = 4)
+	'''
+	mf_frag = dft.RKS(mol_frag)
+        mf_frag.xc = 'pbe,pbe'
+        mf_frag.smear_sigma = 0.00
+        mf_frag.scf()
+        P_frag=mf_frag.make_rdm1()
+        cubegen.density(mol_frag, "h10_dens_1.cube", P_frag, nx=100, ny=100, nz=100)
+	'''
+
+	mol_env = gto.Mole()
+	mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+	mol_env.basis =  bas
+	mol_env.build(max_memory = 16000,verbose = 4)
+
+	'''
+	mf_env = dft.RKS(mol_env)
+        mf_env.xc = 'pbe,pbe'
+        mf_env.smear_sigma = 0.00
+        mf_env.scf()
+        P_env=mf_env.make_rdm1()
+        cubegen.density(mol_env, "h10_dens_2.cube", P_env, nx=100, ny=100, nz=100)
+	exit()
+	'''
+
+
+
+	aoslice = mol.aoslice_by_atom()
+	impurities = np.zeros([nbas], dtype = int)
+	for i in range(natoms):
+	    if(impAtom[i] == 1):
+		impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+	Ne_frag = 20
+	boundary_atoms = np.zeros((natoms))
+	boundary_atoms[20:40] = 1.0
+	#boundary_atoms[19] = -1
+	boundary_atoms2 = np.zeros((natoms),dtype =int)
+	#boundary_atoms2[9] = -1
+	boundary_atoms2[0:20] = 1
+
+	boundary_atoms = None
+	boundary_atoms2 =None
+
+	umat=None
+	P_frag=None
+	P_env=None
+	params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-11, gtol = 1e-5,diffP_tol=1e-5, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+	theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
+                         dim_imp = nbas, dim_bath=nbas, dim_big =nbas, smear_sigma = 0.005, oep_params=params,ecw_method='hf', mf_method = mf.xc)
+
+	umat = theDMFET.embedding_potential()
+
+	exit()
+
+	#write subspace orbitals
+	transfo = np.dot( myInts.ao2loc, theDMFET.loc2sub )
+	filename =  'hydrogen-sub.molden'
+	with open( filename, 'w' ) as thefile:
+            molden.header( myInts.mol, thefile )
+            molden.orbital_coeff( myInts.mol, thefile, transfo )
+
+
+        umat = theDMFET.embedding_potential()
+	print umat
+	exit()
+	energy = theDMFET.correction_energy()
+
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-693.21.1.el7.x86_64', '#1 SMP Wed Mar 7 15:59:45 EST 2018', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Thu Jun  7 01:26:30 2018
+PySCF version 1.4.2
+PySCF path  /tigress/xingz/pyscf/pyscf
+GIT ORIG_HEAD e0edd131499dcc18d035a120533a8a1ddda110d4
+GIT HEAD      e0edd131499dcc18d035a120533a8a1ddda110d4
+
+[INPUT] VERBOSE 4
+[INPUT] num atoms = 30
+[INPUT] num electrons = 120
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT]  1 Be    12.915142515233   0.000000000000   0.000000000000 AA   24.406082213516   0.000000000000   0.000000000000 Bohr
+[INPUT]  2 Be    12.632915664410   2.685209117494   0.000000000000 AA   23.872750760463   5.074309819249   0.000000000000 Bohr
+[INPUT]  3 Be    11.798569779598   5.253061711491   0.000000000000 AA   22.296065545009   9.926847950157   0.000000000000 Bohr
+[INPUT]  4 Be    10.448569779598   7.591330301709   0.000000000000 AA   19.744935276847  14.345535191342   0.000000000000 Bohr
+[INPUT]  5 Be     8.641917142429   9.597821330498   0.000000000000 AA   16.330856590374  18.137253707150   0.000000000000 Bohr
+[INPUT]  6 Be     6.457571257616  11.184841511688   0.000000000000 AA   12.203041106758  21.136287203756   0.000000000000 Bohr
+[INPUT]  7 Be     3.990998521981  12.283030447993   0.000000000000 AA    7.541894170089  23.211563526400   0.000000000000 Bohr
+[INPUT]  8 Be     1.350000000000  12.844392013200   0.000000000000 AA    2.551130268163  24.272383141500   0.000000000000 Bohr
+[INPUT]  9 Be    -1.350000000000  12.844392013200   0.000000000000 AA   -2.551130268163  24.272383141500   0.000000000000 Bohr
+[INPUT] 10 Be    -3.990998521981  12.283030447993   0.000000000000 AA   -7.541894170089  23.211563526400   0.000000000000 Bohr
+[INPUT] 11 Be    -6.457571257616  11.184841511688   0.000000000000 AA  -12.203041106758  21.136287203756   0.000000000000 Bohr
+[INPUT] 12 Be    -8.641917142429   9.597821330498   0.000000000000 AA  -16.330856590374  18.137253707150   0.000000000000 Bohr
+[INPUT] 13 Be   -10.448569779598   7.591330301709   0.000000000000 AA  -19.744935276847  14.345535191342   0.000000000000 Bohr
+[INPUT] 14 Be   -11.798569779598   5.253061711491   0.000000000000 AA  -22.296065545009   9.926847950157   0.000000000000 Bohr
+[INPUT] 15 Be   -12.632915664410   2.685209117494   0.000000000000 AA  -23.872750760463   5.074309819249   0.000000000000 Bohr
+[INPUT] 16 Be   -12.915142515233   0.000000000000   0.000000000000 AA  -24.406082213516   0.000000000000   0.000000000000 Bohr
+[INPUT] 17 Be   -12.632915664410  -2.685209117494   0.000000000000 AA  -23.872750760463  -5.074309819249   0.000000000000 Bohr
+[INPUT] 18 Be   -11.798569779598  -5.253061711491   0.000000000000 AA  -22.296065545009  -9.926847950157   0.000000000000 Bohr
+[INPUT] 19 Be   -10.448569779598  -7.591330301709   0.000000000000 AA  -19.744935276847 -14.345535191342   0.000000000000 Bohr
+[INPUT] 20 Be    -8.641917142429  -9.597821330498   0.000000000000 AA  -16.330856590374 -18.137253707150   0.000000000000 Bohr
+[INPUT] 21 Be    -6.457571257616 -11.184841511688   0.000000000000 AA  -12.203041106758 -21.136287203756   0.000000000000 Bohr
+[INPUT] 22 Be    -3.990998521981 -12.283030447993   0.000000000000 AA   -7.541894170089 -23.211563526400   0.000000000000 Bohr
+[INPUT] 23 Be    -1.350000000000 -12.844392013200   0.000000000000 AA   -2.551130268163 -24.272383141500   0.000000000000 Bohr
+[INPUT] 24 Be     1.350000000000 -12.844392013200   0.000000000000 AA    2.551130268163 -24.272383141500   0.000000000000 Bohr
+[INPUT] 25 Be     3.990998521981 -12.283030447993   0.000000000000 AA    7.541894170089 -23.211563526400   0.000000000000 Bohr
+[INPUT] 26 Be     6.457571257616 -11.184841511688   0.000000000000 AA   12.203041106758 -21.136287203756   0.000000000000 Bohr
+[INPUT] 27 Be     8.641917142429  -9.597821330498   0.000000000000 AA   16.330856590374 -18.137253707150   0.000000000000 Bohr
+[INPUT] 28 Be    10.448569779598  -7.591330301709   0.000000000000 AA   19.744935276847 -14.345535191342   0.000000000000 Bohr
+[INPUT] 29 Be    11.798569779598  -5.253061711491   0.000000000000 AA   22.296065545009  -9.926847950157   0.000000000000 Bohr
+[INPUT] 30 Be    12.632915664410  -2.685209117494   0.000000000000 AA   23.872750760463  -5.074309819249   0.000000000000 Bohr
+[INPUT] ---------------- BASIS SET ---------------- 
+[INPUT] l, kappa, [nprim/nctr], expnt,             c_1 c_2 ...
+[INPUT] Be
+[INPUT] 0    0    [6    /1   ]  312.8704937       0.00916359628
+                                57.36446253       0.04936149294
+                                16.0485094        0.1685383049
+                                5.513096119       0.3705627997
+                                2.140896553       0.4164915298
+                                0.8817394283      0.1303340841
+[INPUT] 0    0    [6    /1   ]  13.63324744       -0.01325278809
+                                2.698375464       -0.04699171014
+                                0.8386530829      -0.03378537151
+                                0.3226600698      0.2502417861
+                                0.1401314882      0.5951172526
+                                0.0642325139      0.2407061763
+[INPUT] 1    0    [6    /1   ]  13.63324744       0.0037596966
+                                2.698375464       0.0376793698
+                                0.8386530829      0.1738967435
+                                0.3226600698      0.4180364347
+                                0.1401314882      0.4258595477
+                                0.0642325139      0.1017082955
+nuclear repulsion = 331.169527850566
+number of shells = 90
+number of NR pGTOs = 900
+number of NR cGTOs = 150
+basis = sto-6g
+ecp = {}
+CPU time:         2.83
+
+
+******** <class 'pyscf.scf.hf.RHF'> flags ********
+method = RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp53euMG
+max_memory 16000 MB (current use 65 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -437.274411468181
+  HOMO = -0.0630007642733351  LUMO = 0.0166766086665358
+cycle= 1 E= -435.174570747008  delta_E=  2.1  |g|= 0.213  |ddm|= 5.17
+  HOMO = -0.0540312323184971  LUMO = 0.0365172464160462
+cycle= 2 E= -435.25971971026  delta_E= -0.0851  |g|= 0.138  |ddm|= 1.05
+  HOMO = -0.0163424682243997  LUMO = 0.00407543709462603
+cycle= 3 E= -435.375363592444  delta_E= -0.116  |g|= 0.105  |ddm|= 2.11
+  HOMO = -0.0180790649991735  LUMO = 0.00890891076649438
+cycle= 4 E= -435.674274153695  delta_E= -0.299  |g|= 0.233  |ddm|= 4.19
+  HOMO = -0.0558827390958507  LUMO = 0.0421494736053883
+cycle= 5 E= -435.342354555118  delta_E= 0.332  |g|= 0.104  |ddm|= 4.45
+  HOMO = -0.075189738840171  LUMO = 0.0591038679151755
+cycle= 6 E= -435.293119954458  delta_E= 0.0492  |g|= 0.108  |ddm|= 0.979
+  HOMO = -0.077320757678172  LUMO = 0.0609997272536084
+cycle= 7 E= -435.288057183835  delta_E= 0.00506  |g|= 0.109  |ddm|= 0.0966
+  HOMO = -0.0736973059225146  LUMO = 0.0579118267986743
+cycle= 8 E= -435.298134631246  delta_E= -0.0101  |g|= 0.107  |ddm|= 0.193
+  HOMO = -0.082443230020426  LUMO = 0.0646278542026396
+cycle= 9 E= -435.266630203112  delta_E= 0.0315  |g|= 0.115  |ddm|= 0.587
+  HOMO = -0.0965314996137332  LUMO = 0.0769367752323293
+cycle= 10 E= -435.233672398254  delta_E= 0.033  |g|= 0.128  |ddm|= 0.554
+  HOMO = -0.0957626890803936  LUMO = 0.0763155462590599
+cycle= 11 E= -435.235791430209  delta_E= -0.00212  |g|= 0.127  |ddm|= 0.0335
+  HOMO = -0.0815108408075965  LUMO = 0.0643811868636065
+cycle= 12 E= -435.272300767512  delta_E= -0.0365  |g|= 0.113  |ddm|= 0.621
+  HOMO = -0.0629679251859325  LUMO = 0.0441870596329566
+cycle= 13 E= -435.270238564671  delta_E= 0.00206  |g|= 0.113  |ddm|= 0.0403
+  HOMO = -0.0549309801411609  LUMO = 0.0370778796343804
+cycle= 14 E= -435.287991653808  delta_E= -0.0178  |g|= 0.108  |ddm|= 0.327
+  HOMO = -0.0600014066540002  LUMO = 0.041473578163117
+cycle= 15 E= -435.275962693828  delta_E= 0.012  |g|= 0.111  |ddm|= 0.225
+  HOMO = -0.0855665713664135  LUMO = 0.0640320414704171
+cycle= 16 E= -435.216291674949  delta_E= 0.0597  |g|= 0.135  |ddm|= 0.993
+  HOMO = -0.0500644461141367  LUMO = 0.0326046421477922
+cycle= 17 E= -435.297701039649  delta_E= -0.0814  |g|= 0.106  |ddm|=  1.4
+  HOMO = -0.102370733275024  LUMO = 0.0790601894193183
+cycle= 18 E= -435.176393340861  delta_E= 0.121  |g|= 0.156  |ddm|= 1.94
+  HOMO = -0.0941226782103367  LUMO = 0.0716846879187829
+cycle= 19 E= -435.195604495273  delta_E= -0.0192  |g|= 0.145  |ddm|= 0.254
+  HOMO = -0.0597159014435392  LUMO = 0.0412358586224476
+cycle= 20 E= -435.274756280634  delta_E= -0.0792  |g|= 0.111  |ddm|= 1.26
+  HOMO = -0.0517696075770589  LUMO = 0.0341759021304437
+cycle= 21 E= -435.29344041085  delta_E= -0.0187  |g|= 0.107  |ddm|= 0.351
+  HOMO = -0.0704928929109736  LUMO = 0.0507766995173675
+cycle= 22 E= -435.250586684925  delta_E= 0.0429  |g|= 0.119  |ddm|= 0.778
+  HOMO = -0.0969249642126636  LUMO = 0.0740630037867676
+cycle= 23 E= -435.189257513689  delta_E= 0.0613  |g|= 0.149  |ddm|= 0.927
+  HOMO = -0.137946523233169  LUMO = 0.110656886129321
+cycle= 24 E= -435.085906856652  delta_E= 0.103  |g|= 0.211  |ddm|= 1.16
+  HOMO = -0.148035828056419  LUMO = 0.119872408866753
+cycle= 25 E= -435.059452408483  delta_E= 0.0265  |g|= 0.227  |ddm|= 0.254
+  HOMO = -0.153206851435197  LUMO = 0.124386694377366
+cycle= 26 E= -435.045608515289  delta_E= 0.0138  |g|= 0.236  |ddm|= 0.127
+  HOMO = -0.0951751221510812  LUMO = 0.0738869269668003
+cycle= 27 E= -435.195178407308  delta_E= -0.15  |g|= 0.145  |ddm|= 1.59
+  HOMO = -0.0838786154947386  LUMO = 0.0637845617006732
+cycle= 28 E= -435.221293588815  delta_E= -0.0261  |g|= 0.132  |ddm|= 0.488
+  HOMO = -0.0389643056423425  LUMO = 0.0239530817050371
+cycle= 29 E= -435.325680666226  delta_E= -0.104  |g|= 0.102  |ddm|= 1.89
+  HOMO = -0.0407102950876129  LUMO = 0.0338056008083203
+cycle= 30 E= -435.780518333636  delta_E= -0.455  |g|= 0.196  |ddm|= 5.11
+  HOMO = -0.140058530309172  LUMO = 0.114884171166926
+cycle= 31 E= -435.140777498132  delta_E= 0.64  |g|= 0.18  |ddm|= 7.06
+  HOMO = -0.154784168213666  LUMO = 0.1294959582213
+cycle= 32 E= -435.105019095934  delta_E= 0.0358  |g|= 0.202  |ddm|= 0.375
+  HOMO = -0.188672686230001  LUMO = 0.149600947768975
+cycle= 33 E= -435.023624838885  delta_E= 0.0814  |g|= 0.254  |ddm|= 0.712
+  HOMO = -0.150191304660704  LUMO = 0.125955026267464
+cycle= 34 E= -435.122291590118  delta_E= -0.0987  |g|= 0.192  |ddm|= 0.887
+  HOMO = -0.141953573662292  LUMO = 0.118649840206477
+cycle= 35 E= -435.142527007523  delta_E= -0.0202  |g|= 0.179  |ddm|= 0.219
+  HOMO = -0.129177333798883  LUMO = 0.106364110282366
+cycle= 36 E= -435.172578874986  delta_E= -0.0301  |g|= 0.162  |ddm|= 0.363
+  HOMO = -0.121899049700346  LUMO = 0.0993605026989881
+cycle= 37 E= -435.185558432642  delta_E= -0.013  |g|= 0.154  |ddm|= 0.197
+  HOMO = -0.13916353940468  LUMO = 0.114174978159755
+cycle= 38 E= -435.13419336359  delta_E= 0.0514  |g|= 0.184  |ddm|= 0.62
+  HOMO = -0.0256175629546967  LUMO = 0.01661210089256
+cycle= 39 E= -435.703444008237  delta_E= -0.569  |g|= 0.222  |ddm|= 6.61
+  HOMO = -0.058457514173582  LUMO = 0.0421387038868256
+cycle= 40 E= -435.303427471267  delta_E=  0.4  |g|= 0.106  |ddm|= 4.93
+  HOMO = -0.068439649728369  LUMO = 0.0518634921388438
+cycle= 41 E= -435.293938580645  delta_E= 0.00949  |g|= 0.108  |ddm|= 0.215
+  HOMO = -0.0890684402411173  LUMO = 0.0704978572710505
+cycle= 42 E= -435.25082375901  delta_E= 0.0431  |g|= 0.12  |ddm|= 0.781
+  HOMO = -0.0796311951149367  LUMO = 0.0620054017313939
+cycle= 43 E= -435.273298750679  delta_E= -0.0225  |g|= 0.113  |ddm|= 0.396
+  HOMO = -0.0710594671770857  LUMO = 0.0540038813391706
+cycle= 44 E= -435.289080545223  delta_E= -0.0158  |g|= 0.109  |ddm|= 0.303
+  HOMO = -0.0703928219642278  LUMO = 0.053327520897041
+cycle= 45 E= -435.28934966966  delta_E= -0.000269  |g|= 0.11  |ddm|= 0.202
+  HOMO = -0.0680156075827252  LUMO = 0.0513569019228109
+cycle= 46 E= -435.296452371594  delta_E= -0.0071  |g|= 0.108  |ddm|= 0.151
+  HOMO = -0.0679365654905187  LUMO = 0.0512734678541557
+cycle= 47 E= -435.296425842749  delta_E= 2.65e-05  |g|= 0.108  |ddm|= 0.0135
+  HOMO = -0.016611725986823  LUMO = 0.00334065880187652
+cycle= 48 E= -435.410133293266  delta_E= -0.114  |g|= 0.138  |ddm|= 2.05
+  HOMO = -0.0167704920617368  LUMO = 0.00628808759912861
+cycle= 49 E= -435.621143021964  delta_E= -0.211  |g|= 0.23  |ddm|=  3.1
+  HOMO = -0.0447646521598067  LUMO = 0.0301825380172432
+cycle= 50 E= -435.33901472372  delta_E= 0.282  |g|= 0.105  |ddm|= 3.98
+  HOMO = -0.0385142511467703  LUMO = 0.0263470434792745
+cycle= 51 E= -435.36048117274  delta_E= -0.0215  |g|= 0.106  |ddm|= 0.794
+  HOMO = -0.056388067362489  LUMO = 0.0417054878089193
+cycle= 52 E= -435.322287973891  delta_E= 0.0382  |g|= 0.105  |ddm|= 0.901
+  HOMO = -0.0544908142898453  LUMO = 0.0403358039714092
+cycle= 53 E= -435.329546570113  delta_E= -0.00726  |g|= 0.105  |ddm|= 0.221
+  HOMO = -0.0701127391177391  LUMO = 0.0544562038732169
+cycle= 54 E= -435.290976278504  delta_E= 0.0386  |g|= 0.11  |ddm|= 0.777
+  HOMO = -0.0563962737641254  LUMO = 0.0417594087829024
+cycle= 55 E= -435.322378341067  delta_E= -0.0314  |g|= 0.106  |ddm|= 0.632
+  HOMO = -0.0627195887251044  LUMO = 0.0471333180651234
+cycle= 56 E= -435.311158599693  delta_E= 0.0112  |g|= 0.107  |ddm|= 0.309
+  HOMO = -0.0659612384879882  LUMO = 0.0495204004166951
+cycle= 57 E= -435.303857268036  delta_E= 0.0073  |g|= 0.108  |ddm|= 0.257
+  HOMO = -0.0391219655565437  LUMO = 0.0331199166713793
+cycle= 58 E= -435.709895435232  delta_E= -0.406  |g|= 0.232  |ddm|= 5.14
+  HOMO = -0.0103580970181137  LUMO = -0.00225256020418792
+cycle= 59 E= -435.404928483125  delta_E= 0.305  |g|= 0.252  |ddm|=  2.9
+  HOMO = -0.0155879164299796  LUMO = 0.0024612990117688
+cycle= 60 E= -435.384144590401  delta_E= 0.0208  |g|= 0.159  |ddm|= 1.93
+  HOMO = -0.0397380957851621  LUMO = 0.0373224181920839
+cycle= 61 E= -435.824423131757  delta_E= -0.44  |g|= 0.175  |ddm|= 4.41
+  HOMO = -0.104858161235136  LUMO = 0.0824397468419457
+cycle= 62 E= -435.251101079699  delta_E= 0.573  |g|= 0.126  |ddm|=  6.3
+  HOMO = -0.11894961145134  LUMO = 0.0961550515319455
+cycle= 63 E= -435.200994975595  delta_E= 0.0501  |g|= 0.15  |ddm|= 0.785
+  HOMO = -0.122115610747311  LUMO = 0.0976852139414189
+cycle= 64 E= -435.182920766989  delta_E= 0.0181  |g|= 0.16  |ddm|= 0.323
+  HOMO = -0.113533046660094  LUMO = 0.0937262278863183
+cycle= 65 E= -435.193426650351  delta_E= -0.0105  |g|= 0.154  |ddm|= 0.423
+  HOMO = -0.125127628593956  LUMO = 0.102985456578266
+cycle= 66 E= -435.187917447661  delta_E= 0.00551  |g|= 0.156  |ddm|= 0.24
+  HOMO = -0.122218454791206  LUMO = 0.0999434140316812
+cycle= 67 E= -435.192834043218  delta_E= -0.00492  |g|= 0.153  |ddm|= 0.0896
+  HOMO = -0.110638619813642  LUMO = 0.0897081991085294
+cycle= 68 E= -435.216014129656  delta_E= -0.0232  |g|= 0.14  |ddm|= 0.351
+  HOMO = -0.109603516818882  LUMO = 0.0880331835646645
+cycle= 69 E= -435.217782007944  delta_E= -0.00177  |g|= 0.139  |ddm|= 0.0612
+  HOMO = -0.0281619264427073  LUMO = 0.0190316207301726
+cycle= 70 E= -435.716867010892  delta_E= -0.499  |g|= 0.222  |ddm|= 5.98
+  HOMO = -0.0908250718021047  LUMO = 0.0709955996306012
+cycle= 71 E= -435.215798835565  delta_E= 0.501  |g|= 0.138  |ddm|= 6.04
+  HOMO = -0.0860402912355577  LUMO = 0.067184569760262
+cycle= 72 E= -435.249634895631  delta_E= -0.0338  |g|= 0.122  |ddm|= 0.774
+  HOMO = -0.0755251066865057  LUMO = 0.0575350169898923
+cycle= 73 E= -435.269544328766  delta_E= -0.0199  |g|= 0.115  |ddm|= 0.381
+  HOMO = -0.0750211040038309  LUMO = 0.0570148434976161
+cycle= 74 E= -435.272951215493  delta_E= -0.00341  |g|= 0.113  |ddm|= 0.102
+  HOMO = -0.072780132190875  LUMO = 0.0555761115323113
+cycle= 75 E= -435.274699352279  delta_E= -0.00175  |g|= 0.113  |ddm|= 0.191
+  HOMO = -0.0845221266152164  LUMO = 0.0677676993181005
+cycle= 76 E= -435.246542326137  delta_E= 0.0282  |g|= 0.123  |ddm|= 0.563
+  HOMO = -0.0846731539601982  LUMO = 0.0660233658675457
+cycle= 77 E= -435.251566003845  delta_E= -0.00502  |g|= 0.12  |ddm|= 0.144
+  HOMO = -0.0923352535983705  LUMO = 0.0741871399820247
+cycle= 78 E= -435.235500980679  delta_E= 0.0161  |g|= 0.129  |ddm|= 0.411
+  HOMO = -0.0282581718185914  LUMO = 0.0198210287780868
+cycle= 79 E= -435.724867697418  delta_E= -0.489  |g|= 0.219  |ddm|= 5.84
+  HOMO = -0.0716562675346359  LUMO = 0.0547391737463433
+cycle= 80 E= -435.256820232897  delta_E= 0.468  |g|= 0.119  |ddm|= 5.62
+  HOMO = -0.0826354018115656  LUMO = 0.0646865173308219
+cycle= 81 E= -435.253372753262  delta_E= 0.00345  |g|= 0.12  |ddm|= 0.222
+  HOMO = -0.082300017724942  LUMO = 0.0650520721030319
+cycle= 82 E= -435.251547973217  delta_E= 0.00182  |g|= 0.122  |ddm|= 0.122
+  HOMO = -0.0852492039589154  LUMO = 0.0673978035058473
+cycle= 83 E= -435.248663989343  delta_E= 0.00288  |g|= 0.122  |ddm|= 0.205
+  HOMO = -0.108204669332878  LUMO = 0.0827707204338107
+cycle= 84 E= -435.159853147213  delta_E= 0.0888  |g|= 0.169  |ddm|= 1.31
+  HOMO = -0.0924546704312108  LUMO = 0.0727141474379158
+cycle= 85 E= -435.234269621977  delta_E= -0.0744  |g|= 0.127  |ddm|= 1.08
+  HOMO = -0.0842768844836689  LUMO = 0.0659952274123695
+cycle= 86 E= -435.255165529245  delta_E= -0.0209  |g|= 0.12  |ddm|= 0.389
+  HOMO = -0.0883517904972787  LUMO = 0.0681720008203406
+cycle= 87 E= -435.240683520235  delta_E= 0.0145  |g|= 0.125  |ddm|= 0.321
+  HOMO = -0.0187646647350192  LUMO = 0.00863898690400847
+cycle= 88 E= -435.660503525223  delta_E= -0.42  |g|= 0.237  |ddm|= 5.43
+  HOMO = -0.055011799874854  LUMO = 0.0378380579429832
+cycle= 89 E= -435.296849011352  delta_E= 0.364  |g|= 0.108  |ddm|= 4.86
+  HOMO = -0.0547039634757259  LUMO = 0.0406375635794118
+cycle= 90 E= -435.314207527247  delta_E= -0.0174  |g|= 0.106  |ddm|=  0.5
+  HOMO = -0.0575154290826258  LUMO = 0.0419666532970546
+cycle= 91 E= -435.305535754352  delta_E= 0.00867  |g|= 0.107  |ddm|= 0.365
+  HOMO = -0.0671500075442329  LUMO = 0.0511126305772132
+cycle= 92 E= -435.285059867353  delta_E= 0.0205  |g|= 0.11  |ddm|= 0.436
+  HOMO = -0.0549240157593859  LUMO = 0.0402072493888864
+cycle= 93 E= -435.317111868835  delta_E= -0.0321  |g|= 0.107  |ddm|= 0.802
+  HOMO = -0.0656180994743119  LUMO = 0.0502968178539773
+cycle= 94 E= -435.291936219331  delta_E= 0.0252  |g|= 0.109  |ddm|= 0.526
+  HOMO = -0.0723399706470759  LUMO = 0.0605595998097691
+cycle= 95 E= -435.264423418686  delta_E= 0.0275  |g|= 0.118  |ddm|= 0.541
+  HOMO = -0.0724961290396415  LUMO = 0.0571209752149631
+cycle= 96 E= -435.275604699557  delta_E= -0.0112  |g|= 0.113  |ddm|= 0.371
+  HOMO = -0.0237504581531198  LUMO = 0.0141243948633629
+cycle= 97 E= -435.691073192424  delta_E= -0.415  |g|= 0.229  |ddm|=  5.2
+  HOMO = -0.0721916994121174  LUMO = 0.054631004890951
+cycle= 98 E= -435.248054696586  delta_E= 0.443  |g|= 0.123  |ddm|= 5.51
+  HOMO = -0.0892144532621337  LUMO = 0.0714679470080757
+cycle= 99 E= -435.232217605043  delta_E= 0.0158  |g|= 0.13  |ddm|= 0.384
+  HOMO = -0.0737790987688769  LUMO = 0.0559795783903509
+cycle= 100 E= -435.262615669416  delta_E= -0.0304  |g|= 0.118  |ddm|= 0.541
+  HOMO = -0.03573893920774  LUMO = 0.0212094414887598
+Extra cycle  E= -435.318091940168  delta_E= -0.0555  |g|= 0.112  |ddm|=  1.1
+SCF not converged.
+SCF energy = -435.318091940168 after 100 cycles
+e_mf =  -435.31809194016836
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/Be.py ****
+from pydmfet import locints, sdmfet, oep, tools
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy,time
+
+DMguess  = None
+
+bondlengths = np.arange(2.7, 2.9, 0.1)
+energies = []
+
+bas = 'sto-6g'
+
+for bondlength in bondlengths:
+
+    nat = 30
+    mol = gto.Mole()
+    mol.atom = []
+    r = 0.5 * bondlength / np.sin(np.pi/nat)
+    for i in range(nat):
+        theta = i * (2*np.pi/nat)
+        mol.atom.append(('Be', (r*np.cos(theta), r*np.sin(theta), 0)))
+
+    mol.basis = bas
+    mol.build(max_memory=16000, verbose=4)
+
+    mf = scf.RHF(mol)
+    #mf = dft.RKS(mol)
+    #mf.xc = 'pbe,pbe'
+    #mf.smear_sigma = 0.005
+    mf.max_cycle = 100
+    mf.scf()
+
+    #P=mf.make_rdm1()
+    #tools.MatPrint(P,"P_ref_ao")
+    #cubegen.density(mol, "h20_dens.cube", P, nx=100, ny=100, nz=100)
+    print 'e_mf = ',  mf.e_tot
+    continue
+    if ( True ):   
+#        ENUCL = mf.mol.energy_nuc()
+#        OEI   = np.dot(np.dot(mf.mo_coeff.T, mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')), mf.mo_coeff)
+#        TEI   = ao2mo.outcore.full_iofree(mol, mf.mo_coeff, compact=False).reshape(mol.nao_nr(), mol.nao_nr(), mol.nao_nr(), mol.nao_nr())
+#        import chemps2
+#        Energy, OneDM = chemps2.solve( ENUCL, OEI, OEI, TEI, mol.nao_nr(), mol.nelectron, mol.nao_nr(), 0.0, False )
+#        print "bl =", bondlength," and energy =", Energy
+
+        mycc = cc.CCSD(mf).run()
+	et=0.0
+        #et = mycc.ccsd_t()
+        e_hf = mf.e_tot
+        e_ccsd = e_hf + mycc.e_corr + et
+
+        print 'e_tot = ', e_ccsd    #-4.96124910741
+        
+    else:
+        myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+        #myInts.loc_molden( 'hydrogen-loc.molden' )
+        #myInts.TI_OK = True # Only s functions
+
+	nbas =  mol.nao_nr()
+	natoms = mol.natm
+
+	impAtom = np.zeros([natoms], dtype=int)
+	for i in range(20):
+	    impAtom[i] = 1
+
+	ghost_frag = 1-impAtom
+	ghost_env = 1-ghost_frag
+
+	mol_frag = gto.Mole()
+	mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+	mol_frag.basis = bas
+	mol_frag.build(max_memory = 16000,verbose = 4)
+	'''
+	mf_frag = dft.RKS(mol_frag)
+        mf_frag.xc = 'pbe,pbe'
+        mf_frag.smear_sigma = 0.00
+        mf_frag.scf()
+        P_frag=mf_frag.make_rdm1()
+        cubegen.density(mol_frag, "h10_dens_1.cube", P_frag, nx=100, ny=100, nz=100)
+	'''
+
+	mol_env = gto.Mole()
+	mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+	mol_env.basis =  bas
+	mol_env.build(max_memory = 16000,verbose = 4)
+
+	'''
+	mf_env = dft.RKS(mol_env)
+        mf_env.xc = 'pbe,pbe'
+        mf_env.smear_sigma = 0.00
+        mf_env.scf()
+        P_env=mf_env.make_rdm1()
+        cubegen.density(mol_env, "h10_dens_2.cube", P_env, nx=100, ny=100, nz=100)
+	exit()
+	'''
+
+
+
+	aoslice = mol.aoslice_by_atom()
+	impurities = np.zeros([nbas], dtype = int)
+	for i in range(natoms):
+	    if(impAtom[i] == 1):
+		impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+	Ne_frag = 20
+	boundary_atoms = np.zeros((natoms))
+	boundary_atoms[20:40] = 1.0
+	#boundary_atoms[19] = -1
+	boundary_atoms2 = np.zeros((natoms),dtype =int)
+	#boundary_atoms2[9] = -1
+	boundary_atoms2[0:20] = 1
+
+	boundary_atoms = None
+	boundary_atoms2 =None
+
+	umat=None
+	P_frag=None
+	P_env=None
+	params = oep.OEPparams(algorithm = '2011', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-11, gtol = 1e-5,diffP_tol=1e-5, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+	theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
+                         dim_imp = nbas, dim_bath=nbas, dim_big =nbas, smear_sigma = 0.005, oep_params=params,ecw_method='hf', mf_method = mf.xc)
+
+	umat = theDMFET.embedding_potential()
+
+	exit()
+
+	#write subspace orbitals
+	transfo = np.dot( myInts.ao2loc, theDMFET.loc2sub )
+	filename =  'hydrogen-sub.molden'
+	with open( filename, 'w' ) as thefile:
+            molden.header( myInts.mol, thefile )
+            molden.orbital_coeff( myInts.mol, thefile, transfo )
+
+
+        umat = theDMFET.embedding_potential()
+	print umat
+	exit()
+	energy = theDMFET.correction_energy()
+
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-693.21.1.el7.x86_64', '#1 SMP Wed Mar 7 15:59:45 EST 2018', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Thu Jun  7 01:26:43 2018
+PySCF version 1.4.2
+PySCF path  /tigress/xingz/pyscf/pyscf
+GIT ORIG_HEAD e0edd131499dcc18d035a120533a8a1ddda110d4
+GIT HEAD      e0edd131499dcc18d035a120533a8a1ddda110d4
+
+[INPUT] VERBOSE 4
+[INPUT] num atoms = 30
+[INPUT] num electrons = 120
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT]  1 Be    13.393481126908   0.000000000000   0.000000000000 AA   25.310011184387   0.000000000000   0.000000000000 Bohr
+[INPUT]  2 Be    13.100801429758   2.784661307031   0.000000000000 AA   24.756926714554   5.262247219962   0.000000000000 Bohr
+[INPUT]  3 Be    12.235553845509   5.447619552658   0.000000000000 AA   23.121845750380  10.294508985348   0.000000000000 Bohr
+[INPUT]  4 Be    10.835553845509   7.872490683254   0.000000000000 AA   20.476229175989  14.876851309540   0.000000000000 Bohr
+[INPUT]  5 Be     8.961988147704   9.953296194591   0.000000000000 AA   16.935703130758  18.809003844452   0.000000000000 Bohr
+[INPUT]  6 Be     6.696740563454  11.599094901010   0.000000000000 AA   12.655005592193  21.919112655747   0.000000000000 Bohr
+[INPUT]  7 Be     4.138813282055  12.737957501622   0.000000000000 AA    7.821223583796  24.071251064414   0.000000000000 Bohr
+[INPUT]  8 Be     1.400000000000  13.320110235912   0.000000000000 AA    2.645616574391  25.171360294889   0.000000000000 Bohr
+[INPUT]  9 Be    -1.400000000000  13.320110235912   0.000000000000 AA   -2.645616574391  25.171360294889   0.000000000000 Bohr
+[INPUT] 10 Be    -4.138813282055  12.737957501622   0.000000000000 AA   -7.821223583796  24.071251064414   0.000000000000 Bohr
+[INPUT] 11 Be    -6.696740563454  11.599094901010   0.000000000000 AA  -12.655005592193  21.919112655747   0.000000000000 Bohr
+[INPUT] 12 Be    -8.961988147704   9.953296194591   0.000000000000 AA  -16.935703130758  18.809003844452   0.000000000000 Bohr
+[INPUT] 13 Be   -10.835553845509   7.872490683254   0.000000000000 AA  -20.476229175989  14.876851309540   0.000000000000 Bohr
+[INPUT] 14 Be   -12.235553845509   5.447619552658   0.000000000000 AA  -23.121845750380  10.294508985349   0.000000000000 Bohr
+[INPUT] 15 Be   -13.100801429758   2.784661307031   0.000000000000 AA  -24.756926714554   5.262247219962   0.000000000000 Bohr
+[INPUT] 16 Be   -13.393481126908   0.000000000000   0.000000000000 AA  -25.310011184387   0.000000000000   0.000000000000 Bohr
+[INPUT] 17 Be   -13.100801429758  -2.784661307031   0.000000000000 AA  -24.756926714554  -5.262247219962   0.000000000000 Bohr
+[INPUT] 18 Be   -12.235553845509  -5.447619552658   0.000000000000 AA  -23.121845750380 -10.294508985348   0.000000000000 Bohr
+[INPUT] 19 Be   -10.835553845509  -7.872490683254   0.000000000000 AA  -20.476229175989 -14.876851309540   0.000000000000 Bohr
+[INPUT] 20 Be    -8.961988147704  -9.953296194591   0.000000000000 AA  -16.935703130758 -18.809003844452   0.000000000000 Bohr
+[INPUT] 21 Be    -6.696740563454 -11.599094901010   0.000000000000 AA  -12.655005592193 -21.919112655747   0.000000000000 Bohr
+[INPUT] 22 Be    -4.138813282055 -12.737957501622   0.000000000000 AA   -7.821223583796 -24.071251064414   0.000000000000 Bohr
+[INPUT] 23 Be    -1.400000000000 -13.320110235912   0.000000000000 AA   -2.645616574391 -25.171360294889   0.000000000000 Bohr
+[INPUT] 24 Be     1.400000000000 -13.320110235912   0.000000000000 AA    2.645616574391 -25.171360294889   0.000000000000 Bohr
+[INPUT] 25 Be     4.138813282055 -12.737957501622   0.000000000000 AA    7.821223583796 -24.071251064414   0.000000000000 Bohr
+[INPUT] 26 Be     6.696740563454 -11.599094901010   0.000000000000 AA   12.655005592193 -21.919112655747   0.000000000000 Bohr
+[INPUT] 27 Be     8.961988147704  -9.953296194591   0.000000000000 AA   16.935703130758 -18.809003844452   0.000000000000 Bohr
+[INPUT] 28 Be    10.835553845509  -7.872490683254   0.000000000000 AA   20.476229175989 -14.876851309540   0.000000000000 Bohr
+[INPUT] 29 Be    12.235553845509  -5.447619552658   0.000000000000 AA   23.121845750380 -10.294508985349   0.000000000000 Bohr
+[INPUT] 30 Be    13.100801429758  -2.784661307031   0.000000000000 AA   24.756926714554  -5.262247219962   0.000000000000 Bohr
+[INPUT] ---------------- BASIS SET ---------------- 
+[INPUT] l, kappa, [nprim/nctr], expnt,             c_1 c_2 ...
+[INPUT] Be
+[INPUT] 0    0    [6    /1   ]  312.8704937       0.00916359628
+                                57.36446253       0.04936149294
+                                16.0485094        0.1685383049
+                                5.513096119       0.3705627997
+                                2.140896553       0.4164915298
+                                0.8817394283      0.1303340841
+[INPUT] 0    0    [6    /1   ]  13.63324744       -0.01325278809
+                                2.698375464       -0.04699171014
+                                0.8386530829      -0.03378537151
+                                0.3226600698      0.2502417861
+                                0.1401314882      0.5951172526
+                                0.0642325139      0.2407061763
+[INPUT] 1    0    [6    /1   ]  13.63324744       0.0037596966
+                                2.698375464       0.0376793698
+                                0.8386530829      0.1738967435
+                                0.3226600698      0.4180364347
+                                0.1401314882      0.4258595477
+                                0.0642325139      0.1017082955
+nuclear repulsion = 319.342044713046
+number of shells = 90
+number of NR pGTOs = 900
+number of NR cGTOs = 150
+basis = sto-6g
+ecp = {}
+CPU time:       474.94
+
+
+******** <class 'pyscf.scf.hf.RHF'> flags ********
+method = RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp3a9CqT
+max_memory 16000 MB (current use 234 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -436.844136444889
+  HOMO = -0.0887601296763388  LUMO = 0.023305692956896
+cycle= 1 E= -435.143690801795  delta_E=  1.7  |g|= 0.165  |ddm|=  4.8
+  HOMO = -0.0832944117072041  LUMO = 0.0529604200054085
+cycle= 2 E= -435.189517052774  delta_E= -0.0458  |g|= 0.0937  |ddm|= 0.713
+  HOMO = -0.0612588645795965  LUMO = 0.0334663018382478
+cycle= 3 E= -435.225616605668  delta_E= -0.0361  |g|= 0.0439  |ddm|= 1.09
+  HOMO = -0.0291157208031607  LUMO = 0.00467844204134945
+cycle= 4 E= -435.256522391707  delta_E= -0.0309  |g|= 0.0324  |ddm|= 1.72
+  HOMO = -0.0151551681713047  LUMO = -0.00779654439370029
+cycle= 5 E= -435.26927431045  delta_E= -0.0128  |g|= 0.0332  |ddm|= 0.755
+  HOMO = -0.198407003774177  LUMO = 0.153498350718476
+cycle= 6 E= -435.016507964743  delta_E= 0.253  |g|= 0.247  |ddm|= 5.38
+  HOMO = -0.216465433156672  LUMO = 0.153432149520217
+cycle= 7 E= -434.97249332837  delta_E= 0.044  |g|= 0.279  |ddm|= 0.324
+  HOMO = -0.250671979704224  LUMO = 0.151419445321562
+cycle= 8 E= -434.893947771982  delta_E= 0.0785  |g|= 0.334  |ddm|= 0.489
+  HOMO = -0.233800788574081  LUMO = 0.152536593121506
+cycle= 9 E= -434.932144906339  delta_E= -0.0382  |g|= 0.308  |ddm|= 0.227
+  HOMO = -0.218210508217322  LUMO = 0.153476880256565
+cycle= 10 E= -434.967717963044  delta_E= -0.0356  |g|= 0.282  |ddm|= 0.23
+  HOMO = -0.136362257633049  LUMO = 0.0994770922381776
+cycle= 11 E= -435.131382662817  delta_E= -0.164  |g|= 0.144  |ddm|= 1.49
+  HOMO = -0.126775428482095  LUMO = 0.090244901928525
+cycle= 12 E= -435.152877907695  delta_E= -0.0215  |g|= 0.126  |ddm|= 0.329
+  HOMO = -0.0261982515243526  LUMO = 0.00521505369145294
+cycle= 13 E= -435.476240782653  delta_E= -0.323  |g|= 0.161  |ddm|= 6.29
+  HOMO = -0.0996476460519374  LUMO = 0.0686060287700242
+cycle= 14 E= -435.193912893752  delta_E= 0.282  |g|= 0.0757  |ddm|= 5.79
+  HOMO = -0.0888602395336355  LUMO = 0.0588691822516356
+cycle= 15 E= -435.207031024654  delta_E= -0.0131  |g|= 0.0617  |ddm|= 0.368
+  HOMO = -0.083591218440983  LUMO = 0.0540428158954378
+cycle= 16 E= -435.212482591216  delta_E= -0.00545  |g|= 0.0561  |ddm|= 0.18
+  HOMO = -0.0821664074370412  LUMO = 0.0527822158627405
+cycle= 17 E= -435.214136505702  delta_E= -0.00165  |g|= 0.0544  |ddm|= 0.058
+  HOMO = -0.0784328365315931  LUMO = 0.0493428948907323
+cycle= 18 E= -435.217724393382  delta_E= -0.00359  |g|= 0.0509  |ddm|= 0.133
+  HOMO = -0.0760340167867047  LUMO = 0.0472220509793462
+cycle= 19 E= -435.220276440549  delta_E= -0.00255  |g|= 0.0484  |ddm|=  0.1
+  HOMO = -0.0577114567790143  LUMO = 0.0305704668495028
+cycle= 20 E= -435.235860245758  delta_E= -0.0156  |g|= 0.0364  |ddm|= 0.736
+  HOMO = -0.0618452636681955  LUMO = 0.0345497215066829
+cycle= 21 E= -435.234015592886  delta_E= 0.00184  |g|= 0.0376  |ddm|= 0.098
+  HOMO = -0.0185524641635249  LUMO = -0.00351036584080993
+cycle= 22 E= -435.440514407007  delta_E= -0.206  |g|= 0.167  |ddm|= 4.61
+  HOMO = -0.0509940882682627  LUMO = 0.0247203360644989
+cycle= 23 E= -435.242332735014  delta_E= 0.198  |g|= 0.0338  |ddm|= 4.36
+  HOMO = -0.0768999454741938  LUMO = 0.0476981371579689
+cycle= 24 E= -435.217100095288  delta_E= 0.0252  |g|= 0.0514  |ddm|= 1.23
+  HOMO = -0.0490383676926363  LUMO = 0.0227298847387257
+cycle= 25 E= -435.242747536312  delta_E= -0.0256  |g|= 0.0336  |ddm|= 1.25
+  HOMO = -0.0545918737786534  LUMO = 0.0276535700698474
+cycle= 26 E= -435.237769843132  delta_E= 0.00498  |g|= 0.0354  |ddm|= 0.287
+  HOMO = -0.057024188063048  LUMO = 0.0300701897684592
+cycle= 27 E= -435.236840925509  delta_E= 0.000929  |g|= 0.0359  |ddm|= 0.0516
+  HOMO = -0.064361858906075  LUMO = 0.0361411234938781
+cycle= 28 E= -435.227633580172  delta_E= 0.00921  |g|= 0.0419  |ddm|= 0.471
+  HOMO = -0.0656412987508922  LUMO = 0.0373623730591352
+cycle= 29 E= -435.226772751044  delta_E= 0.000861  |g|= 0.0425  |ddm|= 0.0402
+  HOMO = -0.0636058314976462  LUMO = 0.0359891108758252
+cycle= 30 E= -435.231085047109  delta_E= -0.00431  |g|= 0.0393  |ddm|= 0.207
+  HOMO = -0.136135357504625  LUMO = 0.0998048425388605
+cycle= 31 E= -435.123609986422  delta_E= 0.107  |g|= 0.148  |ddm|= 2.51
+  HOMO = -0.125252551320151  LUMO = 0.0901449945931864
+cycle= 32 E= -435.143691794401  delta_E= -0.0201  |g|= 0.129  |ddm|= 0.276
+  HOMO = -0.12531219167773  LUMO = 0.0901946591861351
+cycle= 33 E= -435.143983466142  delta_E= -0.000292  |g|= 0.129  |ddm|= 0.0113
+  HOMO = -0.163743963462948  LUMO = 0.158114528147025
+cycle= 34 E= -435.586599867816  delta_E= -0.443  |g|= 0.14  |ddm|= 8.82
+  HOMO = -0.0532398721691814  LUMO = 0.0341905886658019
+cycle= 35 E= -435.565655810897  delta_E= 0.0209  |g|= 0.117  |ddm|= 2.36
+  HOMO = -0.0735909331946735  LUMO = 0.0447620229623298
+cycle= 36 E= -435.224684276266  delta_E= 0.341  |g|= 0.0453  |ddm|= 5.86
+  HOMO = -0.0722738002816023  LUMO = 0.0436985283325086
+cycle= 37 E= -435.22355932103  delta_E= 0.00112  |g|= 0.0457  |ddm|= 0.0539
+  HOMO = -0.0675804974139976  LUMO = 0.0394888914806822
+cycle= 38 E= -435.227721579927  delta_E= -0.00416  |g|= 0.0422  |ddm|= 0.187
+  HOMO = -0.056876311365146  LUMO = 0.0297731006591555
+cycle= 39 E= -435.237350775473  delta_E= -0.00963  |g|= 0.036  |ddm|= 0.495
+  HOMO = -0.0563166065446316  LUMO = 0.0292661309566141
+cycle= 40 E= -435.237706563997  delta_E= -0.000356  |g|= 0.0358  |ddm|= 0.0198
+  HOMO = -0.05359968355496  LUMO = 0.0266166785902925
+cycle= 41 E= -435.238673736436  delta_E= -0.000967  |g|= 0.0352  |ddm|= 0.057
+  HOMO = -0.0516294584155514  LUMO = 0.024867624972018
+cycle= 42 E= -435.240297185394  delta_E= -0.00162  |g|= 0.0346  |ddm|= 0.0928
+  HOMO = -0.0523661197994909  LUMO = 0.0254138763423171
+cycle= 43 E= -435.239655529276  delta_E= 0.000642  |g|= 0.0348  |ddm|= 0.0385
+  HOMO = -0.042463363762741  LUMO = 0.0162571706479944
+cycle= 44 E= -435.245122657334  delta_E= -0.00547  |g|= 0.0329  |ddm|= 0.319
+  HOMO = -0.0319742732683105  LUMO = 0.00687161101679677
+cycle= 45 E= -435.254381077959  delta_E= -0.00926  |g|= 0.0327  |ddm|= 0.563
+  HOMO = -0.0273995801443356  LUMO = 0.00636884128183425
+cycle= 46 E= -435.478857719001  delta_E= -0.224  |g|= 0.159  |ddm|= 4.23
+  HOMO = -0.0476357094060393  LUMO = 0.0217981005053104
+cycle= 47 E= -435.246176677745  delta_E= 0.233  |g|= 0.0331  |ddm|= 4.47
+  HOMO = -0.0434817658734955  LUMO = 0.0179638477314915
+cycle= 48 E= -435.249175519016  delta_E= -0.003  |g|= 0.0328  |ddm|= 0.182
+  HOMO = -0.044503128589709  LUMO = 0.018860125776247
+cycle= 49 E= -435.248211867315  delta_E= 0.000964  |g|= 0.0328  |ddm|= 0.0599
+  HOMO = -0.0474556498173909  LUMO = 0.0217818986461207
+cycle= 50 E= -435.247016527555  delta_E= 0.0012  |g|= 0.033  |ddm|= 0.073
+  HOMO = -0.0475103829560613  LUMO = 0.0218252047083448
+cycle= 51 E= -435.246943144296  delta_E= 7.34e-05  |g|= 0.033  |ddm|= 0.00487
+  HOMO = -0.0456188733431747  LUMO = 0.0201487114100979
+cycle= 52 E= -435.248642210304  delta_E= -0.0017  |g|= 0.0329  |ddm|= 0.104
+  HOMO = -0.0467579358398892  LUMO = 0.0211632840684712
+cycle= 53 E= -435.247644575083  delta_E= 0.000998  |g|= 0.033  |ddm|= 0.0609
+  HOMO = -0.0474057270170828  LUMO = 0.0217403104348284
+cycle= 54 E= -435.247081754248  delta_E= 0.000563  |g|= 0.033  |ddm|= 0.0345
+  HOMO = -0.0936558932701199  LUMO = 0.0620510887668153
+cycle= 55 E= -435.193324730713  delta_E= 0.0538  |g|= 0.0777  |ddm|= 2.21
+  HOMO = -0.157638431192317  LUMO = 0.118796122792748
+cycle= 56 E= -435.08415932082  delta_E= 0.109  |g|= 0.185  |ddm|= 1.66
+  HOMO = -0.194707654625873  LUMO = 0.151788913740817
+cycle= 57 E= -435.002695683904  delta_E= 0.0815  |g|= 0.251  |ddm|= 0.713
+  HOMO = -0.170738744474896  LUMO = 0.130547257734019
+cycle= 58 E= -435.056649277453  delta_E= -0.054  |g|= 0.208  |ddm|= 0.448
+  HOMO = -0.186418378225658  LUMO = 0.144538472921112
+cycle= 59 E= -435.021557926526  delta_E= 0.0351  |g|= 0.236  |ddm|=  0.3
+  HOMO = -0.167965301230954  LUMO = 0.128043402063061
+cycle= 60 E= -435.062951792519  delta_E= -0.0414  |g|= 0.203  |ddm|= 0.358
+  HOMO = -0.0146962260384272  LUMO = -0.00793621322615654
+cycle= 61 E= -435.375469431666  delta_E= -0.313  |g|= 0.155  |ddm|= 6.14
+  HOMO = -0.0264237910751443  LUMO = 0.00230588565661494
+cycle= 62 E= -435.260100322754  delta_E= 0.115  |g|= 0.0327  |ddm|= 3.13
+  HOMO = -0.056515639999317  LUMO = 0.0293941199883154
+cycle= 63 E= -435.233847337111  delta_E= 0.0263  |g|= 0.0371  |ddm|= 1.55
+  HOMO = -0.0500420580156843  LUMO = 0.0234711272900478
+cycle= 64 E= -435.239651520705  delta_E= -0.0058  |g|= 0.0346  |ddm|= 0.331
+  HOMO = -0.0493250170229315  LUMO = 0.0225939875445734
+cycle= 65 E= -435.238982721892  delta_E= 0.000669  |g|= 0.0381  |ddm|= 0.406
+  HOMO = -0.0742282296156239  LUMO = 0.0448022359100945
+cycle= 66 E= -435.218716976205  delta_E= 0.0203  |g|= 0.0505  |ddm|=  1.2
+  HOMO = -0.0731145698822687  LUMO = 0.0438505549585177
+cycle= 67 E= -435.219762502783  delta_E= -0.00105  |g|= 0.0495  |ddm|=  0.1
+  HOMO = -0.0722745153417935  LUMO = 0.0430907782856268
+cycle= 68 E= -435.22067798317  delta_E= -0.000915  |g|= 0.0487  |ddm|= 0.0383
+  HOMO = -0.0715838354626921  LUMO = 0.0424468748926716
+cycle= 69 E= -435.22054086691  delta_E= 0.000137  |g|= 0.0486  |ddm|= 0.178
+  HOMO = -0.0756478443891847  LUMO = 0.0455549020408304
+cycle= 70 E= -435.215178235481  delta_E= 0.00536  |g|= 0.0544  |ddm|= 0.308
+  HOMO = -0.0138026152908617  LUMO = -0.00949799325376589
+cycle= 71 E= -435.279873791049  delta_E= -0.0647  |g|= 0.0618  |ddm|= 3.04
+  HOMO = -0.0278220792650872  LUMO = 0.0032251569239625
+cycle= 72 E= -435.257933730878  delta_E= 0.0219  |g|= 0.0334  |ddm|= 1.08
+  HOMO = -0.0500644595925674  LUMO = 0.0224677465453628
+cycle= 73 E= -435.238437272767  delta_E= 0.0195  |g|= 0.0359  |ddm|= 1.18
+  HOMO = -0.0581643408501317  LUMO = 0.0293765771345663
+cycle= 74 E= -435.230970517933  delta_E= 0.00747  |g|= 0.0405  |ddm|= 0.391
+  HOMO = -0.0525699017480315  LUMO = 0.0243761466326165
+cycle= 75 E= -435.235767923154  delta_E= -0.0048  |g|= 0.039  |ddm|= 0.329
+  HOMO = -0.046804391099316  LUMO = 0.0184746973398716
+cycle= 76 E= -435.241010235877  delta_E= -0.00524  |g|= 0.0385  |ddm|= 0.39
+  HOMO = -0.0559703106357759  LUMO = 0.0258298602038236
+cycle= 77 E= -435.231198548188  delta_E= 0.00981  |g|= 0.0456  |ddm|= 0.522
+  HOMO = -0.055374977305796  LUMO = 0.0257139132401017
+cycle= 78 E= -435.232367021369  delta_E= -0.00117  |g|= 0.0444  |ddm|= 0.0594
+  HOMO = -0.0400814882291714  LUMO = 0.0133533449610544
+cycle= 79 E= -435.250469648238  delta_E= -0.0181  |g|= 0.0399  |ddm|= 0.882
+  HOMO = -0.0475226327967394  LUMO = 0.0194923040330936
+cycle= 80 E= -435.241487451181  delta_E= 0.00898  |g|= 0.039  |ddm|= 0.454
+  HOMO = -0.0132622531410853  LUMO = -0.00942388075785035
+cycle= 81 E= -435.364333067044  delta_E= -0.123  |g|= 0.15  |ddm|= 3.37
+  HOMO = -0.0421817690580603  LUMO = 0.0173638785422023
+cycle= 82 E= -435.251226305823  delta_E= 0.113  |g|= 0.0417  |ddm|= 3.11
+  HOMO = -0.0522496924619285  LUMO = 0.0259967761852889
+cycle= 83 E= -435.242633056208  delta_E= 0.00859  |g|= 0.0393  |ddm|= 0.62
+  HOMO = -0.0541393973517496  LUMO = 0.0275937501285077
+cycle= 84 E= -435.241840191795  delta_E= 0.000793  |g|= 0.0398  |ddm|= 0.317
+  HOMO = -0.0508095598649254  LUMO = 0.0247484500056528
+cycle= 85 E= -435.244241891883  delta_E= -0.0024  |g|= 0.0395  |ddm|= 0.318
+  HOMO = -0.0484628392244229  LUMO = 0.0223760197093042
+cycle= 86 E= -435.246216976605  delta_E= -0.00198  |g|= 0.0388  |ddm|= 0.127
+  HOMO = -0.0506542455473447  LUMO = 0.0240079320709284
+cycle= 87 E= -435.245601745538  delta_E= 0.000615  |g|= 0.04  |ddm|= 0.109
+  HOMO = -0.0514616583142985  LUMO = 0.0257366256413474
+cycle= 88 E= -435.242739496616  delta_E= 0.00286  |g|= 0.0388  |ddm|= 0.412
+  HOMO = -0.0521841732081299  LUMO = 0.026424916759602
+cycle= 89 E= -435.242395635055  delta_E= 0.000344  |g|= 0.0393  |ddm|= 0.0484
+  HOMO = -0.0413039709338801  LUMO = 0.0195032058378046
+cycle= 90 E= -435.241023455634  delta_E= 0.00137  |g|= 0.0438  |ddm|= 0.856
+  HOMO = -0.0417521033614363  LUMO = 0.0123659905628542
+cycle= 91 E= -435.2488312071  delta_E= -0.00781  |g|= 0.0421  |ddm|= 1.65
+  HOMO = -0.037781469411705  LUMO = 0.00709586491615766
+cycle= 92 E= -435.255142358359  delta_E= -0.00631  |g|= 0.0509  |ddm|= 0.696
+  HOMO = -0.0440748099876275  LUMO = 0.017966862992938
+cycle= 93 E= -435.246595363919  delta_E= 0.00855  |g|= 0.0368  |ddm|= 1.38
+  HOMO = -0.0386819591779105  LUMO = 0.0142128838726181
+cycle= 94 E= -435.250374909772  delta_E= -0.00378  |g|= 0.0379  |ddm|= 0.566
+  HOMO = -0.0491995546747043  LUMO = 0.0234963046940949
+cycle= 95 E= -435.240399176068  delta_E= 0.00998  |g|= 0.0387  |ddm|= 0.572
+  HOMO = -0.0735151918074706  LUMO = 0.0433735674607065
+cycle= 96 E= -435.220130967601  delta_E= 0.0203  |g|= 0.0504  |ddm|= 1.11
+  HOMO = -0.08735207735816  LUMO = 0.0565204335708571
+cycle= 97 E= -435.203092542173  delta_E= 0.017  |g|= 0.0686  |ddm|= 0.574
+  HOMO = -0.0888822889067665  LUMO = 0.056711418477286
+cycle= 98 E= -435.196674193975  delta_E= 0.00642  |g|= 0.0753  |ddm|= 0.302
+  HOMO = -0.0820587608734762  LUMO = 0.0526367775730808
+cycle= 99 E= -435.2065172371  delta_E= -0.00984  |g|= 0.0641  |ddm|= 0.486
+  HOMO = -0.0769796544395394  LUMO = 0.0461234861396423
+cycle= 100 E= -435.214036236284  delta_E= -0.00752  |g|= 0.0562  |ddm|= 0.365
+  HOMO = -0.0616069644186872  LUMO = 0.0333270073859883
+Extra cycle  E= -435.225591237619  delta_E= -0.0116  |g|= 0.0489  |ddm|= 0.46
+SCF not converged.
+SCF energy = -435.225591237619 after 100 cycles
+e_mf =  -435.2255912376186

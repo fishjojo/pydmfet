@@ -1,0 +1,13 @@
+Cu2.py:11: DeprecationWarning: time.clock has been deprecated in Python 3.3 and will be removed from Python 3.8: use time.perf_counter or time.process_time instead
+  t0 = (time.clock(), time.time())
+<class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> does not have attributes  dm_guess vext_1e coredm ne_frozen add_coredm_ext_energy
+ECP lanl2dz not found for  GHOST-Cl
+ECP lanl2dz not found for  GHOST-Cu
+<class 'pydmfet.dfet_ao.scf.EmbedSCF'> does not have attributes  Ne
+/home/xingz/.local/lib/python3.7/site-packages/pydmfet/oep/oep_optimize.py:61: OptimizeWarning: Unknown solver options: svd_thresh
+  options=self.options)
+ This problem is unconstrained.
+
+ Warning:  more than 10 function and gradient
+   evaluations in the last line search.  Termination
+   may possibly be caused by a bad search direction.

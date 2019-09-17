@@ -1,0 +1,667 @@
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/research/retinal/dmfet/embed.py ****
+from pydmfet import locints, sdmfet, oep, tools, dfet_ao, proj_ao
+from pydmfet.dfet_ao import dfet
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy
+from pydmfet.tools.sym import h_lattice_sym_tab
+
+t0 = tools.time0()
+
+
+bas = '6-31G*'
+temp = 0.005
+
+
+mol = gto.Mole()
+mol.atom = open('trans_retinal_90_150.xyz').read()
+mol.basis = bas
+mol.charge = 1
+mol.build(max_memory = 16000, verbose=4)
+
+_, _, mo_coeff, mo_occ, _, _ = molden.load("MO.molden")
+dm_guess = np.dot(mo_coeff*mo_occ, mo_coeff.T)
+
+mf = rks_ao(mol,smear_sigma = temp)
+mf.xc = 'hf'
+mf.max_cycle = 50
+mf.scf(dm0=dm_guess)
+
+with open( 'MO.molden', 'w' ) as thefile:
+    molden.header(mf.mol, thefile)
+    molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff,occ = mf.mo_occ)
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(4):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+mol_frag.charge = -2 
+mol_frag.build(max_memory = 16000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+mol_env.charge = 3
+mol_env.build(max_memory = 16000,verbose = 4)
+
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+boundary_atoms[5-1] = 1
+boundary_atoms[6-1] = 1
+boundary_atoms2[1-1] = -1
+boundary_atoms2[2-1] = -1
+
+Ne_frag = 16 
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+        impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 50)
+params.options['ftol'] = 1e-10
+params.options['gtol'] = 1e-4
+params.options['maxiter'] = 100
+params.options['svd_thresh'] = 1e-2
+
+umat = None
+#umat = np.load("umat.npy")
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, \
+                         boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, dim_imp =None, dim_bath=32, dim_big =None, smear_sigma = temp, \
+                         oep_params=params,ecw_method='ccsd', mf_method = mf.xc,\
+                         use_umat_ao=False, scf_max_cycle = 100)
+
+#umat = theDMFET.embedding_potential()
+#energy = theDMFET.correction_energy()
+t1 = tools.timer("total calc time",t0) 
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.27.2.el7.x86_64', version='#1 SMP Tue Jul 30 11:12:20 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Tue Sep 10 20:15:30 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 54
+[INPUT] num. electrons = 164
+[INPUT] charge = 1
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 C     -0.060630000000   0.216020000000   4.672250000000 AA   -0.114574094932   0.408218637429   8.829272885499 Bohr
+[INPUT]  2 C      0.127140000000  -0.253950000000   3.260210000000 AA    0.240259779477  -0.479895949333   6.160904008568 Bohr
+[INPUT]  3 H     -1.071470000000   0.414490000000   5.016910000000 AA   -2.024784850688   0.783272581371   9.480585891592 Bohr
+[INPUT]  4 H      0.111260000000  -1.328110000000   3.080960000000 AA    0.210250928619  -2.509764163296   5.822170600740 Bohr
+[INPUT]  5 C      1.005390000000   0.412310000000   5.570030000000 AA    1.899911748376   0.779152978419  10.525831205611 Bohr
+[INPUT]  6 C      0.326050000000   0.579760000000   2.137800000000 AA    0.616145202914   1.095587617978   4.039856509095 Bohr
+[INPUT]  7 C      0.487540000000  -0.034070000000   0.882450000000 AA    0.921317074770  -0.064382969064   1.667588818622 Bohr
+[INPUT]  8 H      0.447650000000  -1.122410000000   0.855460000000 AA    0.845935899662  -2.121047499473   1.616585110520 Bohr
+[INPUT]  9 C      0.360270000000   2.081270000000   2.313090000000 AA    0.680811630897   3.933030291274   4.371106601470 Bohr
+[INPUT] 10 H      1.166650000000   2.370090000000   2.996640000000 AA    2.204648983224   4.478820990570   5.662828893917 Bohr
+[INPUT] 11 H     -0.580670000000   2.439140000000   2.745940000000 AA   -1.097307268751   4.609306579472   5.189074554488 Bohr
+[INPUT] 12 H      0.515360000000   2.624250000000   1.380250000000 AA    0.973889255556   4.959113782390   2.608294483431 Bohr
+[INPUT] 13 H      2.002980000000   0.199020000000   5.187310000000 AA    3.785083632981   0.376093293311   9.802595223218 Bohr
+[INPUT] 14 C      0.922930000000   0.850320000000   6.889090000000 AA    1.744084932145   1.606871918240  13.018493347480 Bohr
+[INPUT] 15 C     -0.387170000000   1.186440000000   7.558460000000 AA   -0.731645263648   2.242046663229  14.283419323480 Bohr
+[INPUT] 16 H     -0.388850000000   2.228700000000   7.899490000000 AA   -0.734820003537   4.211632613818  14.927872623740 Bohr
+[INPUT] 17 H     -0.542140000000   0.557440000000   8.442580000000 AA   -1.024496121172   1.053408930878  15.954163984730 Bohr
+[INPUT] 18 H     -1.248660000000   1.055210000000   6.903000000000 AA   -2.359625422699   1.994057903902  13.044779437873 Bohr
+[INPUT] 19 N      0.844990000000   0.009210000000  -1.499720000000 AA    1.596799677996   0.017404377607  -2.834060063533 Bohr
+[INPUT] 20 C      0.694510000000   0.621300000000  -0.325190000000 AA    1.312433690772   1.174086841192  -0.614520038447 Bohr
+[INPUT] 21 C      2.148860000000   0.980000000000   7.623060000000 AA    4.060756880033   1.851931602074  14.405495631127 Bohr
+[INPUT] 22 C      2.246590000000   1.447280000000   8.908020000000 AA    4.245439814187   2.734962825561  16.833718112148 Bohr
+[INPUT] 23 C      3.443600000000   1.631680000000   9.711530000000 AA    6.507460882552   3.083428322930  18.352131950497 Bohr
+[INPUT] 24 C      4.543440000000   0.820710000000   9.606220000000 AA    8.585857263394   1.550917127692  18.153124892319 Bohr
+[INPUT] 25 C      5.825540000000   1.098540000000  10.356120000000 AA   11.008675127699   2.075939736880  19.570230513131 Bohr
+[INPUT] 26 C      5.910430000000   2.503680000000  10.946810000000 AA   11.169093978413   4.731269503551  20.686472837650 Bohr
+[INPUT] 27 C      4.600290000000   2.817230000000  11.664880000000 AA    8.693288193575   5.323793129908  22.043428475916 Bohr
+[INPUT] 28 C      3.376690000000   2.814580000000  10.716610000000 AA    6.381019307558   5.318785355678  20.251457883775 Bohr
+[INPUT] 29 C      2.114930000000   2.713000000000  11.609620000000 AA    3.996638472626   5.126826975945  21.939002210273 Bohr
+[INPUT] 30 C      3.320140000000   4.145290000000   9.927490000000 AA    6.274155295213   7.833462806898  18.760237204358 Bohr
+[INPUT] 31 C      4.604990000000  -0.456540000000   8.803790000000 AA    8.702169906361  -0.862735564909  16.636751958185 Bohr
+[INPUT] 32 C      1.064550000000   0.673890000000  -2.780050000000 AA    2.011707945906   1.273467538083  -5.253533112597 Bohr
+[INPUT] 33 H      0.805870000000  -1.005010000000  -1.513310000000 AA    1.522873592003  -1.899193652449  -2.859741441566 Bohr
+[INPUT] 34 H      6.668430000000   0.902860000000   9.676590000000 AA   12.601506380833   1.706158128825  18.286104919705 Bohr
+[INPUT] 35 H      5.197480000000  -1.200860000000   9.350670000000 AA    9.821813737904  -2.269296513945  17.670205381187 Bohr
+[INPUT] 36 H      4.445320000000   2.066600000000  12.453410000000 AA    8.400437336052   3.905308009026  23.533534216920 Bohr
+[INPUT] 37 H      4.650130000000   3.790550000000  12.168230000000 AA    8.787472143624   7.163101361470  22.994622120716 Bohr
+[INPUT] 38 H      6.757620000000   2.571180000000  11.638690000000 AA   12.770051053883   4.858826016959  21.993936548714 Bohr
+[INPUT] 39 H      6.096870000000   3.234490000000  10.149340000000 AA   11.521414517077   6.112300252644  19.179472945093 Bohr
+[INPUT] 40 H      3.053840000000   0.719290000000   7.082370000000 AA    5.770921228242   1.359261104138  13.383739612836 Bohr
+[INPUT] 41 H      0.746640000000   1.704610000000  -0.376930000000 AA    1.410945113645   3.221246049195  -0.712294468132 Bohr
+[INPUT] 42 H      5.926310000000   0.345080000000  11.155220000000 AA   11.199102829271   0.652106691065  21.080310659271 Bohr
+[INPUT] 43 H      3.623820000000  -0.887350000000   8.593540000000 AA    6.848027324721  -1.676848476633  16.239437040495 Bohr
+[INPUT] 44 H      5.123050000000  -0.301020000000   7.845980000000 AA    9.681161422453  -0.568845358017  14.826753378815 Bohr
+[INPUT] 45 H      2.466270000000   4.165290000000   9.239350000000 AA    4.660574849231   7.871257329390  17.459841069000 Bohr
+[INPUT] 46 H      3.215000000000   4.993140000000  10.615040000000 AA    6.075469490477   9.435667101611  20.059518401303 Bohr
+[INPUT] 47 H      4.225360000000   4.302570000000   9.330740000000 AA    7.984773177692   8.130678931770  17.632543139524 Bohr
+[INPUT] 48 H      1.184200000000   2.911700000000  11.066610000000 AA    2.237813676710   5.502315556896  20.912862027373 Bohr
+[INPUT] 49 H      2.036130000000   1.726490000000  12.081330000000 AA    3.847728054011   3.262593256800  22.830404920492 Bohr
+[INPUT] 50 H      2.176870000000   3.461120000000  12.408390000000 AA    4.113688108782   6.540568884255  23.448458746792 Bohr
+[INPUT] 51 H      0.257690000000   0.431130000000  -3.479540000000 AA    0.486963525039   0.814717624084  -6.575377639469 Bohr
+[INPUT] 52 H      1.084770000000   1.754680000000  -2.625290000000 AA    2.049918208144   3.315864636252  -4.961079097559 Bohr
+[INPUT] 53 H      2.019690000000   0.360160000000  -3.214290000000 AA    3.816660956523   0.680603761023  -6.074127784928 Bohr
+[INPUT] 54 H      1.325350000000   1.797040000000   9.366170000000 AA    2.504548519192   3.395913434888  17.699496136118 Bohr
+
+nuclear repulsion = 1649.91280818667
+number of shells = 196
+number of NR pGTOs = 722
+number of NR cGTOs = 372
+basis = 6-31G*
+ecp = {}
+CPU time:         4.67
+rks_ao.ne_frozen =  0
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> flags ********
+method = rks_ao-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = False
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/research/retinal/dmfet/tmpjyqdzuj7
+max_memory 16000 MB (current use 103 MB)
+XC functionals = hf
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2b78cfc12488>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2b78cfc12400>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 626756
+init E= -867.992838596883
+HOMO:  -0.34398212292640135 LUMO:  -0.12537840684227575
+Fermi energy:      -0.2346802322
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+entropy correction =  0.0
+cycle= 1 E= -867.992838596743  delta_E= 1.41e-10  |g|= 5.86e-08  |ddm|= 1.3e-07
+HOMO:  -0.3439821234948791 LUMO:  -0.1253784066625545
+Fermi energy:      -0.2346802328
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+entropy correction =  0.0
+Extra cycle  E= -867.992838596743  delta_E= -4.55e-13  |g|= 4.7e-08  |ddm|= 1.04e-07
+converged SCF energy = -867.992838596743
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/research/retinal/dmfet/embed.py ****
+from pydmfet import locints, sdmfet, oep, tools, dfet_ao, proj_ao
+from pydmfet.dfet_ao import dfet
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy
+from pydmfet.tools.sym import h_lattice_sym_tab
+
+t0 = tools.time0()
+
+
+bas = '6-31G*'
+temp = 0.005
+
+
+mol = gto.Mole()
+mol.atom = open('trans_retinal_90_150.xyz').read()
+mol.basis = bas
+mol.charge = 1
+mol.build(max_memory = 16000, verbose=4)
+
+_, _, mo_coeff, mo_occ, _, _ = molden.load("MO.molden")
+dm_guess = np.dot(mo_coeff*mo_occ, mo_coeff.T)
+
+mf = rks_ao(mol,smear_sigma = temp)
+mf.xc = 'hf'
+mf.max_cycle = 50
+mf.scf(dm0=dm_guess)
+
+with open( 'MO.molden', 'w' ) as thefile:
+    molden.header(mf.mol, thefile)
+    molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff,occ = mf.mo_occ)
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(4):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+mol_frag.charge = -2 
+mol_frag.build(max_memory = 16000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+mol_env.charge = 3
+mol_env.build(max_memory = 16000,verbose = 4)
+
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+boundary_atoms[5-1] = 1
+boundary_atoms[6-1] = 1
+boundary_atoms2[1-1] = -1
+boundary_atoms2[2-1] = -1
+
+Ne_frag = 16 
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+        impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 50)
+params.options['ftol'] = 1e-10
+params.options['gtol'] = 1e-4
+params.options['maxiter'] = 100
+params.options['svd_thresh'] = 1e-2
+
+umat = None
+#umat = np.load("umat.npy")
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, \
+                         boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, dim_imp =None, dim_bath=32, dim_big =None, smear_sigma = temp, \
+                         oep_params=params,ecw_method='ccsd', mf_method = mf.xc,\
+                         use_umat_ao=False, scf_max_cycle = 100)
+
+#umat = theDMFET.embedding_potential()
+#energy = theDMFET.correction_energy()
+t1 = tools.timer("total calc time",t0) 
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.27.2.el7.x86_64', version='#1 SMP Tue Jul 30 11:12:20 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Tue Sep 10 20:15:49 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 54
+[INPUT] num. electrons = 16
+[INPUT] charge = -2
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 C     -0.060630000000   0.216020000000   4.672250000000 AA   -0.114574094932   0.408218637429   8.829272885499 Bohr
+[INPUT]  2 C      0.127140000000  -0.253950000000   3.260210000000 AA    0.240259779477  -0.479895949333   6.160904008568 Bohr
+[INPUT]  3 H     -1.071470000000   0.414490000000   5.016910000000 AA   -2.024784850688   0.783272581371   9.480585891592 Bohr
+[INPUT]  4 H      0.111260000000  -1.328110000000   3.080960000000 AA    0.210250928619  -2.509764163296   5.822170600740 Bohr
+[INPUT]  5 GHOST-C   1.005390000000   0.412310000000   5.570030000000 AA    1.899911748376   0.779152978419  10.525831205611 Bohr
+[INPUT]  6 GHOST-C   0.326050000000   0.579760000000   2.137800000000 AA    0.616145202914   1.095587617978   4.039856509095 Bohr
+[INPUT]  7 GHOST-C   0.487540000000  -0.034070000000   0.882450000000 AA    0.921317074770  -0.064382969064   1.667588818622 Bohr
+[INPUT]  8 GHOST-H   0.447650000000  -1.122410000000   0.855460000000 AA    0.845935899662  -2.121047499473   1.616585110520 Bohr
+[INPUT]  9 GHOST-C   0.360270000000   2.081270000000   2.313090000000 AA    0.680811630897   3.933030291274   4.371106601470 Bohr
+[INPUT] 10 GHOST-H   1.166650000000   2.370090000000   2.996640000000 AA    2.204648983224   4.478820990570   5.662828893917 Bohr
+[INPUT] 11 GHOST-H  -0.580670000000   2.439140000000   2.745940000000 AA   -1.097307268751   4.609306579472   5.189074554488 Bohr
+[INPUT] 12 GHOST-H   0.515360000000   2.624250000000   1.380250000000 AA    0.973889255556   4.959113782390   2.608294483431 Bohr
+[INPUT] 13 GHOST-H   2.002980000000   0.199020000000   5.187310000000 AA    3.785083632981   0.376093293311   9.802595223218 Bohr
+[INPUT] 14 GHOST-C   0.922930000000   0.850320000000   6.889090000000 AA    1.744084932145   1.606871918240  13.018493347480 Bohr
+[INPUT] 15 GHOST-C  -0.387170000000   1.186440000000   7.558460000000 AA   -0.731645263648   2.242046663229  14.283419323480 Bohr
+[INPUT] 16 GHOST-H  -0.388850000000   2.228700000000   7.899490000000 AA   -0.734820003537   4.211632613818  14.927872623740 Bohr
+[INPUT] 17 GHOST-H  -0.542140000000   0.557440000000   8.442580000000 AA   -1.024496121172   1.053408930878  15.954163984730 Bohr
+[INPUT] 18 GHOST-H  -1.248660000000   1.055210000000   6.903000000000 AA   -2.359625422699   1.994057903902  13.044779437873 Bohr
+[INPUT] 19 GHOST-N   0.844990000000   0.009210000000  -1.499720000000 AA    1.596799677996   0.017404377607  -2.834060063533 Bohr
+[INPUT] 20 GHOST-C   0.694510000000   0.621300000000  -0.325190000000 AA    1.312433690772   1.174086841192  -0.614520038447 Bohr
+[INPUT] 21 GHOST-C   2.148860000000   0.980000000000   7.623060000000 AA    4.060756880033   1.851931602074  14.405495631127 Bohr
+[INPUT] 22 GHOST-C   2.246590000000   1.447280000000   8.908020000000 AA    4.245439814187   2.734962825561  16.833718112148 Bohr
+[INPUT] 23 GHOST-C   3.443600000000   1.631680000000   9.711530000000 AA    6.507460882552   3.083428322930  18.352131950497 Bohr
+[INPUT] 24 GHOST-C   4.543440000000   0.820710000000   9.606220000000 AA    8.585857263394   1.550917127692  18.153124892319 Bohr
+[INPUT] 25 GHOST-C   5.825540000000   1.098540000000  10.356120000000 AA   11.008675127699   2.075939736880  19.570230513131 Bohr
+[INPUT] 26 GHOST-C   5.910430000000   2.503680000000  10.946810000000 AA   11.169093978413   4.731269503551  20.686472837650 Bohr
+[INPUT] 27 GHOST-C   4.600290000000   2.817230000000  11.664880000000 AA    8.693288193575   5.323793129908  22.043428475916 Bohr
+[INPUT] 28 GHOST-C   3.376690000000   2.814580000000  10.716610000000 AA    6.381019307558   5.318785355678  20.251457883775 Bohr
+[INPUT] 29 GHOST-C   2.114930000000   2.713000000000  11.609620000000 AA    3.996638472626   5.126826975945  21.939002210273 Bohr
+[INPUT] 30 GHOST-C   3.320140000000   4.145290000000   9.927490000000 AA    6.274155295213   7.833462806898  18.760237204358 Bohr
+[INPUT] 31 GHOST-C   4.604990000000  -0.456540000000   8.803790000000 AA    8.702169906361  -0.862735564909  16.636751958185 Bohr
+[INPUT] 32 GHOST-C   1.064550000000   0.673890000000  -2.780050000000 AA    2.011707945906   1.273467538083  -5.253533112597 Bohr
+[INPUT] 33 GHOST-H   0.805870000000  -1.005010000000  -1.513310000000 AA    1.522873592003  -1.899193652449  -2.859741441566 Bohr
+[INPUT] 34 GHOST-H   6.668430000000   0.902860000000   9.676590000000 AA   12.601506380833   1.706158128825  18.286104919705 Bohr
+[INPUT] 35 GHOST-H   5.197480000000  -1.200860000000   9.350670000000 AA    9.821813737904  -2.269296513945  17.670205381187 Bohr
+[INPUT] 36 GHOST-H   4.445320000000   2.066600000000  12.453410000000 AA    8.400437336052   3.905308009026  23.533534216920 Bohr
+[INPUT] 37 GHOST-H   4.650130000000   3.790550000000  12.168230000000 AA    8.787472143624   7.163101361470  22.994622120716 Bohr
+[INPUT] 38 GHOST-H   6.757620000000   2.571180000000  11.638690000000 AA   12.770051053883   4.858826016959  21.993936548714 Bohr
+[INPUT] 39 GHOST-H   6.096870000000   3.234490000000  10.149340000000 AA   11.521414517077   6.112300252644  19.179472945093 Bohr
+[INPUT] 40 GHOST-H   3.053840000000   0.719290000000   7.082370000000 AA    5.770921228242   1.359261104138  13.383739612836 Bohr
+[INPUT] 41 GHOST-H   0.746640000000   1.704610000000  -0.376930000000 AA    1.410945113645   3.221246049195  -0.712294468132 Bohr
+[INPUT] 42 GHOST-H   5.926310000000   0.345080000000  11.155220000000 AA   11.199102829271   0.652106691065  21.080310659271 Bohr
+[INPUT] 43 GHOST-H   3.623820000000  -0.887350000000   8.593540000000 AA    6.848027324721  -1.676848476633  16.239437040495 Bohr
+[INPUT] 44 GHOST-H   5.123050000000  -0.301020000000   7.845980000000 AA    9.681161422453  -0.568845358017  14.826753378815 Bohr
+[INPUT] 45 GHOST-H   2.466270000000   4.165290000000   9.239350000000 AA    4.660574849231   7.871257329390  17.459841069000 Bohr
+[INPUT] 46 GHOST-H   3.215000000000   4.993140000000  10.615040000000 AA    6.075469490477   9.435667101611  20.059518401303 Bohr
+[INPUT] 47 GHOST-H   4.225360000000   4.302570000000   9.330740000000 AA    7.984773177692   8.130678931770  17.632543139524 Bohr
+[INPUT] 48 GHOST-H   1.184200000000   2.911700000000  11.066610000000 AA    2.237813676710   5.502315556896  20.912862027373 Bohr
+[INPUT] 49 GHOST-H   2.036130000000   1.726490000000  12.081330000000 AA    3.847728054011   3.262593256800  22.830404920492 Bohr
+[INPUT] 50 GHOST-H   2.176870000000   3.461120000000  12.408390000000 AA    4.113688108782   6.540568884255  23.448458746792 Bohr
+[INPUT] 51 GHOST-H   0.257690000000   0.431130000000  -3.479540000000 AA    0.486963525039   0.814717624084  -6.575377639469 Bohr
+[INPUT] 52 GHOST-H   1.084770000000   1.754680000000  -2.625290000000 AA    2.049918208144   3.315864636252  -4.961079097559 Bohr
+[INPUT] 53 GHOST-H   2.019690000000   0.360160000000  -3.214290000000 AA    3.816660956523   0.680603761023  -6.074127784928 Bohr
+[INPUT] 54 GHOST-H   1.325350000000   1.797040000000   9.366170000000 AA    2.504548519192   3.395913434888  17.699496136118 Bohr
+
+nuclear repulsion = 21.5753512352798
+number of shells = 196
+number of NR pGTOs = 722
+number of NR cGTOs = 372
+basis = 6-31G*
+ecp = {}
+CPU time:       612.36
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/research/retinal/dmfet/embed.py ****
+from pydmfet import locints, sdmfet, oep, tools, dfet_ao, proj_ao
+from pydmfet.dfet_ao import dfet
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy
+from pydmfet.tools.sym import h_lattice_sym_tab
+
+t0 = tools.time0()
+
+
+bas = '6-31G*'
+temp = 0.005
+
+
+mol = gto.Mole()
+mol.atom = open('trans_retinal_90_150.xyz').read()
+mol.basis = bas
+mol.charge = 1
+mol.build(max_memory = 16000, verbose=4)
+
+_, _, mo_coeff, mo_occ, _, _ = molden.load("MO.molden")
+dm_guess = np.dot(mo_coeff*mo_occ, mo_coeff.T)
+
+mf = rks_ao(mol,smear_sigma = temp)
+mf.xc = 'hf'
+mf.max_cycle = 50
+mf.scf(dm0=dm_guess)
+
+with open( 'MO.molden', 'w' ) as thefile:
+    molden.header(mf.mol, thefile)
+    molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff,occ = mf.mo_occ)
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(4):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+mol_frag.charge = -2 
+mol_frag.build(max_memory = 16000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+mol_env.charge = 3
+mol_env.build(max_memory = 16000,verbose = 4)
+
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+boundary_atoms[5-1] = 1
+boundary_atoms[6-1] = 1
+boundary_atoms2[1-1] = -1
+boundary_atoms2[2-1] = -1
+
+Ne_frag = 16 
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+        impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', diffP_tol=1e-4, outer_maxit = 50)
+params.options['ftol'] = 1e-10
+params.options['gtol'] = 1e-4
+params.options['maxiter'] = 100
+params.options['svd_thresh'] = 1e-2
+
+umat = None
+#umat = np.load("umat.npy")
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, \
+                         boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, dim_imp =None, dim_bath=32, dim_big =None, smear_sigma = temp, \
+                         oep_params=params,ecw_method='ccsd', mf_method = mf.xc,\
+                         use_umat_ao=False, scf_max_cycle = 100)
+
+#umat = theDMFET.embedding_potential()
+#energy = theDMFET.correction_energy()
+t1 = tools.timer("total calc time",t0) 
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.27.2.el7.x86_64', version='#1 SMP Tue Jul 30 11:12:20 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Tue Sep 10 20:15:49 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 54
+[INPUT] num. electrons = 148
+[INPUT] charge = 3
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 GHOST-C  -0.060630000000   0.216020000000   4.672250000000 AA   -0.114574094932   0.408218637429   8.829272885499 Bohr
+[INPUT]  2 GHOST-C   0.127140000000  -0.253950000000   3.260210000000 AA    0.240259779477  -0.479895949333   6.160904008568 Bohr
+[INPUT]  3 GHOST-H  -1.071470000000   0.414490000000   5.016910000000 AA   -2.024784850688   0.783272581371   9.480585891592 Bohr
+[INPUT]  4 GHOST-H   0.111260000000  -1.328110000000   3.080960000000 AA    0.210250928619  -2.509764163296   5.822170600740 Bohr
+[INPUT]  5 C      1.005390000000   0.412310000000   5.570030000000 AA    1.899911748376   0.779152978419  10.525831205611 Bohr
+[INPUT]  6 C      0.326050000000   0.579760000000   2.137800000000 AA    0.616145202914   1.095587617978   4.039856509095 Bohr
+[INPUT]  7 C      0.487540000000  -0.034070000000   0.882450000000 AA    0.921317074770  -0.064382969064   1.667588818622 Bohr
+[INPUT]  8 H      0.447650000000  -1.122410000000   0.855460000000 AA    0.845935899662  -2.121047499473   1.616585110520 Bohr
+[INPUT]  9 C      0.360270000000   2.081270000000   2.313090000000 AA    0.680811630897   3.933030291274   4.371106601470 Bohr
+[INPUT] 10 H      1.166650000000   2.370090000000   2.996640000000 AA    2.204648983224   4.478820990570   5.662828893917 Bohr
+[INPUT] 11 H     -0.580670000000   2.439140000000   2.745940000000 AA   -1.097307268751   4.609306579472   5.189074554488 Bohr
+[INPUT] 12 H      0.515360000000   2.624250000000   1.380250000000 AA    0.973889255556   4.959113782390   2.608294483431 Bohr
+[INPUT] 13 H      2.002980000000   0.199020000000   5.187310000000 AA    3.785083632981   0.376093293311   9.802595223218 Bohr
+[INPUT] 14 C      0.922930000000   0.850320000000   6.889090000000 AA    1.744084932145   1.606871918240  13.018493347480 Bohr
+[INPUT] 15 C     -0.387170000000   1.186440000000   7.558460000000 AA   -0.731645263648   2.242046663229  14.283419323480 Bohr
+[INPUT] 16 H     -0.388850000000   2.228700000000   7.899490000000 AA   -0.734820003537   4.211632613818  14.927872623740 Bohr
+[INPUT] 17 H     -0.542140000000   0.557440000000   8.442580000000 AA   -1.024496121172   1.053408930878  15.954163984730 Bohr
+[INPUT] 18 H     -1.248660000000   1.055210000000   6.903000000000 AA   -2.359625422699   1.994057903902  13.044779437873 Bohr
+[INPUT] 19 N      0.844990000000   0.009210000000  -1.499720000000 AA    1.596799677996   0.017404377607  -2.834060063533 Bohr
+[INPUT] 20 C      0.694510000000   0.621300000000  -0.325190000000 AA    1.312433690772   1.174086841192  -0.614520038447 Bohr
+[INPUT] 21 C      2.148860000000   0.980000000000   7.623060000000 AA    4.060756880033   1.851931602074  14.405495631127 Bohr
+[INPUT] 22 C      2.246590000000   1.447280000000   8.908020000000 AA    4.245439814187   2.734962825561  16.833718112148 Bohr
+[INPUT] 23 C      3.443600000000   1.631680000000   9.711530000000 AA    6.507460882552   3.083428322930  18.352131950497 Bohr
+[INPUT] 24 C      4.543440000000   0.820710000000   9.606220000000 AA    8.585857263394   1.550917127692  18.153124892319 Bohr
+[INPUT] 25 C      5.825540000000   1.098540000000  10.356120000000 AA   11.008675127699   2.075939736880  19.570230513131 Bohr
+[INPUT] 26 C      5.910430000000   2.503680000000  10.946810000000 AA   11.169093978413   4.731269503551  20.686472837650 Bohr
+[INPUT] 27 C      4.600290000000   2.817230000000  11.664880000000 AA    8.693288193575   5.323793129908  22.043428475916 Bohr
+[INPUT] 28 C      3.376690000000   2.814580000000  10.716610000000 AA    6.381019307558   5.318785355678  20.251457883775 Bohr
+[INPUT] 29 C      2.114930000000   2.713000000000  11.609620000000 AA    3.996638472626   5.126826975945  21.939002210273 Bohr
+[INPUT] 30 C      3.320140000000   4.145290000000   9.927490000000 AA    6.274155295213   7.833462806898  18.760237204358 Bohr
+[INPUT] 31 C      4.604990000000  -0.456540000000   8.803790000000 AA    8.702169906361  -0.862735564909  16.636751958185 Bohr
+[INPUT] 32 C      1.064550000000   0.673890000000  -2.780050000000 AA    2.011707945906   1.273467538083  -5.253533112597 Bohr
+[INPUT] 33 H      0.805870000000  -1.005010000000  -1.513310000000 AA    1.522873592003  -1.899193652449  -2.859741441566 Bohr
+[INPUT] 34 H      6.668430000000   0.902860000000   9.676590000000 AA   12.601506380833   1.706158128825  18.286104919705 Bohr
+[INPUT] 35 H      5.197480000000  -1.200860000000   9.350670000000 AA    9.821813737904  -2.269296513945  17.670205381187 Bohr
+[INPUT] 36 H      4.445320000000   2.066600000000  12.453410000000 AA    8.400437336052   3.905308009026  23.533534216920 Bohr
+[INPUT] 37 H      4.650130000000   3.790550000000  12.168230000000 AA    8.787472143624   7.163101361470  22.994622120716 Bohr
+[INPUT] 38 H      6.757620000000   2.571180000000  11.638690000000 AA   12.770051053883   4.858826016959  21.993936548714 Bohr
+[INPUT] 39 H      6.096870000000   3.234490000000  10.149340000000 AA   11.521414517077   6.112300252644  19.179472945093 Bohr
+[INPUT] 40 H      3.053840000000   0.719290000000   7.082370000000 AA    5.770921228242   1.359261104138  13.383739612836 Bohr
+[INPUT] 41 H      0.746640000000   1.704610000000  -0.376930000000 AA    1.410945113645   3.221246049195  -0.712294468132 Bohr
+[INPUT] 42 H      5.926310000000   0.345080000000  11.155220000000 AA   11.199102829271   0.652106691065  21.080310659271 Bohr
+[INPUT] 43 H      3.623820000000  -0.887350000000   8.593540000000 AA    6.848027324721  -1.676848476633  16.239437040495 Bohr
+[INPUT] 44 H      5.123050000000  -0.301020000000   7.845980000000 AA    9.681161422453  -0.568845358017  14.826753378815 Bohr
+[INPUT] 45 H      2.466270000000   4.165290000000   9.239350000000 AA    4.660574849231   7.871257329390  17.459841069000 Bohr
+[INPUT] 46 H      3.215000000000   4.993140000000  10.615040000000 AA    6.075469490477   9.435667101611  20.059518401303 Bohr
+[INPUT] 47 H      4.225360000000   4.302570000000   9.330740000000 AA    7.984773177692   8.130678931770  17.632543139524 Bohr
+[INPUT] 48 H      1.184200000000   2.911700000000  11.066610000000 AA    2.237813676710   5.502315556896  20.912862027373 Bohr
+[INPUT] 49 H      2.036130000000   1.726490000000  12.081330000000 AA    3.847728054011   3.262593256800  22.830404920492 Bohr
+[INPUT] 50 H      2.176870000000   3.461120000000  12.408390000000 AA    4.113688108782   6.540568884255  23.448458746792 Bohr
+[INPUT] 51 H      0.257690000000   0.431130000000  -3.479540000000 AA    0.486963525039   0.814717624084  -6.575377639469 Bohr
+[INPUT] 52 H      1.084770000000   1.754680000000  -2.625290000000 AA    2.049918208144   3.315864636252  -4.961079097559 Bohr
+[INPUT] 53 H      2.019690000000   0.360160000000  -3.214290000000 AA    3.816660956523   0.680603761023  -6.074127784928 Bohr
+[INPUT] 54 H      1.325350000000   1.797040000000   9.366170000000 AA    2.504548519192   3.395913434888  17.699496136118 Bohr
+
+nuclear repulsion = 1390.02729078437
+number of shells = 196
+number of NR pGTOs = 722
+number of NR cGTOs = 372
+basis = 6-31G*
+ecp = {}
+CPU time:       612.83
+HOMO:  -0.34398212301076214 LUMO:  -0.1253784068660305
+mo_energy:
+[-1.5674e+01 -1.1447e+01 -1.1430e+01 -1.1410e+01 -1.1385e+01 -1.1379e+01
+ -1.1365e+01 -1.1365e+01 -1.1363e+01 -1.1359e+01 -1.1348e+01 -1.1346e+01
+ -1.1343e+01 -1.1329e+01 -1.1326e+01 -1.1318e+01 -1.1312e+01 -1.1309e+01
+ -1.1308e+01 -1.1307e+01 -1.1304e+01 -1.1291e+01 -1.3433e+00 -1.2807e+00
+ -1.2530e+00 -1.2061e+00 -1.1798e+00 -1.1707e+00 -1.1415e+00 -1.1082e+00
+ -1.0901e+00 -1.0683e+00 -1.0436e+00 -1.0247e+00 -1.0214e+00 -1.0172e+00
+ -9.8862e-01 -9.4520e-01 -9.1257e-01 -8.9858e-01 -8.7396e-01 -8.5681e-01
+ -8.3113e-01 -8.1329e-01 -7.7964e-01 -7.6205e-01 -7.5989e-01 -7.5363e-01
+ -7.4179e-01 -7.1924e-01 -7.1498e-01 -7.1333e-01 -6.9741e-01 -6.9383e-01
+ -6.8808e-01 -6.8412e-01 -6.8340e-01 -6.7732e-01 -6.7220e-01 -6.6604e-01
+ -6.6246e-01 -6.5518e-01 -6.5455e-01 -6.4002e-01 -6.3805e-01 -6.3103e-01
+ -6.2809e-01 -6.1582e-01 -6.0972e-01 -5.9881e-01 -5.9209e-01 -5.8855e-01
+ -5.8392e-01 -5.7060e-01 -5.6729e-01 -5.4802e-01 -5.3957e-01 -5.3099e-01
+ -4.9949e-01 -4.7759e-01 -4.2083e-01 -3.4398e-01 -1.2538e-01  1.2648e-02
+  3.4842e-02  9.0023e-02  1.0533e-01]
+fermi energy:  -0.234680232272332
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+  occ_imp
+9.761575e-01 1.028585e+00 1.346641e+00 5.625281e-01 1.983153e+00 
+1.326712e-02 9.603379e-03 1.993784e+00 3.853952e-03 1.997598e+00 
+1.882682e-03 9.885199e-04 4.449729e-04 1.482960e-04 1.049018e-04 
+7.515684e-05 6.708013e-05 4.041689e-05 1.556711e-05 1.999986e+00 
+9.518031e-06 6.773694e-06 1.999993e+00 3.573245e-06 2.200887e-06 
+1.109656e-06 6.773614e-07 4.338753e-07 3.156174e-07 1.789099e-07 
+5.515216e-08 2.084561e-08 
+  occ_bath
+1.023842e+00 9.714150e-01 6.533592e-01 1.437472e+00 1.684741e-02 
+1.986733e+00 1.990397e+00 6.215930e-03 1.996146e+00 2.402444e-03 
+1.998117e+00 1.999011e+00 1.999555e+00 1.999852e+00 1.999895e+00 
+1.999925e+00 1.999933e+00 1.999960e+00 1.999984e+00 1.425124e-05 
+1.999990e+00 1.999993e+00 6.581917e-06 1.999996e+00 1.999998e+00 
+1.999999e+00 1.999999e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 2.000000e+00 
+2.000000e+00 2.000000e+00 
+check orthogonality:
+norm:  8.014387589083787e-12
+max:  5.280937386437566e-12
+Ne_frag_loc =  13.918941616283544
+Ne_env_loc =  150.08105838371648
+dimension of subspace: imp, bath
+32 32
+Ne_frag, Ne_env, Ne_core
+16 48 100
+|diffP| =  0.0
+P_imp idem: 2.0690881930651073
+P_bath idem: 2.0427218730479066
+|umat| =  0.0
+time of coreJK_sub : 127.190  (cpu),  3.270  (wall) 
+time of LocalIntegrals.tei_sub : 555.064  (cpu),  14.599  (wall) 
+time of libgen.ops.build_subops : 685.913  (cpu),  17.965  (wall) 
+Set gradient conv threshold to 3.16228e-05
+init E= -529.989726690548
+HOMO: -0.34914493530074503 LUMO: -0.009811657204704595
+mo_energy:
+[-1.1430e+01 -1.1312e+01 -1.0792e+01 -6.9803e+00 -3.4362e+00 -2.2158e+00
+ -1.7637e+00 -1.2406e+00 -1.1833e+00 -1.1121e+00 -1.0503e+00 -1.0452e+00
+ -9.9244e-01 -8.9442e-01 -8.3885e-01 -8.2045e-01 -7.9685e-01 -7.5086e-01
+ -7.3543e-01 -7.2301e-01 -7.1648e-01 -6.9167e-01 -6.6985e-01 -6.5782e-01
+ -6.4854e-01 -6.3317e-01 -6.1760e-01 -5.9689e-01 -5.5204e-01 -4.9142e-01
+ -4.4324e-01 -3.4914e-01 -9.8117e-03  1.0505e-01  2.1510e-01  2.3440e-01
+  4.0400e-01]
+e_fermi =  -0.16164493530074503
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2.]
+entropy correction =  0.0
+cycle= 1 E= -529.989726690786  delta_E= -2.38e-10  |g|= 9.77e-09  |ddm|= 3.26e-08
+HOMO: -0.34914493649962597 LUMO: -0.009811659761522247
+mo_energy:
+[-1.143e+01 -1.131e+01 -1.079e+01 -6.980e+00 -3.436e+00 -2.216e+00
+ -1.764e+00 -1.241e+00 -1.183e+00 -1.112e+00 -1.050e+00 -1.045e+00
+ -9.924e-01 -8.944e-01 -8.388e-01 -8.205e-01 -7.968e-01 -7.509e-01
+ -7.354e-01 -7.230e-01 -7.165e-01 -6.917e-01 -6.698e-01 -6.578e-01
+ -6.485e-01 -6.332e-01 -6.176e-01 -5.969e-01 -5.520e-01 -4.914e-01
+ -4.432e-01 -3.491e-01 -9.812e-03  1.050e-01  2.151e-01  2.344e-01
+  4.040e-01]
+e_fermi =  -0.16164493649962597
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2. 2.
+ 2. 2. 2. 2. 2. 2. 2. 2.]
+entropy correction =  0.0
+Extra cycle  E= -529.989726690787  delta_E= -7.96e-13  |g|= 6.13e-09  |ddm|= 1.36e-08
+<class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> does not have attributes  dm_guess vext_1e ne_frozen add_coredm_ext_energy coredm
+entropy correction =  0.0
+max(P_tot - P_ref) =  4.441427525002194e-09
+|P_tot - P_ref| =  2.883163052719729e-08
+total scf energy = -867.992838597502 
+-529.989726690786, -1987.91592009338, 1649.91280818667
+time of total calc time : 1567.168  (cpu),  43.098  (wall) 

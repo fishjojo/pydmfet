@@ -1,0 +1,2439 @@
+/usr/licensed/anaconda/5.0.1/lib/python2.7/site-packages/h5py/__init__.py:34: FutureWarning: Conversion of the second argument of issubdtype from `float` to `np.floating` is deprecated. In future, it will be treated as `np.float64 == np.dtype(float).type`.
+  from ._conv import register_converters as _register_converters
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/water2.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo
+import numpy as np
+from pyscf.tools import molden
+import time
+from pydmfet import dfet_ao
+from pydmfet.dfet_ao import dfet
+
+#bas = {"H":'ccpvdz',"O":'stuttgartdz'}
+#ecp = {"O":'stuttgartdz'}
+
+bas ='ccpvdz'
+
+mol = gto.Mole()
+mol.atom = open('water2.xyz').read()
+mol.basis = bas
+#mol.ecp = ecp
+mol.charge = 0
+mol.build(max_memory = 16000, verbose=4)
+
+#print(mol.intor_symmetric('ECPscalar'))
+
+mf = scf.RKS(mol)
+mf.xc = "pbe,pbe"
+mf.max_cycle = 50
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+
+#with open( 'water2_mo.molden', 'w' ) as thefile:
+#    molden.header(mf.mol, thefile)
+#    molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff)
+
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(3):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+#mol_frag.ecp = ecp
+mol_frag.build(max_memory = 8000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+#mol_env.ecp = ecp
+mol_env.build(max_memory = 8000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 10
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1.0e-5,diffP_tol= 1.0e-5, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+
+#theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+#                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+#                     oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+#umat = theDMFET.embedding_potential()
+
+#params.algorithm='2011'
+#params.gtol=1.e-4
+#params.diffP_tol=1.e-4
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = None, dim_imp =10, dim_bath=10, dim_big =20, smear_sigma = 0.00, oep_params=params,ecw_method='hf', mf_method = mf.xc,\
+			 use_umat_ao=True)
+
+umat = theDMFET.embedding_potential()
+
+e=theDMFET.correction_energy()
+
+#Myoep = dfet_ao.oep.OEPao(theDMFET,params)
+#umat = Myoep.kernel() 
+
+'''
+params.algorithm='2011'
+params.maxit=1
+params.outer_maxit=1
+theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                     umat = umat, oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+'''
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-957.5.1.el7.1.x86_64', '#1 SMP Thu Feb 21 23:12:09 EST 2019', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Fri Mar 15 15:22:18 2019
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 6
+[INPUT] num. electrons = 20
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 O     -1.180940000000  -0.120480000000   0.000000000000 AA   -2.231653169544  -0.227674203488   0.000000000000 Bohr
+[INPUT]  2 H     -1.500780000000   0.376730000000   0.770740000000 AA   -2.836063173225   0.711916522907   1.456487513247 Bohr
+[INPUT]  3 H     -1.500780000000   0.376720000000  -0.770750000000 AA   -2.836063173225   0.711897625646  -1.456506410509 Bohr
+[INPUT]  4 O      1.302130000000   0.125870000000   0.000000000000 AA    2.460669078580   0.237859827299   0.000000000000 Bohr
+[INPUT]  5 H      0.317320000000  -0.048240000000   0.000000000000 AA    0.599647893847  -0.091160388249   0.000000000000 Bohr
+[INPUT]  6 H      1.714710000000  -0.748330000000   0.000000000000 AA    3.240332283053  -1.414138750796   0.000000000000 Bohr
+
+nuclear repulsion = 39.5632572126862
+number of shells = 22
+number of NR pGTOs = 80
+number of NR cGTOs = 48
+basis = ccpvdz
+ecp = {}
+CPU time:         4.17
+
+
+******** <class 'pyscf.dft.rks.RKS'> flags ********
+method = RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmp1DSVQc
+max_memory 16000 MB (current use 66 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ae9bd862d70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ae9bd862c80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 68620
+init E= -152.64535660909
+  HOMO = -0.39685718834578  LUMO = -0.0194017111774907
+cycle= 1 E= -152.475884902787  delta_E= 0.169  |g|= 1.04  |ddm|= 1.96
+  HOMO = 0.0311027085519058  LUMO = 0.0435782490769849
+cycle= 2 E= -152.073639626408  delta_E= 0.402  |g|= 1.75  |ddm|= 1.97
+  HOMO = -0.189786029123941  LUMO = 0.000173939633361043
+cycle= 3 E= -152.675013426022  delta_E= -0.601  |g|= 0.0437  |ddm|= 1.44
+  HOMO = -0.170568395386444  LUMO = -9.8027348380833e-05
+cycle= 4 E= -152.675195220273  delta_E= -0.000182  |g|= 0.0399  |ddm|= 0.0572
+  HOMO = -0.174162669571106  LUMO = 0.00100312432399267
+cycle= 5 E= -152.6754560567  delta_E= -0.000261  |g|= 0.0119  |ddm|= 0.0302
+  HOMO = -0.173002705537377  LUMO = 0.000533836999284863
+cycle= 6 E= -152.675481349169  delta_E= -2.53e-05  |g|= 0.00122  |ddm|= 0.00751
+  HOMO = -0.172974726971299  LUMO = 0.000553150012218078
+cycle= 7 E= -152.67548162515  delta_E= -2.76e-07  |g|= 0.000177  |ddm|= 0.000941
+  HOMO = -0.172964266395995  LUMO = 0.000549121777960921
+cycle= 8 E= -152.675481630745  delta_E= -5.6e-09  |g|= 1.77e-05  |ddm|= 0.000127
+  HOMO = -0.172961830363871  LUMO = 0.000548643877622804
+cycle= 9 E= -152.675481630823  delta_E= -7.82e-11  |g|= 2.03e-06  |ddm|= 1.76e-05
+  HOMO = -0.172961142054148  LUMO = 0.000548522846674472
+Extra cycle  E= -152.675481630823  delta_E= 2.84e-14  |g|= 1.98e-06  |ddm|= 2.55e-06
+converged SCF energy = -152.675481630823
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/water2.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo
+import numpy as np
+from pyscf.tools import molden
+import time
+from pydmfet import dfet_ao
+from pydmfet.dfet_ao import dfet
+
+#bas = {"H":'ccpvdz',"O":'stuttgartdz'}
+#ecp = {"O":'stuttgartdz'}
+
+bas ='ccpvdz'
+
+mol = gto.Mole()
+mol.atom = open('water2.xyz').read()
+mol.basis = bas
+#mol.ecp = ecp
+mol.charge = 0
+mol.build(max_memory = 16000, verbose=4)
+
+#print(mol.intor_symmetric('ECPscalar'))
+
+mf = scf.RKS(mol)
+mf.xc = "pbe,pbe"
+mf.max_cycle = 50
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+
+#with open( 'water2_mo.molden', 'w' ) as thefile:
+#    molden.header(mf.mol, thefile)
+#    molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff)
+
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(3):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+#mol_frag.ecp = ecp
+mol_frag.build(max_memory = 8000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+#mol_env.ecp = ecp
+mol_env.build(max_memory = 8000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 10
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1.0e-5,diffP_tol= 1.0e-5, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+
+#theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+#                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+#                     oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+#umat = theDMFET.embedding_potential()
+
+#params.algorithm='2011'
+#params.gtol=1.e-4
+#params.diffP_tol=1.e-4
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = None, dim_imp =10, dim_bath=10, dim_big =20, smear_sigma = 0.00, oep_params=params,ecw_method='hf', mf_method = mf.xc,\
+			 use_umat_ao=True)
+
+umat = theDMFET.embedding_potential()
+
+e=theDMFET.correction_energy()
+
+#Myoep = dfet_ao.oep.OEPao(theDMFET,params)
+#umat = Myoep.kernel() 
+
+'''
+params.algorithm='2011'
+params.maxit=1
+params.outer_maxit=1
+theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                     umat = umat, oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+'''
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-957.5.1.el7.1.x86_64', '#1 SMP Thu Feb 21 23:12:09 EST 2019', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Fri Mar 15 15:22:21 2019
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 6
+[INPUT] num. electrons = 10
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 O     -1.180940000000  -0.120480000000   0.000000000000 AA   -2.231653169544  -0.227674203488   0.000000000000 Bohr
+[INPUT]  2 H     -1.500780000000   0.376730000000   0.770740000000 AA   -2.836063173225   0.711916522907   1.456487513247 Bohr
+[INPUT]  3 H     -1.500780000000   0.376720000000  -0.770750000000 AA   -2.836063173225   0.711897625646  -1.456506410509 Bohr
+[INPUT]  4 GHOST-O   1.302130000000   0.125870000000   0.000000000000 AA    2.460669078580   0.237859827299   0.000000000000 Bohr
+[INPUT]  5 GHOST-H   0.317320000000  -0.048240000000   0.000000000000 AA    0.599647893847  -0.091160388249   0.000000000000 Bohr
+[INPUT]  6 GHOST-H   1.714710000000  -0.748330000000   0.000000000000 AA    3.240332283053  -1.414138750796   0.000000000000 Bohr
+
+nuclear repulsion = 9.05968130669461
+number of shells = 22
+number of NR pGTOs = 80
+number of NR cGTOs = 48
+basis = ccpvdz
+ecp = {}
+CPU time:        82.48
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/water2.py ****
+from pydmfet import locints, sdmfet,oep,tools
+from pyscf import gto, scf, ao2mo
+import numpy as np
+from pyscf.tools import molden
+import time
+from pydmfet import dfet_ao
+from pydmfet.dfet_ao import dfet
+
+#bas = {"H":'ccpvdz',"O":'stuttgartdz'}
+#ecp = {"O":'stuttgartdz'}
+
+bas ='ccpvdz'
+
+mol = gto.Mole()
+mol.atom = open('water2.xyz').read()
+mol.basis = bas
+#mol.ecp = ecp
+mol.charge = 0
+mol.build(max_memory = 16000, verbose=4)
+
+#print(mol.intor_symmetric('ECPscalar'))
+
+mf = scf.RKS(mol)
+mf.xc = "pbe,pbe"
+mf.max_cycle = 50
+
+DMguess = None
+mf.scf(dm0=DMguess)
+
+
+#with open( 'water2_mo.molden', 'w' ) as thefile:
+#    molden.header(mf.mol, thefile)
+#    molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff)
+
+
+myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+myInts.TI_OK = False
+
+
+natoms = mol.natm
+impAtom = np.zeros([natoms], dtype=int)
+for i in range(3):
+    impAtom[i] = 1
+
+
+ghost_frag = 1-impAtom
+ghost_env = 1-ghost_frag
+
+mol_frag = gto.Mole()
+mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+mol_frag.basis = bas
+#mol_frag.ecp = ecp
+mol_frag.build(max_memory = 8000,verbose = 4)
+
+mol_env = gto.Mole()
+mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+mol_env.basis =  bas
+#mol_env.ecp = ecp
+mol_env.build(max_memory = 8000,verbose = 4)
+
+
+aoslice = mol.aoslice_by_atom()
+impurities = np.zeros([mol.nao_nr()], dtype = int)
+for i in range(natoms):
+    if(impAtom[i] == 1):
+	impurities[aoslice[i,2]:aoslice[i,3]] = 1
+
+Ne_frag = 10
+boundary_atoms = np.zeros([natoms])
+boundary_atoms2 = np.zeros([natoms])
+
+nbas =  mol.nao_nr()
+params = oep.OEPparams(algorithm = 'split', opt_method = 'L-BFGS-B', \
+                       ftol = 1e-12, gtol = 1.0e-5,diffP_tol= 1.0e-5, outer_maxit = 200, maxit = 200,l2_lambda = 0.0, oep_print = 0)
+
+#theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+#                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+#                     oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+#umat = theDMFET.embedding_potential()
+
+#params.algorithm='2011'
+#params.gtol=1.e-4
+#params.diffP_tol=1.e-4
+
+theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = None, dim_imp =10, dim_bath=10, dim_big =20, smear_sigma = 0.00, oep_params=params,ecw_method='hf', mf_method = mf.xc,\
+			 use_umat_ao=True)
+
+umat = theDMFET.embedding_potential()
+
+e=theDMFET.correction_energy()
+
+#Myoep = dfet_ao.oep.OEPao(theDMFET,params)
+#umat = Myoep.kernel() 
+
+'''
+params.algorithm='2011'
+params.maxit=1
+params.outer_maxit=1
+theDMFET = dfet.DFET(mf, mol_frag, mol_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                     umat = umat, oep_params=params, smear_sigma=0.00, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+umat = theDMFET.embedding_potential()
+'''
+#INFO: ******************** input file end ********************
+
+
+System: ('Linux', 'tigercpu.princeton.edu', '3.10.0-957.5.1.el7.1.x86_64', '#1 SMP Thu Feb 21 23:12:09 EST 2019', 'x86_64', 'x86_64')  Threads 40
+Python 2.7.14 |Anaconda, Inc.| (default, Oct 16 2017, 17:29:19) 
+[GCC 7.2.0]
+numpy 1.14.3  scipy 1.1.0
+Date: Fri Mar 15 15:22:21 2019
+PySCF version 1.5
+PySCF path  /tigress/xingz/pyscf_fork/pyscf
+GIT ORIG_HEAD 2a04e98fd7e076282a2b183302d17fc6af3d78e6
+GIT HEAD      ref: refs/heads/master
+GIT master branch  2a04e98fd7e076282a2b183302d17fc6af3d78e6
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 6
+[INPUT] num. electrons = 10
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 GHOST-O  -1.180940000000  -0.120480000000   0.000000000000 AA   -2.231653169544  -0.227674203488   0.000000000000 Bohr
+[INPUT]  2 GHOST-H  -1.500780000000   0.376730000000   0.770740000000 AA   -2.836063173225   0.711916522907   1.456487513247 Bohr
+[INPUT]  3 GHOST-H  -1.500780000000   0.376720000000  -0.770750000000 AA   -2.836063173225   0.711897625646  -1.456506410509 Bohr
+[INPUT]  4 O      1.302130000000   0.125870000000   0.000000000000 AA    2.460669078580   0.237859827299   0.000000000000 Bohr
+[INPUT]  5 H      0.317320000000  -0.048240000000   0.000000000000 AA    0.599647893847  -0.091160388249   0.000000000000 Bohr
+[INPUT]  6 H      1.714710000000  -0.748330000000   0.000000000000 AA    3.240332283053  -1.414138750796   0.000000000000 Bohr
+
+nuclear repulsion = 8.95103299792133
+number of shells = 22
+number of NR pGTOs = 80
+number of NR cGTOs = 48
+basis = ccpvdz
+ecp = {}
+CPU time:        82.96
+mo energy:
+[-1.87970704e+01 -1.86771432e+01 -9.57868071e-01 -8.36074736e-01
+ -5.05793329e-01 -4.28952890e-01 -3.55416795e-01 -2.87307139e-01
+ -2.32099414e-01 -1.72961785e-01  5.48524915e-04  7.64477427e-02
+  9.30157771e-02  2.59399207e-01  4.66956604e-01  5.12467185e-01
+  5.38738227e-01  5.86792725e-01  7.81517922e-01  8.59559164e-01
+  9.06200760e-01  9.39915224e-01  9.41468116e-01  1.02042740e+00
+  1.11571841e+00  1.17218316e+00  1.23369377e+00  1.25773426e+00
+  1.41710413e+00  1.42085489e+00  1.57622812e+00  1.62213852e+00
+  1.70224515e+00  1.76808484e+00  1.97641315e+00  2.00572884e+00
+  2.09732495e+00  2.42154028e+00  2.76820632e+00  2.89098458e+00
+  2.91781137e+00  2.95729446e+00  2.99106232e+00  3.10033531e+00
+  3.30237181e+00  3.50286869e+00  3.59641618e+00  3.75612964e+00]
+Ne_frag_loc =  9.882357795997903
+Ne_env_loc =  10.117642204002093
+occ_imp
+[1.87633883e+00 4.21734299e-03 2.52476398e-03 1.99931506e+00
+ 1.99968985e+00 2.84924770e-04 1.99996562e+00 2.14831999e-05
+ 1.99999992e+00 3.13855736e-09 0.00000000e+00 0.00000000e+00
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00]
+occ_bath
+[1.23661174e-01 1.99578266e+00 1.99747524e+00 6.84942010e-04
+ 3.10150539e-04 1.99971508e+00 3.43794772e-05 1.99997852e+00
+ 7.65260256e-08 2.00000000e+00 0.00000000e+00 0.00000000e+00
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+ 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00]
+dimension of subspace: imp, bath 10 10
+Ne_frag, Ne_env, Ne_core
+10 10 0
+|diffP| =  0.0
+0.2520586760060805
+0.6680372918981036
+time of coreJK_sub : 0.000  (cpu),  0.000  (wall) 
+time of locints.dmet_tei : 0.320  (cpu),  0.009  (wall) 
+time of libgen.build_subops : 0.380  (cpu),  0.011  (wall) 
+entering oep_main.init_density_partition()
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpRGgEXi
+max_memory 8000 MB (current use 309 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ae9bd862d70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ae9bd862c80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 74210
+init E= -84.8257258164003
+HOMO: -1.2472190195820791 LUMO: -1.1123374386380203
+-1.2472190195820791
+[2. 2. 2. 2. 2.]
+cycle= 1 E= -91.557002498446  delta_E= -6.73  |g|= 0.513  |ddm|=    3
+HOMO: -1.4593811174433657 LUMO: -1.2629320011295888
+-1.4593811174433657
+[2. 2. 2. 2. 2.]
+cycle= 2 E= -91.366343795596  delta_E= 0.191  |g|= 0.877  |ddm|= 2.28
+HOMO: -1.2535914676584816 LUMO: -1.173519180227203
+-1.2535914676584816
+[2. 2. 2. 2. 2.]
+cycle= 3 E= -91.653887976643  delta_E= -0.288  |g|= 0.0397  |ddm|= 1.62
+HOMO: -1.2522392154018203 LUMO: -1.1766526431491913
+-1.2522392154018203
+[2. 2. 2. 2. 2.]
+cycle= 4 E= -91.6499092285014  delta_E= 0.00398  |g|= 0.0914  |ddm|= 0.284
+HOMO: -1.2580685912243343 LUMO: -1.1816998973241242
+-1.2580685912243343
+[2. 2. 2. 2. 2.]
+cycle= 5 E= -91.654562461746  delta_E= -0.00465  |g|= 0.013  |ddm|= 0.188
+HOMO: -1.2590359586123028 LUMO: -1.183165284497376
+-1.2590359586123028
+[2. 2. 2. 2. 2.]
+cycle= 6 E= -91.654642644732  delta_E= -8.02e-05  |g|= 0.00406  |ddm|= 0.0205
+HOMO: -1.2594657882574658 LUMO: -1.1835553276879702
+-1.2594657882574658
+[2. 2. 2. 2. 2.]
+cycle= 7 E= -91.6546508443513  delta_E= -8.2e-06  |g|= 8.2e-05  |ddm|= 0.00859
+HOMO: -1.2594582514849577 LUMO: -1.1835437546389993
+-1.2594582514849577
+[2. 2. 2. 2. 2.]
+cycle= 8 E= -91.6546508471066  delta_E= -2.76e-09  |g|= 4.34e-05  |ddm|= 0.0001
+HOMO: -1.2594622216252902 LUMO: -1.1835473739310736
+-1.2594622216252902
+[2. 2. 2. 2. 2.]
+cycle= 9 E= -91.6546508480825  delta_E= -9.76e-10  |g|= 1.66e-07  |ddm|= 9.64e-05
+HOMO: -1.2594622620396079 LUMO: -1.1835473924746058
+-1.2594622620396079
+[2. 2. 2. 2. 2.]
+Extra cycle  E= -91.6546508480826  delta_E= -1.14e-13  |g|= 5.6e-07  |ddm|= 1.6e-06
+converged SCF energy = -91.6546508480826
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpAKH_Pw
+max_memory 8000 MB (current use 310 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ae9bd862d70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ae9bd862c80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 74210
+init E= -83.6857798170156
+HOMO: -1.1225832016108837 LUMO: -0.8045905111043622
+-1.1225832016108837
+[2. 2. 2. 2. 2.]
+cycle= 1 E= -91.2619743228273  delta_E= -7.58  |g|= 0.909  |ddm|=  3.1
+HOMO: -1.3970340956502787 LUMO: -0.895014894948384
+-1.3970340956502787
+[2. 2. 2. 2. 2.]
+cycle= 2 E= -91.3160593925028  delta_E= -0.0541  |g|= 0.741  |ddm|= 1.09
+HOMO: -1.2721305732346737 LUMO: -0.8631052562928782
+-1.2721305732346737
+[2. 2. 2. 2. 2.]
+cycle= 3 E= -91.4171031568051  delta_E= -0.101  |g|= 0.0172  |ddm|= 0.499
+HOMO: -1.264672714979746 LUMO: -0.859004589238764
+-1.264672714979746
+[2. 2. 2. 2. 2.]
+cycle= 4 E= -91.4171727762953  delta_E= -6.96e-05  |g|= 0.00436  |ddm|= 0.0181
+HOMO: -1.2653352215644957 LUMO: -0.8598334644970007
+-1.2653352215644957
+[2. 2. 2. 2. 2.]
+cycle= 5 E= -91.4171781922521  delta_E= -5.42e-06  |g|= 0.000381  |ddm|= 0.00494
+HOMO: -1.2652743366592405 LUMO: -0.8597491347844312
+-1.2652743366592405
+[2. 2. 2. 2. 2.]
+cycle= 6 E= -91.4171782369304  delta_E= -4.47e-08  |g|= 1.79e-05  |ddm|= 0.000433
+HOMO: -1.2652781853372006 LUMO: -0.8597514882273396
+-1.2652781853372006
+[2. 2. 2. 2. 2.]
+cycle= 7 E= -91.417178236987  delta_E= -5.66e-11  |g|= 3.88e-07  |ddm|= 1.03e-05
+HOMO: -1.265278247399635 LUMO: -0.85975151420253
+-1.265278247399635
+[2. 2. 2. 2. 2.]
+Extra cycle  E= -91.4171782369869  delta_E= 8.53e-14  |g|= 2.29e-07  |ddm|= 4.07e-07
+converged SCF energy = -91.4171782369869
+initialize density partition
+Ne_imp =  10.000000000000018
+Ne_bath =  9.999999999999995
+|P_imp + P_bath - P_ref| =  4.086549169297442
+max(P_imp + P_bath - P_ref) 0.744851082126115
+ OEP iteration  1
+|umat| =  10.527290295588621
+homo-lumo gap =  0.07591484361861656
+ne-Nocc =  0.0
+-1.2594620077916512
+[1. 1. 1. 1. 1.]
+-53.13193588104595
+homo-lumo gap =  0.4055266909973667
+ne-Nocc =  0.0
+-1.2652781898214043
+[1. 1. 1. 1. 1.]
+-52.88540600749819
+2-norm (grad),       max(grad):
+3.0454525885338644 ,  0.7448526859146823
+W =  106.00722462024326
+|umat| =  10.058764287879939
+homo-lumo gap =  0.845103089288281
+ne-Nocc =  0.0
+-1.4782800541645347
+[1. 1. 1. 1. 1.]
+-52.91947565458776
+homo-lumo gap =  0.42300631381951315
+ne-Nocc =  0.0
+-1.2062339947894307
+[1. 1. 1. 1. 1.]
+-51.95888195304375
+2-norm (grad),       max(grad):
+1.9469872200423606 ,  0.4798666246094234
+W =  103.20349654078015
+|umat| =  9.482054334745634
+homo-lumo gap =  0.783700571095863
+ne-Nocc =  0.0
+-1.3679398025219942
+[1. 1. 1. 1. 1.]
+-52.618841504893126
+homo-lumo gap =  0.4068488221958294
+ne-Nocc =  0.0
+-1.1674159989881738
+[1. 1. 1. 1. 1.]
+-51.794507649157126
+2-norm (grad),       max(grad):
+1.4168990279413036 ,  0.2693283354561459
+W =  100.69436333121706
+|umat| =  8.645805658298112
+homo-lumo gap =  0.5928057876962773
+ne-Nocc =  0.0
+-1.1390466558297334
+[1. 1. 1. 1. 1.]
+-52.86817530141382
+homo-lumo gap =  0.5184089628633032
+ne-Nocc =  0.0
+-1.2452023897104094
+[1. 1. 1. 1. 1.]
+-52.38635560953543
+2-norm (grad),       max(grad):
+1.178069237630556 ,  0.28125354802033126
+W =  98.03534822555358
+|umat| =  8.286497733475434
+homo-lumo gap =  0.8073241160913112
+ne-Nocc =  0.0
+-1.3084982977188593
+[1. 1. 1. 1. 1.]
+-54.41892381604017
+homo-lumo gap =  0.6278956056401499
+ne-Nocc =  0.0
+-1.5754751963788889
+[1. 1. 1. 1. 1.]
+-54.194814509831716
+2-norm (grad),       max(grad):
+1.402769839589823 ,  0.5365814053643236
+W =  96.28544446248577
+|umat| =  8.450652396784118
+homo-lumo gap =  1.0301488508049617
+ne-Nocc =  0.0
+-1.4534582280651756
+[1. 1. 1. 1. 1.]
+-55.328513497805375
+homo-lumo gap =  0.7756736219433623
+ne-Nocc =  0.0
+-1.7588754204728587
+[1. 1. 1. 1. 1.]
+-55.32687416958248
+2-norm (grad),       max(grad):
+0.9329655499665682 ,  0.33886822525640237
+W =  95.26691207183644
+|umat| =  8.286367048881525
+homo-lumo gap =  1.0624430657398856
+ne-Nocc =  0.0
+-1.426296566903453
+[1. 1. 1. 1. 1.]
+-55.03432936397905
+homo-lumo gap =  0.920226455367369
+ne-Nocc =  0.0
+-1.7799118462658214
+[1. 1. 1. 1. 1.]
+-55.23142808757468
+2-norm (grad),       max(grad):
+0.5102261668846022 ,  0.15582757973572411
+W =  94.68775669387128
+|umat| =  8.38080113827609
+homo-lumo gap =  1.1378769456791655
+ne-Nocc =  0.0
+-1.5017147724209232
+[1. 1. 1. 1. 1.]
+-55.36820965212401
+homo-lumo gap =  0.9682930154697017
+ne-Nocc =  0.0
+-1.8193982621973221
+[1. 1. 1. 1. 1.]
+-55.6577869407738
+2-norm (grad),       max(grad):
+0.26446453264687314 ,  0.0675163881789968
+W =  94.44754747147073
+|umat| =  8.426483869426672
+homo-lumo gap =  1.2005179197368065
+ne-Nocc =  0.0
+-1.561004355919438
+[1. 1. 1. 1. 1.]
+-55.583506095553254
+homo-lumo gap =  1.0027863325049866
+ne-Nocc =  0.0
+-1.845466618417052
+[1. 1. 1. 1. 1.]
+-55.9649399141184
+2-norm (grad),       max(grad):
+0.15397315964640518 ,  0.034248954506767716
+W =  94.32104496622277
+|umat| =  8.478772663782284
+homo-lumo gap =  1.2593526487574422
+ne-Nocc =  0.0
+-1.6012232369763775
+[1. 1. 1. 1. 1.]
+-55.76402931075124
+homo-lumo gap =  0.9805059566647462
+ne-Nocc =  0.0
+-1.8576312013167515
+[1. 1. 1. 1. 1.]
+-56.19291263420511
+2-norm (grad),       max(grad):
+0.16839877263718092 ,  0.06204275378828086
+W =  94.28570506656335
+|umat| =  8.440838020113548
+homo-lumo gap =  1.2597689752607628
+ne-Nocc =  0.0
+-1.596709029802317
+[1. 1. 1. 1. 1.]
+-55.72064305107047
+homo-lumo gap =  0.9814790573027091
+ne-Nocc =  0.0
+-1.8571371355667243
+[1. 1. 1. 1. 1.]
+-56.15627386993415
+2-norm (grad),       max(grad):
+0.09322444401496072 ,  0.0228736352098927
+W =  94.25986952197
+|umat| =  8.412052154107585
+homo-lumo gap =  1.2604956557104046
+ne-Nocc =  0.0
+-1.5929118060413614
+[1. 1. 1. 1. 1.]
+-55.69122180105975
+homo-lumo gap =  0.9782089206682274
+ne-Nocc =  0.0
+-1.8554158201948707
+[1. 1. 1. 1. 1.]
+-56.12024666597094
+2-norm (grad),       max(grad):
+0.07433426534782854 ,  0.01829886665730545
+W =  94.24322183792216
+|umat| =  8.393840457932134
+homo-lumo gap =  1.2570256430030056
+ne-Nocc =  0.0
+-1.5957886828867816
+[1. 1. 1. 1. 1.]
+-55.68780222661667
+homo-lumo gap =  0.9816299509353696
+ne-Nocc =  0.0
+-1.8551505412146552
+[1. 1. 1. 1. 1.]
+-56.11045440826746
+2-norm (grad),       max(grad):
+0.08146326510419453 ,  0.04791989856212725
+W =  94.23067009696166
+|umat| =  8.409739739228403
+homo-lumo gap =  1.2627358726702056
+ne-Nocc =  0.0
+-1.6074236131610256
+[1. 1. 1. 1. 1.]
+-55.73808457617235
+homo-lumo gap =  0.9891174027608488
+ne-Nocc =  0.0
+-1.8568380686293449
+[1. 1. 1. 1. 1.]
+-56.16119833465628
+2-norm (grad),       max(grad):
+0.07717263462597519 ,  0.02878953427342336
+W =  94.22437660219268
+|umat| =  8.415933081111337
+homo-lumo gap =  1.262866575079162
+ne-Nocc =  0.0
+-1.6102187106527723
+[1. 1. 1. 1. 1.]
+-55.75128827471162
+homo-lumo gap =  0.9913647144431063
+ne-Nocc =  0.0
+-1.8578845628674356
+[1. 1. 1. 1. 1.]
+-56.179453859098984
+2-norm (grad),       max(grad):
+0.03474231180733924 ,  0.009897001611683887
+W =  94.22048399202976
+|umat| =  8.422497058545218
+homo-lumo gap =  1.2637401515618434
+ne-Nocc =  0.0
+-1.6132022735684672
+[1. 1. 1. 1. 1.]
+-55.766999449973206
+homo-lumo gap =  0.9919830345053804
+ne-Nocc =  0.0
+-1.8587971233707044
+[1. 1. 1. 1. 1.]
+-56.19819195107635
+2-norm (grad),       max(grad):
+0.028765937679840384 ,  0.007661146562384857
+W =  94.21862854125285
+|umat| =  8.42830524755226
+homo-lumo gap =  1.2672453908379835
+ne-Nocc =  0.0
+-1.6168017795427752
+[1. 1. 1. 1. 1.]
+-55.783709190566846
+homo-lumo gap =  0.9898724565430815
+ne-Nocc =  0.0
+-1.8597399513792123
+[1. 1. 1. 1. 1.]
+-56.21707953945648
+2-norm (grad),       max(grad):
+0.025534406262880987 ,  0.0105503007996703
+W =  94.21648410505347
+|umat| =  8.426072616068952
+homo-lumo gap =  1.2692124435500574
+ne-Nocc =  0.0
+-1.6174454788687247
+[1. 1. 1. 1. 1.]
+-55.78398827799384
+homo-lumo gap =  0.985962878690514
+ne-Nocc =  0.0
+-1.8603377501770602
+[1. 1. 1. 1. 1.]
+-56.21804844657305
+2-norm (grad),       max(grad):
+0.04970179539976373 ,  0.027511938855197014
+W =  94.2160301600351
+|umat| =  8.427101513456346
+homo-lumo gap =  1.2707774098676752
+ne-Nocc =  0.0
+-1.6179931185430716
+[1. 1. 1. 1. 1.]
+-55.78608879912871
+homo-lumo gap =  0.9846776215923981
+ne-Nocc =  0.0
+-1.8602501844791852
+[1. 1. 1. 1. 1.]
+-56.21988893266914
+2-norm (grad),       max(grad):
+0.009668065526100706 ,  0.0046624775729907034
+W =  94.21482231279654
+|umat| =  8.425349040314684
+homo-lumo gap =  1.2702264696946992
+ne-Nocc =  0.0
+-1.617319323173143
+[1. 1. 1. 1. 1.]
+-55.78261133539794
+homo-lumo gap =  0.9853339507817591
+ne-Nocc =  0.0
+-1.8600771123281648
+[1. 1. 1. 1. 1.]
+-56.21604109759698
+2-norm (grad),       max(grad):
+0.003790707793407332 ,  0.0012420042074897807
+W =  94.21474593076238
+|umat| =  8.424491663199309
+homo-lumo gap =  1.2701092763821142
+ne-Nocc =  0.0
+-1.6170691621742783
+[1. 1. 1. 1. 1.]
+-55.78117352162403
+homo-lumo gap =  0.9856510347643872
+ne-Nocc =  0.0
+-1.8600266402680845
+[1. 1. 1. 1. 1.]
+-56.214471934517704
+2-norm (grad),       max(grad):
+0.002781806649943088 ,  0.0007385095527464349
+W =  94.2147197285323
+|umat| =  8.423850123379404
+homo-lumo gap =  1.2701332376122128
+ne-Nocc =  0.0
+-1.6169728034384632
+[1. 1. 1. 1. 1.]
+-55.78047754157539
+homo-lumo gap =  0.986052768088327
+ne-Nocc =  0.0
+-1.8600312076571828
+[1. 1. 1. 1. 1.]
+-56.21380294381575
+2-norm (grad),       max(grad):
+0.0038017211766156484 ,  0.0015459744686651604
+W =  94.21470073250241
+|umat| =  8.423931315460761
+homo-lumo gap =  1.2701920579846535
+ne-Nocc =  0.0
+-1.617056478769766
+[1. 1. 1. 1. 1.]
+-55.780879814263635
+homo-lumo gap =  0.9862296402759266
+ne-Nocc =  0.0
+-1.8600583982095553
+[1. 1. 1. 1. 1.]
+-56.21429630120838
+2-norm (grad),       max(grad):
+0.002135930246646756 ,  0.000618984983396677
+W =  94.2146906465461
+|umat| =  8.424123753571752
+homo-lumo gap =  1.270205934809952
+ne-Nocc =  0.0
+-1.6171248454677423
+[1. 1. 1. 1. 1.]
+-55.78126374535415
+homo-lumo gap =  0.9861758202915379
+ne-Nocc =  0.0
+-1.860074400556731
+[1. 1. 1. 1. 1.]
+-56.214729866788126
+2-norm (grad),       max(grad):
+0.001377180001742487 ,  0.0005097803207280288
+W =  94.21468671097347
+|umat| =  8.424321385905172
+homo-lumo gap =  1.2702849808875618
+ne-Nocc =  0.0
+-1.6172112074455158
+[1. 1. 1. 1. 1.]
+-55.78173757455882
+homo-lumo gap =  0.9860846576143945
+ne-Nocc =  0.0
+-1.8600969868487962
+[1. 1. 1. 1. 1.]
+-56.21527767093226
+2-norm (grad),       max(grad):
+0.0010007355477259171 ,  0.0003837884970733624
+W =  94.21468174570629
+|umat| =  8.424196210488333
+homo-lumo gap =  1.2702260827007401
+ne-Nocc =  0.0
+-1.6171808331802935
+[1. 1. 1. 1. 1.]
+-55.78157100755193
+homo-lumo gap =  0.9860457256281664
+ne-Nocc =  0.0
+-1.8600928486174493
+[1. 1. 1. 1. 1.]
+-56.21510791938394
+2-norm (grad),       max(grad):
+0.0013851362540252695 ,  0.0008238653064598924
+W =  94.21467972883895
+|umat| =  8.424124689414985
+homo-lumo gap =  1.2703518517907986
+ne-Nocc =  0.0
+-1.6171615212517083
+[1. 1. 1. 1. 1.]
+-55.78145744291358
+homo-lumo gap =  0.9860622271294196
+ne-Nocc =  0.0
+-1.860090058560392
+[1. 1. 1. 1. 1.]
+-56.21498878038544
+2-norm (grad),       max(grad):
+0.0007009847966109049 ,  0.00031682683621958563
+W =  94.2146785033912
+|umat| =  8.42406687402963
+homo-lumo gap =  1.270312071580937
+ne-Nocc =  0.0
+-1.6171391307809821
+[1. 1. 1. 1. 1.]
+-55.78133378841628
+homo-lumo gap =  0.9860910487410232
+ne-Nocc =  0.0
+-1.8600845425861579
+[1. 1. 1. 1. 1.]
+-56.21484844012052
+2-norm (grad),       max(grad):
+0.0003744500626214935 ,  0.000139076422123653
+W =  94.21467809356785
+|umat| =  8.424033757723544
+homo-lumo gap =  1.27028810225454
+ne-Nocc =  0.0
+-1.6171252881970808
+[1. 1. 1. 1. 1.]
+-55.78125352193243
+homo-lumo gap =  0.9861321482848749
+ne-Nocc =  0.0
+-1.8600812898374504
+[1. 1. 1. 1. 1.]
+-56.21475653031229
+2-norm (grad),       max(grad):
+0.00030074986496895026 ,  0.00011404606954114509
+W =  94.21467779314621
+|umat| =  8.424034385447454
+homo-lumo gap =  1.2702566610412402
+ne-Nocc =  0.0
+-1.6171237601507558
+[1. 1. 1. 1. 1.]
+-55.78124238870443
+homo-lumo gap =  0.9861699522072291
+ne-Nocc =  0.0
+-1.8600811209821024
+[1. 1. 1. 1. 1.]
+-56.21474334650512
+2-norm (grad),       max(grad):
+0.0003463559070656168 ,  0.00014370311815359326
+W =  94.21467756512114
+|umat| =  8.424064989183913
+homo-lumo gap =  1.2702539984142722
+ne-Nocc =  0.0
+-1.617131933400837
+[1. 1. 1. 1. 1.]
+-55.7812861607035
+homo-lumo gap =  0.9861700124796527
+ne-Nocc =  0.0
+-1.8600830926207674
+[1. 1. 1. 1. 1.]
+-56.21479185775948
+2-norm (grad),       max(grad):
+0.00030724427151524857 ,  0.00014165076766581454
+W =  94.21467750374433
+|umat| =  8.42406711079121
+homo-lumo gap =  1.2702558352856603
+ne-Nocc =  0.0
+-1.617133255563649
+[1. 1. 1. 1. 1.]
+-55.78129403616979
+homo-lumo gap =  0.9861567893373683
+ne-Nocc =  0.0
+-1.8600834366692869
+[1. 1. 1. 1. 1.]
+-56.21480125453101
+2-norm (grad),       max(grad):
+8.063813615949755e-05 ,  1.9836666940714937e-05
+W =  94.21467745008042
+|umat| =  8.424070514932168
+homo-lumo gap =  1.2702564303667048
+ne-Nocc =  0.0
+-1.6171343352524374
+[1. 1. 1. 1. 1.]
+-55.78130021326128
+homo-lumo gap =  0.9861443896439702
+ne-Nocc =  0.0
+-1.86008370214573
+[1. 1. 1. 1. 1.]
+-56.21480836910912
+2-norm (grad),       max(grad):
+5.958033119417061e-05 ,  1.8247587032165838e-05
+W =  94.214677441735
+|umat| =  8.424074307999856
+homo-lumo gap =  1.2702553544051651
+ne-Nocc =  0.0
+-1.6171347788450052
+[1. 1. 1. 1. 1.]
+-55.78130276034239
+homo-lumo gap =  0.9861201501922998
+ne-Nocc =  0.0
+-1.8600837991308425
+[1. 1. 1. 1. 1.]
+-56.21481122094521
+2-norm (grad),       max(grad):
+5.2815180590198836e-05 ,  2.0382678138604718e-05
+W =  94.21467743095941
+|umat| =  8.42407301725433
+homo-lumo gap =  1.2702562133179973
+ne-Nocc =  0.0
+-1.6171341450046492
+[1. 1. 1. 1. 1.]
+-55.7812991588932
+homo-lumo gap =  0.9861070297258574
+ne-Nocc =  0.0
+-1.8600836618834937
+[1. 1. 1. 1. 1.]
+-56.21480719053513
+2-norm (grad),       max(grad):
+0.00010430538063431093 ,  5.2501745522878726e-05
+W =  94.2146774289633
+|umat| =  8.424072854262134
+homo-lumo gap =  1.2702554147454768
+ne-Nocc =  0.0
+-1.6171338640002852
+[1. 1. 1. 1. 1.]
+-55.781297534405866
+homo-lumo gap =  0.9861084739419179
+ne-Nocc =  0.0
+-1.860083582877392
+[1. 1. 1. 1. 1.]
+-56.21480525023408
+2-norm (grad),       max(grad):
+3.2364481884538786e-05 ,  1.109589140818699e-05
+W =  94.21467742369681
+|umat| =  8.42407197859025
+homo-lumo gap =  1.2702557293603278
+ne-Nocc =  0.0
+-1.6171336208095084
+[1. 1. 1. 1. 1.]
+-55.78129609665542
+homo-lumo gap =  0.9861114538808035
+ne-Nocc =  0.0
+-1.8600835249635126
+[1. 1. 1. 1. 1.]
+-56.214803584073415
+2-norm (grad),       max(grad):
+1.99200531805726e-05 ,  6.59924620131244e-06
+W =  94.21467742225714
+homo-lumo gap =  1.2702557293603278
+ne-Nocc =  0.0
+-1.6171336208095084
+[1. 1. 1. 1. 1.]
+-55.78129609665542
+homo-lumo gap =  0.9861114538808035
+ne-Nocc =  0.0
+-1.8600835249635126
+[1. 1. 1. 1. 1.]
+-56.214803584073415
+P_imp idem =  1.216311122535105e-14
+diffP_max_imp, diffP_max_bath 
+0.5601059107013642 0.6072316483628735
+ OEP iteration  2
+|umat| =  8.42407197859025
+homo-lumo gap =  0.8899803509421407
+ne-Nocc =  0.0
+-1.119737318994539
+[1. 1. 1. 1. 1.]
+-49.96724959043532
+homo-lumo gap =  0.46053298826218536
+ne-Nocc =  0.0
+-1.4088137330075097
+[1. 1. 1. 1. 1.]
+-50.2323304026279
+2-norm (grad),       max(grad):
+0.4607442000139723 ,  0.2519313560738166
+W =  82.41815773459153
+|umat| =  8.489782488368071
+homo-lumo gap =  1.1339376899669509
+ne-Nocc =  0.0
+-1.1825348043593846
+[1. 1. 1. 1. 1.]
+-50.473533120538264
+homo-lumo gap =  0.8234473076431351
+ne-Nocc =  0.0
+-1.5518216478997382
+[1. 1. 1. 1. 1.]
+-50.82208451842704
+2-norm (grad),       max(grad):
+1.341949240302531 ,  0.9445212509221868
+W =  83.21642993185301
+|umat| =  8.420222068704165
+homo-lumo gap =  0.9087418884160601
+ne-Nocc =  0.0
+-1.1171753987770983
+[1. 1. 1. 1. 1.]
+-49.94600506236218
+homo-lumo gap =  0.4700974939898238
+ne-Nocc =  0.0
+-1.4065537020711847
+[1. 1. 1. 1. 1.]
+-50.216395529727315
+2-norm (grad),       max(grad):
+0.26999967791267476 ,  0.130044616135711
+W =  82.3497728361358
+|umat| =  8.413353445407608
+homo-lumo gap =  0.9560686082197373
+ne-Nocc =  0.0
+-1.1171914072835634
+[1. 1. 1. 1. 1.]
+-49.9382512287307
+homo-lumo gap =  0.4984448359991007
+ne-Nocc =  0.0
+-1.4065851784312922
+[1. 1. 1. 1. 1.]
+-50.21177796112433
+2-norm (grad),       max(grad):
+0.16081567407241468 ,  0.10839658588135447
+W =  82.28929479475752
+|umat| =  8.407862582561867
+homo-lumo gap =  0.9963782204953803
+ne-Nocc =  0.0
+-1.1180225183598775
+[1. 1. 1. 1. 1.]
+-49.94652610044648
+homo-lumo gap =  0.5396379816202099
+ne-Nocc =  0.0
+-1.4116549032144907
+[1. 1. 1. 1. 1.]
+-50.22148943970362
+2-norm (grad),       max(grad):
+0.1538937288809092 ,  0.06318914148455404
+W =  82.27094695269471
+|umat| =  8.406287129379695
+homo-lumo gap =  1.0051005806517752
+ne-Nocc =  0.0
+-1.1185869490614475
+[1. 1. 1. 1. 1.]
+-49.942729041903206
+homo-lumo gap =  0.5534212862145986
+ne-Nocc =  0.0
+-1.4148569577603944
+[1. 1. 1. 1. 1.]
+-50.228792902138075
+2-norm (grad),       max(grad):
+0.06089543998773096 ,  0.019822785159922127
+W =  82.26478695466253
+|umat| =  8.406039842115534
+homo-lumo gap =  1.0015936685142344
+ne-Nocc =  0.0
+-1.1183687390382193
+[1. 1. 1. 1. 1.]
+-49.94042983622261
+homo-lumo gap =  0.5506580824708373
+ne-Nocc =  0.0
+-1.41423881385783
+[1. 1. 1. 1. 1.]
+-50.226656563012476
+2-norm (grad),       max(grad):
+0.029718566727391954 ,  0.009019467294967281
+W =  82.26365675748428
+|umat| =  8.4053170814696
+homo-lumo gap =  1.0024947641646693
+ne-Nocc =  0.0
+-1.1183483536153034
+[1. 1. 1. 1. 1.]
+-49.939519067376
+homo-lumo gap =  0.5532545256876595
+ne-Nocc =  0.0
+-1.4144658263172205
+[1. 1. 1. 1. 1.]
+-50.22681786186675
+2-norm (grad),       max(grad):
+0.016598237937273424 ,  0.0052120120636581745
+W =  82.26295057132208
+|umat| =  8.404285982015066
+homo-lumo gap =  1.0056940193396726
+ne-Nocc =  0.0
+-1.1184545644185788
+[1. 1. 1. 1. 1.]
+-49.93929041864993
+homo-lumo gap =  0.5582509514406917
+ne-Nocc =  0.0
+-1.4151670610379778
+[1. 1. 1. 1. 1.]
+-50.2283262590715
+2-norm (grad),       max(grad):
+0.012828465269884053 ,  0.003047597685213116
+W =  82.26248355055614
+|umat| =  8.40333634415219
+homo-lumo gap =  1.007348300101235
+ne-Nocc =  0.0
+-1.1185549743098757
+[1. 1. 1. 1. 1.]
+-49.939137033700575
+homo-lumo gap =  0.5600492179536156
+ne-Nocc =  0.0
+-1.4157707899960383
+[1. 1. 1. 1. 1.]
+-50.229642255787816
+2-norm (grad),       max(grad):
+0.008922278008788146 ,  0.0025696486549757164
+W =  82.26220923242255
+|umat| =  8.40256164389011
+homo-lumo gap =  1.0089335036807465
+ne-Nocc =  0.0
+-1.1186674594866841
+[1. 1. 1. 1. 1.]
+-49.939094238985696
+homo-lumo gap =  0.560314079171499
+ne-Nocc =  0.0
+-1.4161741312037848
+[1. 1. 1. 1. 1.]
+-50.230602341468455
+2-norm (grad),       max(grad):
+0.02268275755270288 ,  0.009382578312224247
+W =  82.26225013313392
+|umat| =  8.403031319681595
+homo-lumo gap =  1.0079278697544687
+ne-Nocc =  0.0
+-1.1185864065125997
+[1. 1. 1. 1. 1.]
+-49.93908161155632
+homo-lumo gap =  0.5601316126557749
+ne-Nocc =  0.0
+-1.415914011292686
+[1. 1. 1. 1. 1.]
+-50.22994983296025
+2-norm (grad),       max(grad):
+0.007923328504927945 ,  0.003361405751957079
+W =  82.2621381578196
+|umat| =  8.402727190514705
+homo-lumo gap =  1.0084740528415095
+ne-Nocc =  0.0
+-1.118643592376142
+[1. 1. 1. 1. 1.]
+-49.939124153633216
+homo-lumo gap =  0.5599094546246094
+ne-Nocc =  0.0
+-1.4161297495849283
+[1. 1. 1. 1. 1.]
+-50.23045744022588
+2-norm (grad),       max(grad):
+0.0034324378718151036 ,  0.0008588758416919992
+W =  82.26208054455412
+|umat| =  8.402698895056245
+homo-lumo gap =  1.0082258363369563
+ne-Nocc =  0.0
+-1.118646467418515
+[1. 1. 1. 1. 1.]
+-49.93911737048954
+homo-lumo gap =  0.5594380781565056
+ne-Nocc =  0.0
+-1.4161395531622234
+[1. 1. 1. 1. 1.]
+-50.23047950194463
+2-norm (grad),       max(grad):
+0.002973766632767599 ,  0.0010613754756874714
+W =  82.26206765686628
+|umat| =  8.402700540570518
+homo-lumo gap =  1.007807587680823
+ne-Nocc =  0.0
+-1.1186383722225912
+[1. 1. 1. 1. 1.]
+-49.93908606560478
+homo-lumo gap =  0.5588749594959997
+ne-Nocc =  0.0
+-1.416106043872972
+[1. 1. 1. 1. 1.]
+-50.230394975757896
+2-norm (grad),       max(grad):
+0.002009637685133753 ,  0.0006302985285159757
+W =  82.26205957612379
+|umat| =  8.40270963884007
+homo-lumo gap =  1.0076943697184224
+ne-Nocc =  0.0
+-1.1186367541814004
+[1. 1. 1. 1. 1.]
+-49.939077478425936
+homo-lumo gap =  0.5589284156568244
+ne-Nocc =  0.0
+-1.416101891057402
+[1. 1. 1. 1. 1.]
+-50.23038420040003
+2-norm (grad),       max(grad):
+0.0014455533272778082 ,  0.0003638457774203739
+W =  82.26205614387065
+|umat| =  8.402703346709497
+homo-lumo gap =  1.0075849519224913
+ne-Nocc =  0.0
+-1.1186394890479936
+[1. 1. 1. 1. 1.]
+-49.93907535051876
+homo-lumo gap =  0.5591138519373857
+ne-Nocc =  0.0
+-1.4161148041690752
+[1. 1. 1. 1. 1.]
+-50.23041671431895
+2-norm (grad),       max(grad):
+0.001274009380466802 ,  0.0004850248259194854
+W =  82.26205276776639
+|umat| =  8.40266383187853
+homo-lumo gap =  1.007534516704331
+ne-Nocc =  0.0
+-1.1186461443416629
+[1. 1. 1. 1. 1.]
+-49.939086804614554
+homo-lumo gap =  0.5592357499623131
+ne-Nocc =  0.0
+-1.4161406471959521
+[1. 1. 1. 1. 1.]
+-50.230485572514596
+2-norm (grad),       max(grad):
+0.001204778207721261 ,  0.0005891640583451756
+W =  82.26205005930642
+|umat| =  8.402655956728383
+homo-lumo gap =  1.0075961153523756
+ne-Nocc =  0.0
+-1.118651135590989
+[1. 1. 1. 1. 1.]
+-49.93910408188236
+homo-lumo gap =  0.5592065155387717
+ne-Nocc =  0.0
+-1.4161595302830077
+[1. 1. 1. 1. 1.]
+-50.23054368682024
+2-norm (grad),       max(grad):
+0.0023301824600158406 ,  0.001755321425686157
+W =  82.26205011236607
+|umat| =  8.402659550902953
+homo-lumo gap =  1.0075642963247002
+ne-Nocc =  0.0
+-1.1186484600267588
+[1. 1. 1. 1. 1.]
+-49.9390946760674
+homo-lumo gap =  0.5592214100918594
+ne-Nocc =  0.0
+-1.4161498253918798
+[1. 1. 1. 1. 1.]
+-50.230513197826056
+2-norm (grad),       max(grad):
+0.001010653875744774 ,  0.0006938058046113969
+W =  82.26204889768891
+|umat| =  8.402635770726725
+homo-lumo gap =  1.0075968615958286
+ne-Nocc =  0.0
+-1.1186503172868159
+[1. 1. 1. 1. 1.]
+-49.93910107194299
+homo-lumo gap =  0.5591846684424283
+ne-Nocc =  0.0
+-1.4161566400228338
+[1. 1. 1. 1. 1.]
+-50.23053312481026
+2-norm (grad),       max(grad):
+0.000489390573672822 ,  0.0001340237309141179
+W =  82.26204814455775
+|umat| =  8.402624149621397
+homo-lumo gap =  1.0076628238411736
+ne-Nocc =  0.0
+-1.1186514995446364
+[1. 1. 1. 1. 1.]
+-49.939104434538415
+homo-lumo gap =  0.5591375890240623
+ne-Nocc =  0.0
+-1.4161606783683591
+[1. 1. 1. 1. 1.]
+-50.230544302893456
+2-norm (grad),       max(grad):
+0.0003666267142552316 ,  0.00010560100978033039
+W =  82.26204787315046
+|umat| =  8.402626212990082
+homo-lumo gap =  1.0077087934437459
+ne-Nocc =  0.0
+-1.1186499800445429
+[1. 1. 1. 1. 1.]
+-49.939103809180814
+homo-lumo gap =  0.5590489486992121
+ne-Nocc =  0.0
+-1.4161554463412362
+[1. 1. 1. 1. 1.]
+-50.23053253098449
+2-norm (grad),       max(grad):
+0.0005557044134659781 ,  0.00021667187623735377
+W =  82.26204776030218
+|umat| =  8.402628576882375
+homo-lumo gap =  1.0077185142983562
+ne-Nocc =  0.0
+-1.1186502505106413
+[1. 1. 1. 1. 1.]
+-49.93910365104906
+homo-lumo gap =  0.5590590124898039
+ne-Nocc =  0.0
+-1.4161564716702784
+[1. 1. 1. 1. 1.]
+-50.23053480167495
+2-norm (grad),       max(grad):
+0.00016006519152423493 ,  4.20891806528214e-05
+W =  82.26204766013221
+|umat| =  8.40263178602081
+homo-lumo gap =  1.0077200045232795
+ne-Nocc =  0.0
+-1.1186501534667086
+[1. 1. 1. 1. 1.]
+-49.939103177608104
+homo-lumo gap =  0.5590620776544868
+ne-Nocc =  0.0
+-1.4161562389674245
+[1. 1. 1. 1. 1.]
+-50.2305341474019
+2-norm (grad),       max(grad):
+0.00013871291155338834 ,  3.730766770817077e-05
+W =  82.26204763597656
+|umat| =  8.402635575249633
+homo-lumo gap =  1.007724294260382
+ne-Nocc =  0.0
+-1.1186500700343567
+[1. 1. 1. 1. 1.]
+-49.93910292847219
+homo-lumo gap =  0.5590631483037916
+ne-Nocc =  0.0
+-1.4161560501236028
+[1. 1. 1. 1. 1.]
+-50.230533736439725
+2-norm (grad),       max(grad):
+0.00012736737937790537 ,  3.514041160287584e-05
+W =  82.26204761333634
+|umat| =  8.402642111710923
+homo-lumo gap =  1.0077281897441772
+ne-Nocc =  0.0
+-1.1186501216625806
+[1. 1. 1. 1. 1.]
+-49.939103123512325
+homo-lumo gap =  0.5590678790805662
+ne-Nocc =  0.0
+-1.4161563264312962
+[1. 1. 1. 1. 1.]
+-50.23053460644465
+2-norm (grad),       max(grad):
+0.0001229928380297723 ,  5.584391201906008e-05
+W =  82.26204758685229
+|umat| =  8.40265021518906
+homo-lumo gap =  1.0077243041301918
+ne-Nocc =  0.0
+-1.1186501249085679
+[1. 1. 1. 1. 1.]
+-49.93910309979132
+homo-lumo gap =  0.5590731222878489
+ne-Nocc =  0.0
+-1.4161563471850163
+[1. 1. 1. 1. 1.]
+-50.23053465125962
+2-norm (grad),       max(grad):
+0.0002347692473611972 ,  0.00010909770864978442
+W =  82.2620475926958
+|umat| =  8.40264489432236
+homo-lumo gap =  1.0077268539085402
+ne-Nocc =  0.0
+-1.1186501223936411
+[1. 1. 1. 1. 1.]
+-49.93910311160714
+homo-lumo gap =  0.5590696785865104
+ne-Nocc =  0.0
+-1.416156333345256
+[1. 1. 1. 1. 1.]
+-50.230534615708
+2-norm (grad),       max(grad):
+6.537612492694239e-05 ,  1.8634757010246868e-05
+W =  82.26204757896963
+|umat| =  8.402646750341178
+homo-lumo gap =  1.0077241985725762
+ne-Nocc =  0.0
+-1.118650206028252
+[1. 1. 1. 1. 1.]
+-49.93910338217192
+homo-lumo gap =  0.5590700533027204
+ne-Nocc =  0.0
+-1.4161566312138978
+[1. 1. 1. 1. 1.]
+-50.230535469108034
+2-norm (grad),       max(grad):
+4.4043894578264315e-05 ,  9.540662056074148e-06
+W =  82.26204757431586
+homo-lumo gap =  1.0077241985725762
+ne-Nocc =  0.0
+-1.118650206028252
+[1. 1. 1. 1. 1.]
+-49.93910338217192
+homo-lumo gap =  0.5590700533027204
+ne-Nocc =  0.0
+-1.4161566312138978
+[1. 1. 1. 1. 1.]
+-50.230535469108034
+P_imp idem =  8.51612089208423e-15
+diffP_max_imp, diffP_max_bath 
+0.010056643639966653 0.010056768802440122
+ OEP iteration  3
+|umat| =  8.402646750341178
+homo-lumo gap =  1.0064345869073912
+ne-Nocc =  0.0
+-1.118691833091813
+[1. 1. 1. 1. 1.]
+-49.93781595464357
+homo-lumo gap =  0.560886627414375
+ne-Nocc =  0.0
+-1.4163997194914577
+[1. 1. 1. 1. 1.]
+-50.23493047090412
+2-norm (grad),       max(grad):
+0.0006464337001204222 ,  0.00040457599919076724
+W =  82.26515514858359
+|umat| =  8.49711846492239
+homo-lumo gap =  0.9622758680079406
+ne-Nocc =  0.0
+-1.2245190001371475
+[1. 1. 1. 1. 1.]
+-50.7449270655233
+homo-lumo gap =  0.7050497743010018
+ne-Nocc =  0.0
+-1.4831843277609622
+[1. 1. 1. 1. 1.]
+-51.1060871839147
+2-norm (grad),       max(grad):
+1.6858930257216773 ,  1.0573766369719753
+W =  83.94308732221205
+|umat| =  8.402644594105116
+homo-lumo gap =  1.0064144080540693
+ne-Nocc =  0.0
+-1.118691825646252
+[1. 1. 1. 1. 1.]
+-49.93781592874282
+homo-lumo gap =  0.5608925423986714
+ne-Nocc =  0.0
+-1.4163997147714886
+[1. 1. 1. 1. 1.]
+-50.23493042616492
+2-norm (grad),       max(grad):
+0.0004801533105627018 ,  0.0003087841356182295
+W =  82.26515504755628
+|umat| =  8.402640052324442
+homo-lumo gap =  1.0063274606608672
+ne-Nocc =  0.0
+-1.1186918184004697
+[1. 1. 1. 1. 1.]
+-49.93781590118089
+homo-lumo gap =  0.5609251886019337
+ne-Nocc =  0.0
+-1.416399707070449
+[1. 1. 1. 1. 1.]
+-50.23493037524655
+2-norm (grad),       max(grad):
+0.00018690182960125619 ,  0.00011536722996237391
+W =  82.26515486087634
+|umat| =  8.402640643905492
+homo-lumo gap =  1.006294820914597
+ne-Nocc =  0.0
+-1.1186918206164054
+[1. 1. 1. 1. 1.]
+-49.93781590476601
+homo-lumo gap =  0.5609419056614849
+ne-Nocc =  0.0
+-1.4163997102623624
+[1. 1. 1. 1. 1.]
+-50.234930381194204
+2-norm (grad),       max(grad):
+8.542996445574847e-05 ,  4.720211967887432e-05
+W =  82.26515483114352
+|umat| =  8.402641280984934
+homo-lumo gap =  1.0062819088980306
+ne-Nocc =  0.0
+-1.1186918220619357
+[1. 1. 1. 1. 1.]
+-49.93781590723683
+homo-lumo gap =  0.560951191108092
+ne-Nocc =  0.0
+-1.4163997136821989
+[1. 1. 1. 1. 1.]
+-50.23493039378944
+2-norm (grad),       max(grad):
+5.3077632791779195e-05 ,  1.733102065358088e-05
+W =  82.26515482294879
+|umat| =  8.402641231585342
+homo-lumo gap =  1.0062778438248434
+ne-Nocc =  0.0
+-1.1186918229285245
+[1. 1. 1. 1. 1.]
+-49.93781590880749
+homo-lumo gap =  0.5609549371107456
+ne-Nocc =  0.0
+-1.4163997157472477
+[1. 1. 1. 1. 1.]
+-50.234930403043016
+2-norm (grad),       max(grad):
+6.527093446190307e-05 ,  2.546023537500144e-05
+W =  82.26515482096637
+|umat| =  8.402641157862622
+homo-lumo gap =  1.0062805671609902
+ne-Nocc =  0.0
+-1.1186918227781508
+[1. 1. 1. 1. 1.]
+-49.93781590755294
+homo-lumo gap =  0.5609537698123295
+ne-Nocc =  0.0
+-1.4163997156981523
+[1. 1. 1. 1. 1.]
+-50.23493040247937
+2-norm (grad),       max(grad):
+3.143143120118066e-05 ,  9.664983095752336e-06
+W =  82.26515481916347
+homo-lumo gap =  1.0062805671609902
+ne-Nocc =  0.0
+-1.1186918227781508
+[1. 1. 1. 1. 1.]
+-49.93781590755294
+homo-lumo gap =  0.5609537698123295
+ne-Nocc =  0.0
+-1.4163997156981523
+[1. 1. 1. 1. 1.]
+-50.23493040247937
+P_imp idem =  9.804561043266543e-15
+diffP_max_imp, diffP_max_bath 
+0.00022928028754151675 0.0002206512637705077
+ OEP iteration  4
+|umat| =  8.402641157862622
+homo-lumo gap =  1.0062570441236924
+ne-Nocc =  0.0
+-1.1186945006324627
+[1. 1. 1. 1. 1.]
+-49.93779944899752
+homo-lumo gap =  0.5610014890671977
+ne-Nocc =  0.0
+-1.4164080897548132
+[1. 1. 1. 1. 1.]
+-50.2350832311104
+2-norm (grad),       max(grad):
+3.6859603466609875e-05 ,  1.6653959983056533e-05
+W =  82.26529118923908
+|umat| =  8.497485664878084
+homo-lumo gap =  1.050594799320427
+ne-Nocc =  0.0
+-1.232953403782275
+[1. 1. 1. 1. 1.]
+-50.610390017376076
+homo-lumo gap =  0.6488734410699603
+ne-Nocc =  0.0
+-1.472662855624933
+[1. 1. 1. 1. 1.]
+-50.94911918929518
+2-norm (grad),       max(grad):
+1.5748351097850664 ,  0.8519877604602438
+W =  83.65190354212156
+|umat| =  8.402641010928678
+homo-lumo gap =  1.0062567404387082
+ne-Nocc =  0.0
+-1.118694500604922
+[1. 1. 1. 1. 1.]
+-49.937799448852054
+homo-lumo gap =  0.5610013097134259
+ne-Nocc =  0.0
+-1.4164080897413185
+[1. 1. 1. 1. 1.]
+-50.23508323094835
+2-norm (grad),       max(grad):
+2.7567370320513755e-05 ,  9.96586039338093e-06
+W =  82.2652911888427
+homo-lumo gap =  1.0062567404387082
+ne-Nocc =  0.0
+-1.118694500604922
+[1. 1. 1. 1. 1.]
+-49.937799448852054
+homo-lumo gap =  0.5610013097134259
+ne-Nocc =  0.0
+-1.4164080897413185
+[1. 1. 1. 1. 1.]
+-50.23508323094835
+P_imp idem =  1.0210187988966061e-14
+diffP_max_imp, diffP_max_bath 
+4.319329339058653e-06 6.7909325050137526e-06
+time of oep : 226.970  (cpu),  6.147  (wall) 
+sum (diag(umat)) = 
+1.015798556380787e-12
+in verify_scf
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpuBO_XN
+max_memory 8000 MB (current use 310 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ae9bd862d70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ae9bd862c80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 74210
+No. of dropped grids =  14024
+init E= -94.0540745354473
+HOMO: -1.1186953534565744 LUMO: -0.11243762217448043
+-1.1186953534565744
+[2. 2. 2. 2. 2.]
+cycle= 1 E= -94.0540745354481  delta_E= -7.53e-13  |g|= 7.55e-07  |ddm|= 1.52e-06
+converged SCF energy = -94.0540745354481
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpqf6Zdj
+max_memory 8000 MB (current use 357 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ae9bd862d70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ae9bd862c80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 74210
+No. of dropped grids =  14571
+init E= -94.3745230804434
+HOMO: -1.4164049588149126 LUMO: -0.8554070369864676
+-1.4164049588149126
+[2. 2. 2. 2. 2.]
+cycle= 1 E= -94.3745230804527  delta_E= -9.28e-12  |g|= 2.64e-06  |ddm|= 5.59e-06
+converged SCF energy = -94.3745230804527
+scf energies:
+-85.29615275120499 -85.22484956437403 -170.521002315579
+1.5215626194829881e-06
+5.59130541356469e-06
+|P_frag + P_env - P_ref| =  3.807489603360394e-05
+max element of (P_frag + P_env - P_ref) =  1.0074877966835455e-05
+check orthogonality
+9.130284059729413e-06 4.624032517504952e-06
+|P_imp-P_imp_0| 2.6634795148000037 0.5600851804810412
+|P_bath-P_bath_0| 2.599676294793358 0.6073202004082994
+tot grids = 74210
+No. of dropped grids =  14024
+tot grids = 74210
+No. of dropped grids =  14571
+tot grids = 68620
+No. of dropped grids =  9965
+  Vint_A
+             1            2            3            4            5            6 
+    1   -0.0947084   -0.0007482   -0.0000001   -0.0099562    0.0098486   -0.0270606 
+    2   -0.0007482   -0.0433304    0.0000002    0.0110338   -0.0014768    0.0320128 
+    3   -0.0000001    0.0000002   -0.0254407   -0.0000001    0.0000000   -0.0000003 
+    4   -0.0099562    0.0110338   -0.0000001   -0.0438146   -0.0048466   -0.0011945 
+    5    0.0098486   -0.0014768    0.0000000   -0.0048466   -0.0479408    0.0091937 
+    6   -0.0270606    0.0320128   -0.0000003   -0.0011945    0.0091937   -0.1213889 
+    7    0.0000000   -0.0000001   -0.0033595   -0.0000000   -0.0000000   -0.0000000 
+    8   -0.0158202    0.0224466   -0.0000002   -0.0071799    0.0011637   -0.0329442 
+    9   -0.0024298   -0.0018052    0.0000000    0.0006383   -0.0007527    0.0012098 
+   10    0.0099300    0.0018385   -0.0000000    0.0058821    0.0094546   -0.0048928 
+   11    0.0857047   -0.0822243    0.0000009    0.0263334   -0.0416177    0.2253313 
+   12    0.0046406    0.0115407   -0.0000002   -0.0001374   -0.0037090   -0.0394923 
+   13   -0.0000001   -0.0000000   -0.0077083   -0.0000000    0.0000000    0.0000000 
+   14   -0.0838258    0.0466567   -0.0000006   -0.0232598    0.0268212   -0.1525544 
+   15    0.0112169   -0.0028843    0.0000000   -0.0092947   -0.0056059    0.0170377 
+   16   -0.0341293    0.0224928   -0.0000003    0.0011685    0.0138521   -0.0512109 
+   17    0.0000004   -0.0000002   -0.0080453    0.0000000   -0.0000001    0.0000004 
+   18   -0.0331705    0.0190736   -0.0000002   -0.0103604    0.0025846   -0.0623807 
+   19    0.0847585   -0.0162458    0.0000002    0.0213462   -0.0080793    0.0715177 
+   20    0.1633507   -0.0932037    0.0000011    0.0289499   -0.0453100    0.2721270 
+             7            8            9           10           11           12 
+    1    0.0000000   -0.0158202   -0.0024298    0.0099300    0.0857047    0.0046406 
+    2   -0.0000001    0.0224466   -0.0018052    0.0018385   -0.0822243    0.0115407 
+    3   -0.0033595   -0.0000002    0.0000000   -0.0000000    0.0000009   -0.0000002 
+    4   -0.0000000   -0.0071799    0.0006383    0.0058821    0.0263334   -0.0001374 
+    5   -0.0000000    0.0011637   -0.0007527    0.0094546   -0.0416177   -0.0037090 
+    6   -0.0000000   -0.0329442    0.0012098   -0.0048928    0.2253313   -0.0394923 
+    7   -0.0447993    0.0000000    0.0000000    0.0000001   -0.0000001    0.0000000 
+    8    0.0000000   -0.0561104    0.0005607    0.0004241    0.1585621   -0.0149578 
+    9    0.0000000    0.0005607   -0.0575675    0.0008041    0.0004513   -0.0000082 
+   10    0.0000001    0.0004241    0.0008041   -0.0529398    0.0376842    0.0114140 
+   11   -0.0000001    0.1585621    0.0004513    0.0376842   -1.9908032   -0.9640849 
+   12    0.0000000   -0.0149578   -0.0000082    0.0114140   -0.9640849   -2.1181364 
+   13    0.0121208   -0.0000000   -0.0000000   -0.0000001    0.0000062   -0.0000012 
+   14    0.0000001   -0.1070672   -0.0000670   -0.0394633    1.2500954    0.5369035 
+   15    0.0000000    0.0225704   -0.0002254    0.0043559   -0.0007784    0.4140950 
+   16    0.0000000   -0.0345140    0.0000792   -0.0113754    0.6996596   -0.0125181 
+   17   -0.0227053    0.0000003    0.0000000    0.0000002   -0.0000050    0.0000016 
+   18   -0.0000000   -0.0527540   -0.0000672   -0.0168463    0.8671684    0.0651644 
+   19   -0.0000000    0.0536533    0.0001772    0.0381019   -0.8095906   -0.6158053 
+   20   -0.0000002    0.2149760    0.0001374    0.0740715   -3.1948699   -0.3346607 
+            13           14           15           16           17           18 
+    1   -0.0000001   -0.0838258    0.0112169   -0.0341293    0.0000004   -0.0331705 
+    2   -0.0000000    0.0466567   -0.0028843    0.0224928   -0.0000002    0.0190736 
+    3   -0.0077083   -0.0000006    0.0000000   -0.0000003   -0.0080453   -0.0000002 
+    4   -0.0000000   -0.0232598   -0.0092947    0.0011685    0.0000000   -0.0103604 
+    5    0.0000000    0.0268212   -0.0056059    0.0138521   -0.0000001    0.0025846 
+    6    0.0000000   -0.1525544    0.0170377   -0.0512109    0.0000004   -0.0623807 
+    7    0.0121208    0.0000001    0.0000000    0.0000000   -0.0227053   -0.0000000 
+    8   -0.0000000   -0.1070672    0.0225704   -0.0345140    0.0000003   -0.0527540 
+    9   -0.0000000   -0.0000670   -0.0002254    0.0000792    0.0000000   -0.0000672 
+   10   -0.0000001   -0.0394633    0.0043559   -0.0113754    0.0000002   -0.0168463 
+   11    0.0000062    1.2500954   -0.0007784    0.6996596   -0.0000050    0.8671684 
+   12   -0.0000012    0.5369035    0.4140950   -0.0125181    0.0000016    0.0651644 
+   13   -2.3416241   -0.0000021   -0.0000051   -0.0000013    1.2681203   -0.0000030 
+   14   -0.0000021   -1.0811353    0.0083080   -0.4756746    0.0000031   -0.4125020 
+   15   -0.0000051    0.0083080   -1.0532786    0.5262824    0.0000044    0.3612275 
+   16   -0.0000013   -0.4756746    0.5262824   -2.9375530    0.0000051   -0.8645421 
+   17    1.2681203    0.0000031    0.0000044    0.0000051   -1.4526690   -0.0000034 
+   18   -0.0000030   -0.4125020    0.3612275   -0.8645421   -0.0000034   -3.0496799 
+   19    0.0000052    0.7809434   -0.0055351   -0.0114570   -0.0000029    0.4653522 
+   20    0.0000188    1.9903696   -1.7575814    5.7088192   -0.0000100    6.3614344 
+            19           20 
+    1    0.0847585    0.1633507 
+    2   -0.0162458   -0.0932037 
+    3    0.0000002    0.0000011 
+    4    0.0213462    0.0289499 
+    5   -0.0080793   -0.0453100 
+    6    0.0715177    0.2721270 
+    7   -0.0000000   -0.0000002 
+    8    0.0536533    0.2149760 
+    9    0.0001772    0.0001374 
+   10    0.0381019    0.0740715 
+   11   -0.8095906   -3.1948699 
+   12   -0.6158053   -0.3346607 
+   13    0.0000052    0.0000188 
+   14    0.7809434    1.9903696 
+   15   -0.0055351   -1.7575814 
+   16   -0.0114570    5.7088192 
+   17   -0.0000029   -0.0000100 
+   18    0.4653522    6.3614344 
+   19   -1.2050277   -1.4128284 
+   20   -1.4128284  -47.2955515 
+  Vint_B
+             1            2            3            4            5            6 
+    1   -2.9866652   -0.9543181    0.0000073   -0.4336814    0.4551301    1.5152356 
+    2   -0.9543181   -2.2272000    0.0000094    1.1230096   -0.6321660    0.6012438 
+    3    0.0000073    0.0000094   -0.6909699   -0.0000054    0.0000064   -0.0000038 
+    4   -0.4336814    1.1230096   -0.0000054   -2.6429617    0.4854902   -0.1413835 
+    5    0.4551301   -0.6321660    0.0000064    0.4854902   -3.0297794   -1.0795492 
+    6    1.5152356    0.6012438   -0.0000038   -0.1413835   -1.0795492   -1.6334603 
+    7    0.0000019   -0.0000083   -0.9735668   -0.0000004   -0.0000012   -0.0000030 
+    8    0.4011145    0.4825114   -0.0000028    0.5296753    0.5083500    0.1806551 
+    9    4.2971345   -1.9406757    0.0000104    4.2279856   -5.3965661   -3.2783308 
+   10    0.6486552   -0.2565162    0.0000019    0.6925264    0.8656025    0.1612999 
+   11    0.4252688    0.3001377   -0.0000021    0.0074728    0.0066277   -0.2751983 
+   12   -0.1333608   -0.1104598    0.0000008    0.0065467   -0.0287359    0.0899369 
+   13    0.0000006    0.0000006    0.0073770   -0.0000001    0.0000001   -0.0000004 
+   14    0.1350311    0.1056349   -0.0000006    0.0013003   -0.0353362   -0.0369080 
+   15   -0.0519307   -0.0689582    0.0000005    0.0444656    0.0216387    0.0328728 
+   16   -0.0032837    0.0099370   -0.0000001    0.0007009    0.0210286    0.0049013 
+   17   -0.0000001   -0.0000001    0.0092951    0.0000003    0.0000000    0.0000002 
+   18   -0.0128138    0.0053747   -0.0000000   -0.0142981    0.0119376    0.0024733 
+   19   -0.2546547   -0.0068917    0.0000000   -0.0800110    0.0020293    0.0910886 
+   20   -0.0003583   -0.0000919    0.0000000   -0.0002533    0.0003024    0.0003948 
+             7            8            9           10           11           12 
+    1    0.0000019    0.4011145    4.2971345    0.6486552    0.4252688   -0.1333608 
+    2   -0.0000083    0.4825114   -1.9406757   -0.2565162    0.3001377   -0.1104598 
+    3   -0.9735668   -0.0000028    0.0000104    0.0000019   -0.0000021    0.0000008 
+    4   -0.0000004    0.5296753    4.2279856    0.6925264    0.0074728    0.0065467 
+    5   -0.0000012    0.5083500   -5.3965661    0.8656025    0.0066277   -0.0287359 
+    6   -0.0000030    0.1806551   -3.2783308    0.1612999   -0.2751983    0.0899369 
+    7   -2.1620242    0.0000029   -0.0000124    0.0000041   -0.0000001    0.0000000 
+    8    0.0000029   -0.9400847    0.0175245   -0.1223918   -0.1392440    0.0562054 
+    9   -0.0000124    0.0175245  -47.5836059   -0.8212524   -0.4663293    0.1044932 
+   10    0.0000041   -0.1223918   -0.8212524   -1.9917828   -0.0521966    0.0217889 
+   11   -0.0000001   -0.1392440   -0.4663293   -0.0521966   -0.0418125    0.0265074 
+   12    0.0000000    0.0562054    0.1044932    0.0217889    0.0265074    0.0433616 
+   13    0.0160432   -0.0000003   -0.0000004   -0.0000001   -0.0000001   -0.0000000 
+   14   -0.0000001   -0.0178318   -0.1408920    0.0284346   -0.0432027    0.0162980 
+   15    0.0000001    0.0185950    0.0186370   -0.0118087    0.0104910   -0.0062733 
+   16    0.0000000   -0.0100442    0.0329574   -0.0035874   -0.0035986   -0.0053099 
+   17    0.0597731   -0.0000001   -0.0000003   -0.0000003    0.0000000   -0.0000000 
+   18    0.0000000    0.0010102    0.0414219    0.0040133   -0.0008005   -0.0093324 
+   19   -0.0000001    0.0036478    0.4724413    0.1692807    0.0431643   -0.0198584 
+   20   -0.0000000    0.0001677    0.0010405    0.0000378   -0.0006710   -0.0013744 
+            13           14           15           16           17           18 
+    1    0.0000006    0.1350311   -0.0519307   -0.0032837   -0.0000001   -0.0128138 
+    2    0.0000006    0.1056349   -0.0689582    0.0099370   -0.0000001    0.0053747 
+    3    0.0073770   -0.0000006    0.0000005   -0.0000001    0.0092951   -0.0000000 
+    4   -0.0000001    0.0013003    0.0444656    0.0007009    0.0000003   -0.0142981 
+    5    0.0000001   -0.0353362    0.0216387    0.0210286    0.0000000    0.0119376 
+    6   -0.0000004   -0.0369080    0.0328728    0.0049013    0.0000002    0.0024733 
+    7    0.0160432   -0.0000001    0.0000001    0.0000000    0.0597731    0.0000000 
+    8   -0.0000003   -0.0178318    0.0185950   -0.0100442   -0.0000001    0.0010102 
+    9   -0.0000004   -0.1408920    0.0186370    0.0329574   -0.0000003    0.0414219 
+   10   -0.0000001    0.0284346   -0.0118087   -0.0035874   -0.0000003    0.0040133 
+   11   -0.0000001   -0.0432027    0.0104910   -0.0035986    0.0000000   -0.0008005 
+   12   -0.0000000    0.0162980   -0.0062733   -0.0053099   -0.0000000   -0.0093324 
+   13    0.0420191   -0.0000001    0.0000000    0.0000000   -0.0025944    0.0000001 
+   14   -0.0000001    0.0042028    0.0013351   -0.0025185    0.0000000   -0.0007535 
+   15    0.0000000    0.0013351    0.0416204    0.0034640    0.0000000   -0.0045704 
+   16    0.0000000   -0.0025185    0.0034640    0.0394429   -0.0000000    0.0011066 
+   17   -0.0025944    0.0000000    0.0000000   -0.0000000    0.0459181    0.0000000 
+   18    0.0000001   -0.0007535   -0.0045704    0.0011066    0.0000000    0.0431507 
+   19    0.0000001   -0.0084325   -0.0113725    0.0011641    0.0000000    0.0010030 
+   20    0.0000000    0.0003967    0.0003503   -0.0007255   -0.0000000   -0.0005534 
+            19           20 
+    1   -0.2546547   -0.0003583 
+    2   -0.0068917   -0.0000919 
+    3    0.0000000    0.0000000 
+    4   -0.0800110   -0.0002533 
+    5    0.0020293    0.0003024 
+    6    0.0910886    0.0003948 
+    7   -0.0000001   -0.0000000 
+    8    0.0036478    0.0001677 
+    9    0.4724413    0.0010405 
+   10    0.1692807    0.0000378 
+   11    0.0431643   -0.0006710 
+   12   -0.0198584   -0.0013744 
+   13    0.0000001    0.0000000 
+   14   -0.0084325    0.0003967 
+   15   -0.0113725    0.0003503 
+   16    0.0011641   -0.0007255 
+   17    0.0000000   -0.0000000 
+   18    0.0010030   -0.0005534 
+   19   -0.0396763   -0.0005365 
+   20   -0.0005365    0.0546076 
+|diffP_ao| =  5.758348843304005e-05 max(diffP_ao) =  1.1468297797360928e-05
+Performing ECW energy calculation
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rks_pyscf'> flags ********
+method = rks_pyscf-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpZGk0Ps
+max_memory 8000 MB (current use 319 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2ae9bd862d70>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2ae9bd862c80>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 74210
+No. of dropped grids =  14024
+init E= -94.0540578630306
+HOMO: -1.1186949687835797 LUMO: 0.298772256049437
+-1.1186949687835797
+[2. 2. 2. 2. 2.]
+cycle= 1 E= -94.0540745328312  delta_E= -1.67e-05  |g|= 1.05e-06  |ddm|= 2.75e-05
+HOMO: -1.118694690586899 LUMO: 0.29877236323137585
+-1.118694690586899
+[2. 2. 2. 2. 2.]
+cycle= 2 E= -94.0540745328311  delta_E= 2.84e-14  |g|= 9.74e-08  |ddm|= 2.78e-07
+HOMO: -1.1186946511778117 LUMO: 0.2987723787260453
+-1.1186946511778117
+[2. 2. 2. 2. 2.]
+Extra cycle  E= -94.0540745328313  delta_E= -1.71e-13  |g|= 3.07e-08  |ddm|= 5.5e-08
+converged SCF energy = -94.0540745328313
+|diffP| =  3.0445192504613725e-05
+embeded imp scf (electron) energy =  -94.0540745328313
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks.rhf_pyscf'> flags ********
+method = rhf_pyscf-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/tmpA_jIrP
+max_memory 8000 MB (current use 357 MB)
+Set gradient conv threshold to 3.16228e-05
+init E= -93.7362350627806
+HOMO: -1.4073033199113414 LUMO: 0.46731071516741834
+-1.4073033199113414
+[2. 2. 2. 2. 2.]
+cycle= 1 E= -93.7373384781231  delta_E= -0.0011  |g|= 0.00901  |ddm|= 0.0346
+HOMO: -1.407977230986146 LUMO: 0.466982345916484
+-1.407977230986146
+[2. 2. 2. 2. 2.]
+cycle= 2 E= -93.7373528765729  delta_E= -1.44e-05  |g|= 0.00119  |ddm|= 0.00433
+HOMO: -1.407739516759185 LUMO: 0.46698726905964744
+-1.407739516759185
+[2. 2. 2. 2. 2.]
+cycle= 3 E= -93.7373531650862  delta_E= -2.89e-07  |g|= 6.26e-05  |ddm|= 0.000694
+HOMO: -1.407763544012448 LUMO: 0.4669792100579356
+-1.407763544012448
+[2. 2. 2. 2. 2.]
+cycle= 4 E= -93.7373531659623  delta_E= -8.76e-10  |g|= 8.29e-06  |ddm|= 3.79e-05
+HOMO: -1.4077590281243428 LUMO: 0.46697990334378664
+-1.4077590281243428
+[2. 2. 2. 2. 2.]
+Extra cycle  E= -93.737353165975  delta_E= -1.27e-11  |g|= 1.46e-06  |ddm|= 3.83e-06
+converged SCF energy = -93.737353165975
+exc =  0.0
+ This problem is unconstrained.
+ This problem is unconstrained.
+ This problem is unconstrained.
+ This problem is unconstrained.
+RUNNING THE L-BFGS-B CODE
+
+           * * *
+
+Machine precision = 2.220D-16
+ N =          210     M =           10
+
+At X0         0 variables are exactly at the bounds
+
+At iterate    0    f=  1.06007D+02    |proj g|=  7.44853D-01
+
+At iterate    1    f=  1.03203D+02    |proj g|=  4.79867D-01
+
+At iterate    2    f=  1.00694D+02    |proj g|=  2.69328D-01
+
+At iterate    3    f=  9.80353D+01    |proj g|=  2.81254D-01
+
+At iterate    4    f=  9.62854D+01    |proj g|=  5.36581D-01
+
+At iterate    5    f=  9.52669D+01    |proj g|=  3.38868D-01
+
+At iterate    6    f=  9.46878D+01    |proj g|=  1.55828D-01
+
+At iterate    7    f=  9.44475D+01    |proj g|=  6.75164D-02
+
+At iterate    8    f=  9.43210D+01    |proj g|=  3.42490D-02
+
+At iterate    9    f=  9.42857D+01    |proj g|=  6.20428D-02
+
+At iterate   10    f=  9.42599D+01    |proj g|=  2.28736D-02
+
+At iterate   11    f=  9.42432D+01    |proj g|=  1.82989D-02
+
+At iterate   12    f=  9.42307D+01    |proj g|=  4.79199D-02
+
+At iterate   13    f=  9.42244D+01    |proj g|=  2.87895D-02
+
+At iterate   14    f=  9.42205D+01    |proj g|=  9.89700D-03
+
+At iterate   15    f=  9.42186D+01    |proj g|=  7.66115D-03
+
+At iterate   16    f=  9.42165D+01    |proj g|=  1.05503D-02
+
+At iterate   17    f=  9.42160D+01    |proj g|=  2.75119D-02
+
+At iterate   18    f=  9.42148D+01    |proj g|=  4.66248D-03
+
+At iterate   19    f=  9.42147D+01    |proj g|=  1.24200D-03
+
+At iterate   20    f=  9.42147D+01    |proj g|=  7.38510D-04
+
+At iterate   21    f=  9.42147D+01    |proj g|=  1.54597D-03
+
+At iterate   22    f=  9.42147D+01    |proj g|=  6.18985D-04
+
+At iterate   23    f=  9.42147D+01    |proj g|=  5.09780D-04
+
+At iterate   24    f=  9.42147D+01    |proj g|=  3.83788D-04
+
+At iterate   25    f=  9.42147D+01    |proj g|=  8.23865D-04
+
+At iterate   26    f=  9.42147D+01    |proj g|=  3.16827D-04
+
+At iterate   27    f=  9.42147D+01    |proj g|=  1.39076D-04
+
+At iterate   28    f=  9.42147D+01    |proj g|=  1.14046D-04
+
+At iterate   29    f=  9.42147D+01    |proj g|=  1.43703D-04
+
+At iterate   30    f=  9.42147D+01    |proj g|=  1.41651D-04
+
+At iterate   31    f=  9.42147D+01    |proj g|=  1.98367D-05
+
+At iterate   32    f=  9.42147D+01    |proj g|=  1.82476D-05
+
+At iterate   33    f=  9.42147D+01    |proj g|=  2.03827D-05
+
+At iterate   34    f=  9.42147D+01    |proj g|=  5.25017D-05
+
+At iterate   35    f=  9.42147D+01    |proj g|=  1.10959D-05
+
+At iterate   36    f=  9.42147D+01    |proj g|=  6.59925D-06
+
+           * * *
+
+Tit   = total number of iterations
+Tnf   = total number of function evaluations
+Tnint = total number of segments explored during Cauchy searches
+Skip  = number of BFGS updates skipped
+Nact  = number of active bounds at final generalized Cauchy point
+Projg = norm of the final projected gradient
+F     = final function value
+
+           * * *
+
+   N    Tit     Tnf  Tnint  Skip  Nact     Projg        F
+  210     36     37      1     0     0   6.599D-06   9.421D+01
+  F =   94.214677422257139     
+
+CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL            
+
+ Cauchy                time 0.000E+00 seconds.
+ Subspace minimization time 0.000E+00 seconds.
+ Line search           time 0.000E+00 seconds.
+
+ Total User time 0.000E+00 seconds.
+
+RUNNING THE L-BFGS-B CODE
+
+           * * *
+
+Machine precision = 2.220D-16
+ N =          210     M =           10
+
+At X0         0 variables are exactly at the bounds
+
+At iterate    0    f=  8.24182D+01    |proj g|=  2.51931D-01
+
+At iterate    1    f=  8.23498D+01    |proj g|=  1.30045D-01
+
+At iterate    2    f=  8.22893D+01    |proj g|=  1.08397D-01
+
+At iterate    3    f=  8.22709D+01    |proj g|=  6.31891D-02
+
+At iterate    4    f=  8.22648D+01    |proj g|=  1.98228D-02
+
+At iterate    5    f=  8.22637D+01    |proj g|=  9.01947D-03
+
+At iterate    6    f=  8.22630D+01    |proj g|=  5.21201D-03
+
+At iterate    7    f=  8.22625D+01    |proj g|=  3.04760D-03
+
+At iterate    8    f=  8.22622D+01    |proj g|=  2.56965D-03
+
+At iterate    9    f=  8.22621D+01    |proj g|=  3.36141D-03
+
+At iterate   10    f=  8.22621D+01    |proj g|=  8.58876D-04
+
+At iterate   11    f=  8.22621D+01    |proj g|=  1.06138D-03
+
+At iterate   12    f=  8.22621D+01    |proj g|=  6.30299D-04
+
+At iterate   13    f=  8.22621D+01    |proj g|=  3.63846D-04
+
+At iterate   14    f=  8.22621D+01    |proj g|=  4.85025D-04
+
+At iterate   15    f=  8.22621D+01    |proj g|=  5.89164D-04
+
+At iterate   16    f=  8.22620D+01    |proj g|=  6.93806D-04
+
+At iterate   17    f=  8.22620D+01    |proj g|=  1.34024D-04
+
+At iterate   18    f=  8.22620D+01    |proj g|=  1.05601D-04
+
+At iterate   19    f=  8.22620D+01    |proj g|=  2.16672D-04
+
+At iterate   20    f=  8.22620D+01    |proj g|=  4.20892D-05
+
+At iterate   21    f=  8.22620D+01    |proj g|=  3.73077D-05
+
+At iterate   22    f=  8.22620D+01    |proj g|=  3.51404D-05
+
+At iterate   23    f=  8.22620D+01    |proj g|=  5.58439D-05
+
+At iterate   24    f=  8.22620D+01    |proj g|=  1.86348D-05
+
+At iterate   25    f=  8.22620D+01    |proj g|=  9.54066D-06
+
+           * * *
+
+Tit   = total number of iterations
+Tnf   = total number of function evaluations
+Tnint = total number of segments explored during Cauchy searches
+Skip  = number of BFGS updates skipped
+Nact  = number of active bounds at final generalized Cauchy point
+Projg = norm of the final projected gradient
+F     = final function value
+
+           * * *
+
+   N    Tit     Tnf  Tnint  Skip  Nact     Projg        F
+  210     25     30      1     0     0   9.541D-06   8.226D+01
+  F =   82.262047574315858     
+
+CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL            
+
+ Cauchy                time 0.000E+00 seconds.
+ Subspace minimization time 0.000E+00 seconds.
+ Line search           time 0.000E+00 seconds.
+
+ Total User time 0.000E+00 seconds.
+
+RUNNING THE L-BFGS-B CODE
+
+           * * *
+
+Machine precision = 2.220D-16
+ N =          210     M =           10
+
+At X0         0 variables are exactly at the bounds
+
+At iterate    0    f=  8.22652D+01    |proj g|=  4.04576D-04
+
+At iterate    1    f=  8.22652D+01    |proj g|=  3.08784D-04
+
+At iterate    2    f=  8.22652D+01    |proj g|=  1.15367D-04
+
+At iterate    3    f=  8.22652D+01    |proj g|=  4.72021D-05
+
+At iterate    4    f=  8.22652D+01    |proj g|=  1.73310D-05
+
+At iterate    5    f=  8.22652D+01    |proj g|=  2.54602D-05
+
+At iterate    6    f=  8.22652D+01    |proj g|=  9.66498D-06
+
+           * * *
+
+Tit   = total number of iterations
+Tnf   = total number of function evaluations
+Tnint = total number of segments explored during Cauchy searches
+Skip  = number of BFGS updates skipped
+Nact  = number of active bounds at final generalized Cauchy point
+Projg = norm of the final projected gradient
+F     = final function value
+
+           * * *
+
+   N    Tit     Tnf  Tnint  Skip  Nact     Projg        F
+  210      6      8      1     0     0   9.665D-06   8.227D+01
+  F =   82.265154819163470     
+
+CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL            
+
+ Cauchy                time 0.000E+00 seconds.
+ Subspace minimization time 0.000E+00 seconds.
+ Line search           time 0.000E+00 seconds.
+
+ Total User time 0.000E+00 seconds.
+
+RUNNING THE L-BFGS-B CODE
+
+           * * *
+
+Machine precision = 2.220D-16
+ N =          210     M =           10
+
+At X0         0 variables are exactly at the bounds
+
+At iterate    0    f=  8.22653D+01    |proj g|=  1.66540D-05
+
+At iterate    1    f=  8.22653D+01    |proj g|=  9.96586D-06
+
+           * * *
+
+Tit   = total number of iterations
+Tnf   = total number of function evaluations
+Tnint = total number of segments explored during Cauchy searches
+Skip  = number of BFGS updates skipped
+Nact  = number of active bounds at final generalized Cauchy point
+Projg = norm of the final projected gradient
+F     = final function value
+
+           * * *
+
+   N    Tit     Tnf  Tnint  Skip  Nact     Projg        F
+  210      1      3      1     0     0   9.966D-06   8.227D+01
+  F =   82.265291188842696     
+
+CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL            
+
+ Cauchy                time 0.000E+00 seconds.
+ Subspace minimization time 0.000E+00 seconds.
+ Line search           time 0.000E+00 seconds.
+
+ Total User time 0.000E+00 seconds.
+

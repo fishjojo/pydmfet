@@ -1,0 +1,2817 @@
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/research/hydrogen.py ****
+from pydmfet import locints, sdmfet, oep, tools, dfet_ao
+from pydmfet.dfet_ao import dfet
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy,time
+from read_umat import read_umat
+from pydmfet.tools.sym import h_lattice_sym_tab
+
+DMguess  = None
+
+bondlengths = np.arange(0.74, 0.79, 0.1)
+energies = []
+
+bas = 'sto-6g'
+#bas = 'cc-pvdz'
+
+temp = 0.005
+
+for bondlength in bondlengths:
+
+    nat = 20
+    mol = gto.Mole()
+    mol.atom = []
+    r = 0.5 * bondlength / np.sin(np.pi/nat)
+    for i in range(nat):
+        theta = i * (2*np.pi/nat)
+        mol.atom.append(('H', (r*np.cos(theta), r*np.sin(theta), 0)))
+
+    mol.basis = bas
+    mol.build(max_memory = 4000,verbose=5)
+
+    #mf = scf.UKS(mol)
+    mf = rks_ao(mol,smear_sigma = temp)
+    #mf = dfet_ao.scf.EmbedSCF(mol, 0.0, smear_sigma = temp)
+    mf.xc = 'pbe,pbe'
+    mf.max_cycle = 50
+    mf.scf(dm0=DMguess)
+
+    #P=mf.make_rdm1()
+    #P = P[0]+P[1]
+    #tools.MatPrint(P,"P_ref_ao")
+    #cubegen.density(mol, "dens_tot.cube", P, nx=100, ny=100, nz=100)
+
+#    with open( 'h20_mo.molden', 'w' ) as thefile:
+#        molden.header(mf.mol, thefile)
+#        molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff)
+#    exit()
+
+
+    atm_ind = np.zeros([nat//2,2],dtype=int)
+    for i in range(nat//2):
+        atm_ind[i,0] = i
+        atm_ind[i,1] = nat-i-1
+
+    sym_tab = h_lattice_sym_tab(atm_ind)
+    print("sym_tab")
+    print (sym_tab)
+
+
+
+    if ( False ):   
+#        ENUCL = mf.mol.energy_nuc()
+#        OEI   = np.dot(np.dot(mf.mo_coeff.T, mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')), mf.mo_coeff)
+#        TEI   = ao2mo.outcore.full_iofree(mol, mf.mo_coeff, compact=False).reshape(mol.nao_nr(), mol.nao_nr(), mol.nao_nr(), mol.nao_nr())
+#        import chemps2
+#        Energy, OneDM = chemps2.solve( ENUCL, OEI, OEI, TEI, mol.nao_nr(), mol.nelectron, mol.nao_nr(), 0.0, False )
+#        print "bl =", bondlength," and energy =", Energy
+
+        mycc = cc.CCSD(mf).run()
+        et = mycc.ccsd_t()
+        e_hf = mf.e_tot
+        e_ccsd = e_hf + mycc.e_corr + et
+
+        print (e_ccsd)    #-4.96124910741
+        
+    else:
+        #myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+        #myInts.loc_molden( 'hydrogen-loc.molden' )
+        #myInts.TI_OK = True # Only s functions
+
+
+        nbas =  mol.nao_nr()
+        natoms = mol.natm
+
+        impAtom = np.zeros([natoms], dtype=int)
+        for i in range(10):
+            impAtom[i] = 1
+
+        ghost_frag = 1-impAtom
+        ghost_env = 1-ghost_frag
+
+        mol_frag = gto.Mole()
+        mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+        mol_frag.basis = bas
+        mol_frag.build(max_memory = 16000,verbose = 4)
+
+        mol_env = gto.Mole()
+        mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+        mol_env.basis =  bas
+        mol_env.build(max_memory = 16000,verbose = 4)
+
+        '''
+        aoslice = mol.aoslice_by_atom()
+        impurities = np.zeros([nbas], dtype = int)
+        for i in range(natoms):
+            if(impAtom[i] == 1):
+                impurities[aoslice[i,2]:aoslice[i,3]] = 1
+        '''
+
+        Ne_frag = 10
+        Ne_env = 10
+        
+        boundary_atoms = None
+        boundary_atoms2 =None
+
+        umat = None
+        #umat = read_umat(20,"hydrogen.u")
+        umat = np.load("umat.npy")
+
+        P_frag=None
+        P_env=None
+        params = oep.OEPparams(algorithm = 'split', opt_method = 'trust-ncg', diffP_tol=1e-4, outer_maxit = 1)
+        params.options['ftol'] = 1e-9
+        params.options['gtol'] = 1e-4
+        params.options['maxiter'] = 30
+        params.options['svd_thresh'] = 1e-4
+
+
+        '''
+        theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
+                         dim_imp = nbas, dim_bath=nbas, dim_big =None, smear_sigma = temp, oep_params=params,ecw_method='hf', mf_method =mf.xc)
+        '''
+
+        theDMFET = dfet.DFET(mf, mol_frag, mol_env,Ne_frag,Ne_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat = umat,\
+                     oep_params=params, smear_sigma=temp, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+        #theDMFET.sym_tab = sym_tab
+
+        umat = theDMFET.embedding_potential()
+        #energy = theDMFET.correction_energy()
+        exit()
+
+        #write subspace orbitals
+        transfo = np.dot( myInts.ao2loc, theDMFET.loc2sub )
+        filename =  'hydrogen-sub.molden'
+        with open( filename, 'w' ) as thefile:
+            molden.header( myInts.mol, thefile )
+            molden.orbital_coeff( myInts.mol, thefile, transfo )
+
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.27.2.el7.x86_64', version='#1 SMP Tue Jul 30 11:12:20 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Sat Aug 17 00:02:01 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 5
+[INPUT] max_memory = 4000 
+[INPUT] num. atoms = 20
+[INPUT] num. electrons = 20
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 H      2.365207691955   0.000000000000   0.000000000000 AA    4.469594765509   0.000000000000   0.000000000000 Bohr
+[INPUT]  2 H      2.249446187825   0.730889372040   0.000000000000 AA    4.250837226936   1.381180740512   0.000000000000 Bohr
+[INPUT]  3 H      1.913493218018   1.390234199940   0.000000000000 AA    3.615978123266   2.627161886890   0.000000000000 Bohr
+[INPUT]  4 H      1.390234199940   1.913493218018   0.000000000000 AA    2.627161886890   3.615978123266   0.000000000000 Bohr
+[INPUT]  5 H      0.730889372040   2.249446187825   0.000000000000 AA    1.381180740512   4.250837226936   0.000000000000 Bohr
+[INPUT]  6 H      0.000000000000   2.365207691955   0.000000000000 AA    0.000000000000   4.469594765509   0.000000000000 Bohr
+[INPUT]  7 H     -0.730889372040   2.249446187825   0.000000000000 AA   -1.381180740512   4.250837226936   0.000000000000 Bohr
+[INPUT]  8 H     -1.390234199940   1.913493218018   0.000000000000 AA   -2.627161886890   3.615978123266   0.000000000000 Bohr
+[INPUT]  9 H     -1.913493218018   1.390234199940   0.000000000000 AA   -3.615978123266   2.627161886890   0.000000000000 Bohr
+[INPUT] 10 H     -2.249446187825   0.730889372040   0.000000000000 AA   -4.250837226936   1.381180740512   0.000000000000 Bohr
+[INPUT] 11 H     -2.365207691955   0.000000000000   0.000000000000 AA   -4.469594765509   0.000000000000   0.000000000000 Bohr
+[INPUT] 12 H     -2.249446187825  -0.730889372040   0.000000000000 AA   -4.250837226936  -1.381180740512   0.000000000000 Bohr
+[INPUT] 13 H     -1.913493218018  -1.390234199940   0.000000000000 AA   -3.615978123266  -2.627161886890   0.000000000000 Bohr
+[INPUT] 14 H     -1.390234199940  -1.913493218018   0.000000000000 AA   -2.627161886890  -3.615978123266   0.000000000000 Bohr
+[INPUT] 15 H     -0.730889372040  -2.249446187825   0.000000000000 AA   -1.381180740512  -4.250837226936   0.000000000000 Bohr
+[INPUT] 16 H     -0.000000000000  -2.365207691955   0.000000000000 AA   -0.000000000000  -4.469594765509   0.000000000000 Bohr
+[INPUT] 17 H      0.730889372040  -2.249446187825   0.000000000000 AA    1.381180740512  -4.250837226936   0.000000000000 Bohr
+[INPUT] 18 H      1.390234199940  -1.913493218018   0.000000000000 AA    2.627161886890  -3.615978123266   0.000000000000 Bohr
+[INPUT] 19 H      1.913493218018  -1.390234199940   0.000000000000 AA    3.615978123266  -2.627161886890   0.000000000000 Bohr
+[INPUT] 20 H      2.249446187825  -0.730889372040   0.000000000000 AA    4.250837226936  -1.381180740512   0.000000000000 Bohr
+[INPUT] ---------------- BASIS SET ---------------- 
+[INPUT] l, kappa, [nprim/nctr], expnt,             c_1 c_2 ...
+[INPUT] H
+[INPUT] 0    0    [6    /1   ]  35.52322122       0.00916359628
+                                6.513143725       0.04936149294
+                                1.822142904       0.1685383049
+                                0.625955266       0.3705627997
+                                0.243076747       0.4164915298
+                                0.100112428       0.1303340841
+
+nuclear repulsion = 44.4538000651565
+number of shells = 20
+number of NR pGTOs = 120
+number of NR cGTOs = 20
+basis = sto-6g
+ecp = {}
+CPU time:         4.46
+rks_ao.ne_frozen =  0
+
+
+******** <class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> flags ********
+method = rks_ao-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = False
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/research/tmpmy2fh_h8
+max_memory 4000 MB (current use 71 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2add7571c400>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2add7571c378>
+Set gradient conv threshold to 3.16228e-05
+cond(S) = 38.611319055866936
+atom H rad-grids = 50, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  86  86  86  86
+ 266 266 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 266
+ 266 266 266 266 266 266 266 266 266 266 266 266 266 266]
+tot grids = 200480
+Drop grids 37612
+    CPU time for setting up grids      2.33 sec, wall time      0.08 sec
+nelec by numeric integration = 19.832829160240227
+    CPU time for vxc      7.57 sec, wall time      0.20 sec
+Ecoul = 48.1521685879174  Exc = -7.659377029278843
+init E= -10.8898337942983
+    CPU time for initialize scf     12.96 sec, wall time      0.37 sec
+HOMO:  -0.011515973514274712 LUMO:  -0.011515973514271175
+Fermi energy:      -0.0115159735
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 1. 1.]
+nelec by numeric integration = 19.99995701846902
+    CPU time for vxc      6.82 sec, wall time      0.17 sec
+Ecoul = 49.17753894930791  Exc = -7.875947557975643
+entropy correction =  -0.013862943611198907
+cycle= 1 E= -10.5261206153833  delta_E= 0.364  |g|= 6.06e-08  |ddm|= 3.59
+    CPU time for cycle= 1      7.06 sec, wall time      0.18 sec
+HOMO:  0.04005414828947056 LUMO:  0.04005414828947357
+Fermi energy:       0.0400541483
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 1. 1.]
+nelec by numeric integration = 19.99995701846898
+    CPU time for vxc      7.00 sec, wall time      0.18 sec
+Ecoul = 49.17753894930784  Exc = -7.875947557975629
+entropy correction =  -0.013862943611198907
+cycle= 2 E= -10.5261206153833  delta_E= 2.84e-14  |g|= 8.58e-09  |ddm|= 1.36e-07
+    CPU time for cycle= 2      7.24 sec, wall time      0.18 sec
+HOMO:  0.04005414828946563 LUMO:  0.04005414828946963
+Fermi energy:       0.0400541483
+[2. 2. 2. 2. 2. 2. 2. 2. 2. 1. 1.]
+nelec by numeric integration = 19.999957018468976
+    CPU time for vxc      6.88 sec, wall time      0.17 sec
+Ecoul = 49.177538949307824  Exc = -7.8759475579756275
+entropy correction =  -0.013862943611198907
+Extra cycle  E= -10.5261206153833  delta_E= -1.42e-14  |g|= 2.86e-09  |ddm|= 1.85e-08
+    CPU time for scf_cycle     34.35 sec, wall time      0.91 sec
+    CPU time for SCF     34.35 sec, wall time      0.91 sec
+converged SCF energy = -10.5261206153833
+sym_tab
+[[ 0  6  8 10 12 14 16 18 20 22 23 21 19 17 15 13 11  9  7  5]
+ [ 6  1 25 27 29 31 33 35 37 20 21 38 36 34 32 30 28 26 24  7]
+ [ 8 25  2 40 42 44 46 48 35 18 19 36 49 47 45 43 41 39 26  9]
+ [10 27 40  3 51 53 55 46 33 16 17 34 47 56 54 52 50 41 28 11]
+ [12 29 42 51  4 58 53 44 31 14 15 32 45 54 59 57 52 43 30 13]
+ [14 31 44 53 58  4 51 42 29 12 13 30 43 52 57 59 54 45 32 15]
+ [16 33 46 55 53 51  3 40 27 10 11 28 41 50 52 54 56 47 34 17]
+ [18 35 48 46 44 42 40  2 25  8  9 26 39 41 43 45 47 49 36 19]
+ [20 37 35 33 31 29 27 25  1  6  7 24 26 28 30 32 34 36 38 21]
+ [22 20 18 16 14 12 10  8  6  0  5  7  9 11 13 15 17 19 21 23]
+ [23 21 19 17 15 13 11  9  7  5  0  6  8 10 12 14 16 18 20 22]
+ [21 38 36 34 32 30 28 26 24  7  6  1 25 27 29 31 33 35 37 20]
+ [19 36 49 47 45 43 41 39 26  9  8 25  2 40 42 44 46 48 35 18]
+ [17 34 47 56 54 52 50 41 28 11 10 27 40  3 51 53 55 46 33 16]
+ [15 32 45 54 59 57 52 43 30 13 12 29 42 51  4 58 53 44 31 14]
+ [13 30 43 52 57 59 54 45 32 15 14 31 44 53 58  4 51 42 29 12]
+ [11 28 41 50 52 54 56 47 34 17 16 33 46 55 53 51  3 40 27 10]
+ [ 9 26 39 41 43 45 47 49 36 19 18 35 48 46 44 42 40  2 25  8]
+ [ 7 24 26 28 30 32 34 36 38 21 20 37 35 33 31 29 27 25  1  6]
+ [ 5  7  9 11 13 15 17 19 21 23 22 20 18 16 14 12 10  8  6  0]]
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/research/hydrogen.py ****
+from pydmfet import locints, sdmfet, oep, tools, dfet_ao
+from pydmfet.dfet_ao import dfet
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy,time
+from read_umat import read_umat
+from pydmfet.tools.sym import h_lattice_sym_tab
+
+DMguess  = None
+
+bondlengths = np.arange(0.74, 0.79, 0.1)
+energies = []
+
+bas = 'sto-6g'
+#bas = 'cc-pvdz'
+
+temp = 0.005
+
+for bondlength in bondlengths:
+
+    nat = 20
+    mol = gto.Mole()
+    mol.atom = []
+    r = 0.5 * bondlength / np.sin(np.pi/nat)
+    for i in range(nat):
+        theta = i * (2*np.pi/nat)
+        mol.atom.append(('H', (r*np.cos(theta), r*np.sin(theta), 0)))
+
+    mol.basis = bas
+    mol.build(max_memory = 4000,verbose=5)
+
+    #mf = scf.UKS(mol)
+    mf = rks_ao(mol,smear_sigma = temp)
+    #mf = dfet_ao.scf.EmbedSCF(mol, 0.0, smear_sigma = temp)
+    mf.xc = 'pbe,pbe'
+    mf.max_cycle = 50
+    mf.scf(dm0=DMguess)
+
+    #P=mf.make_rdm1()
+    #P = P[0]+P[1]
+    #tools.MatPrint(P,"P_ref_ao")
+    #cubegen.density(mol, "dens_tot.cube", P, nx=100, ny=100, nz=100)
+
+#    with open( 'h20_mo.molden', 'w' ) as thefile:
+#        molden.header(mf.mol, thefile)
+#        molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff)
+#    exit()
+
+
+    atm_ind = np.zeros([nat//2,2],dtype=int)
+    for i in range(nat//2):
+        atm_ind[i,0] = i
+        atm_ind[i,1] = nat-i-1
+
+    sym_tab = h_lattice_sym_tab(atm_ind)
+    print("sym_tab")
+    print (sym_tab)
+
+
+
+    if ( False ):   
+#        ENUCL = mf.mol.energy_nuc()
+#        OEI   = np.dot(np.dot(mf.mo_coeff.T, mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')), mf.mo_coeff)
+#        TEI   = ao2mo.outcore.full_iofree(mol, mf.mo_coeff, compact=False).reshape(mol.nao_nr(), mol.nao_nr(), mol.nao_nr(), mol.nao_nr())
+#        import chemps2
+#        Energy, OneDM = chemps2.solve( ENUCL, OEI, OEI, TEI, mol.nao_nr(), mol.nelectron, mol.nao_nr(), 0.0, False )
+#        print "bl =", bondlength," and energy =", Energy
+
+        mycc = cc.CCSD(mf).run()
+        et = mycc.ccsd_t()
+        e_hf = mf.e_tot
+        e_ccsd = e_hf + mycc.e_corr + et
+
+        print (e_ccsd)    #-4.96124910741
+        
+    else:
+        #myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+        #myInts.loc_molden( 'hydrogen-loc.molden' )
+        #myInts.TI_OK = True # Only s functions
+
+
+        nbas =  mol.nao_nr()
+        natoms = mol.natm
+
+        impAtom = np.zeros([natoms], dtype=int)
+        for i in range(10):
+            impAtom[i] = 1
+
+        ghost_frag = 1-impAtom
+        ghost_env = 1-ghost_frag
+
+        mol_frag = gto.Mole()
+        mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+        mol_frag.basis = bas
+        mol_frag.build(max_memory = 16000,verbose = 4)
+
+        mol_env = gto.Mole()
+        mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+        mol_env.basis =  bas
+        mol_env.build(max_memory = 16000,verbose = 4)
+
+        '''
+        aoslice = mol.aoslice_by_atom()
+        impurities = np.zeros([nbas], dtype = int)
+        for i in range(natoms):
+            if(impAtom[i] == 1):
+                impurities[aoslice[i,2]:aoslice[i,3]] = 1
+        '''
+
+        Ne_frag = 10
+        Ne_env = 10
+        
+        boundary_atoms = None
+        boundary_atoms2 =None
+
+        umat = None
+        #umat = read_umat(20,"hydrogen.u")
+        umat = np.load("umat.npy")
+
+        P_frag=None
+        P_env=None
+        params = oep.OEPparams(algorithm = 'split', opt_method = 'trust-ncg', diffP_tol=1e-4, outer_maxit = 1)
+        params.options['ftol'] = 1e-9
+        params.options['gtol'] = 1e-4
+        params.options['maxiter'] = 30
+        params.options['svd_thresh'] = 1e-4
+
+
+        '''
+        theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
+                         dim_imp = nbas, dim_bath=nbas, dim_big =None, smear_sigma = temp, oep_params=params,ecw_method='hf', mf_method =mf.xc)
+        '''
+
+        theDMFET = dfet.DFET(mf, mol_frag, mol_env,Ne_frag,Ne_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat = umat,\
+                     oep_params=params, smear_sigma=temp, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+        #theDMFET.sym_tab = sym_tab
+
+        umat = theDMFET.embedding_potential()
+        #energy = theDMFET.correction_energy()
+        exit()
+
+        #write subspace orbitals
+        transfo = np.dot( myInts.ao2loc, theDMFET.loc2sub )
+        filename =  'hydrogen-sub.molden'
+        with open( filename, 'w' ) as thefile:
+            molden.header( myInts.mol, thefile )
+            molden.orbital_coeff( myInts.mol, thefile, transfo )
+
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.27.2.el7.x86_64', version='#1 SMP Tue Jul 30 11:12:20 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Sat Aug 17 00:02:02 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 20
+[INPUT] num. electrons = 10
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 H      2.365207691955   0.000000000000   0.000000000000 AA    4.469594765509   0.000000000000   0.000000000000 Bohr
+[INPUT]  2 H      2.249446187825   0.730889372040   0.000000000000 AA    4.250837226936   1.381180740512   0.000000000000 Bohr
+[INPUT]  3 H      1.913493218018   1.390234199940   0.000000000000 AA    3.615978123266   2.627161886890   0.000000000000 Bohr
+[INPUT]  4 H      1.390234199940   1.913493218018   0.000000000000 AA    2.627161886890   3.615978123266   0.000000000000 Bohr
+[INPUT]  5 H      0.730889372040   2.249446187825   0.000000000000 AA    1.381180740512   4.250837226936   0.000000000000 Bohr
+[INPUT]  6 H      0.000000000000   2.365207691955   0.000000000000 AA    0.000000000000   4.469594765509   0.000000000000 Bohr
+[INPUT]  7 H     -0.730889372040   2.249446187825   0.000000000000 AA   -1.381180740512   4.250837226936   0.000000000000 Bohr
+[INPUT]  8 H     -1.390234199940   1.913493218018   0.000000000000 AA   -2.627161886890   3.615978123266   0.000000000000 Bohr
+[INPUT]  9 H     -1.913493218018   1.390234199940   0.000000000000 AA   -3.615978123266   2.627161886890   0.000000000000 Bohr
+[INPUT] 10 H     -2.249446187825   0.730889372040   0.000000000000 AA   -4.250837226936   1.381180740512   0.000000000000 Bohr
+[INPUT] 11 GHOST-H  -2.365207691955   0.000000000000   0.000000000000 AA   -4.469594765509   0.000000000000   0.000000000000 Bohr
+[INPUT] 12 GHOST-H  -2.249446187825  -0.730889372040   0.000000000000 AA   -4.250837226936  -1.381180740512   0.000000000000 Bohr
+[INPUT] 13 GHOST-H  -1.913493218018  -1.390234199940   0.000000000000 AA   -3.615978123266  -2.627161886890   0.000000000000 Bohr
+[INPUT] 14 GHOST-H  -1.390234199940  -1.913493218018   0.000000000000 AA   -2.627161886890  -3.615978123266   0.000000000000 Bohr
+[INPUT] 15 GHOST-H  -0.730889372040  -2.249446187825   0.000000000000 AA   -1.381180740512  -4.250837226936   0.000000000000 Bohr
+[INPUT] 16 GHOST-H  -0.000000000000  -2.365207691955   0.000000000000 AA   -0.000000000000  -4.469594765509   0.000000000000 Bohr
+[INPUT] 17 GHOST-H   0.730889372040  -2.249446187825   0.000000000000 AA    1.381180740512  -4.250837226936   0.000000000000 Bohr
+[INPUT] 18 GHOST-H   1.390234199940  -1.913493218018   0.000000000000 AA    2.627161886890  -3.615978123266   0.000000000000 Bohr
+[INPUT] 19 GHOST-H   1.913493218018  -1.390234199940   0.000000000000 AA    3.615978123266  -2.627161886890   0.000000000000 Bohr
+[INPUT] 20 GHOST-H   2.249446187825  -0.730889372040   0.000000000000 AA    4.250837226936  -1.381180740512   0.000000000000 Bohr
+
+nuclear repulsion = 14.2680681433447
+number of shells = 20
+number of NR pGTOs = 120
+number of NR cGTOs = 20
+basis = sto-6g
+ecp = {}
+CPU time:        39.52
+#INFO: **** input file is /tigress/xingz/pydmfet/examples/research/hydrogen.py ****
+from pydmfet import locints, sdmfet, oep, tools, dfet_ao
+from pydmfet.dfet_ao import dfet
+from pydmfet.qcwrap.pyscf_rks_ao import rks_ao
+from pyscf import gto, scf,dft, ao2mo,cc
+import numpy as np
+from pyscf.tools import molden, cubegen
+import copy,time
+from read_umat import read_umat
+from pydmfet.tools.sym import h_lattice_sym_tab
+
+DMguess  = None
+
+bondlengths = np.arange(0.74, 0.79, 0.1)
+energies = []
+
+bas = 'sto-6g'
+#bas = 'cc-pvdz'
+
+temp = 0.005
+
+for bondlength in bondlengths:
+
+    nat = 20
+    mol = gto.Mole()
+    mol.atom = []
+    r = 0.5 * bondlength / np.sin(np.pi/nat)
+    for i in range(nat):
+        theta = i * (2*np.pi/nat)
+        mol.atom.append(('H', (r*np.cos(theta), r*np.sin(theta), 0)))
+
+    mol.basis = bas
+    mol.build(max_memory = 4000,verbose=5)
+
+    #mf = scf.UKS(mol)
+    mf = rks_ao(mol,smear_sigma = temp)
+    #mf = dfet_ao.scf.EmbedSCF(mol, 0.0, smear_sigma = temp)
+    mf.xc = 'pbe,pbe'
+    mf.max_cycle = 50
+    mf.scf(dm0=DMguess)
+
+    #P=mf.make_rdm1()
+    #P = P[0]+P[1]
+    #tools.MatPrint(P,"P_ref_ao")
+    #cubegen.density(mol, "dens_tot.cube", P, nx=100, ny=100, nz=100)
+
+#    with open( 'h20_mo.molden', 'w' ) as thefile:
+#        molden.header(mf.mol, thefile)
+#        molden.orbital_coeff(mf.mol, thefile, mf.mo_coeff)
+#    exit()
+
+
+    atm_ind = np.zeros([nat//2,2],dtype=int)
+    for i in range(nat//2):
+        atm_ind[i,0] = i
+        atm_ind[i,1] = nat-i-1
+
+    sym_tab = h_lattice_sym_tab(atm_ind)
+    print("sym_tab")
+    print (sym_tab)
+
+
+
+    if ( False ):   
+#        ENUCL = mf.mol.energy_nuc()
+#        OEI   = np.dot(np.dot(mf.mo_coeff.T, mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')), mf.mo_coeff)
+#        TEI   = ao2mo.outcore.full_iofree(mol, mf.mo_coeff, compact=False).reshape(mol.nao_nr(), mol.nao_nr(), mol.nao_nr(), mol.nao_nr())
+#        import chemps2
+#        Energy, OneDM = chemps2.solve( ENUCL, OEI, OEI, TEI, mol.nao_nr(), mol.nelectron, mol.nao_nr(), 0.0, False )
+#        print "bl =", bondlength," and energy =", Energy
+
+        mycc = cc.CCSD(mf).run()
+        et = mycc.ccsd_t()
+        e_hf = mf.e_tot
+        e_ccsd = e_hf + mycc.e_corr + et
+
+        print (e_ccsd)    #-4.96124910741
+        
+    else:
+        #myInts = locints.LocalIntegrals( mf, range( mol.nao_nr() ), 'meta_lowdin' )
+        #myInts.loc_molden( 'hydrogen-loc.molden' )
+        #myInts.TI_OK = True # Only s functions
+
+
+        nbas =  mol.nao_nr()
+        natoms = mol.natm
+
+        impAtom = np.zeros([natoms], dtype=int)
+        for i in range(10):
+            impAtom[i] = 1
+
+        ghost_frag = 1-impAtom
+        ghost_env = 1-ghost_frag
+
+        mol_frag = gto.Mole()
+        mol_frag.atom = tools.add_ghost(mol.atom, ghost_frag)
+        mol_frag.basis = bas
+        mol_frag.build(max_memory = 16000,verbose = 4)
+
+        mol_env = gto.Mole()
+        mol_env.atom = tools.add_ghost(mol.atom, ghost_env)
+        mol_env.basis =  bas
+        mol_env.build(max_memory = 16000,verbose = 4)
+
+        '''
+        aoslice = mol.aoslice_by_atom()
+        impurities = np.zeros([nbas], dtype = int)
+        for i in range(natoms):
+            if(impAtom[i] == 1):
+                impurities[aoslice[i,2]:aoslice[i,3]] = 1
+        '''
+
+        Ne_frag = 10
+        Ne_env = 10
+        
+        boundary_atoms = None
+        boundary_atoms2 =None
+
+        umat = None
+        #umat = read_umat(20,"hydrogen.u")
+        umat = np.load("umat.npy")
+
+        P_frag=None
+        P_env=None
+        params = oep.OEPparams(algorithm = 'split', opt_method = 'trust-ncg', diffP_tol=1e-4, outer_maxit = 1)
+        params.options['ftol'] = 1e-9
+        params.options['gtol'] = 1e-4
+        params.options['maxiter'] = 30
+        params.options['svd_thresh'] = 1e-4
+
+
+        '''
+        theDMFET = sdmfet.DMFET( mf, mol_frag, mol_env,myInts,impurities, impAtom, Ne_frag, boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,\
+                         umat = umat, P_frag_ao = P_frag, P_env_ao = P_env, \
+                         dim_imp = nbas, dim_bath=nbas, dim_big =None, smear_sigma = temp, oep_params=params,ecw_method='hf', mf_method =mf.xc)
+        '''
+
+        theDMFET = dfet.DFET(mf, mol_frag, mol_env,Ne_frag,Ne_env,\
+                     boundary_atoms=boundary_atoms, boundary_atoms2=boundary_atoms2,umat = umat,\
+                     oep_params=params, smear_sigma=temp, ecw_method = 'hf',mf_method = mf.xc, plot_dens=True)
+
+        #theDMFET.sym_tab = sym_tab
+
+        umat = theDMFET.embedding_potential()
+        #energy = theDMFET.correction_energy()
+        exit()
+
+        #write subspace orbitals
+        transfo = np.dot( myInts.ao2loc, theDMFET.loc2sub )
+        filename =  'hydrogen-sub.molden'
+        with open( filename, 'w' ) as thefile:
+            molden.header( myInts.mol, thefile )
+            molden.orbital_coeff( myInts.mol, thefile, transfo )
+
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='tigercpu.princeton.edu', release='3.10.0-957.27.2.el7.x86_64', version='#1 SMP Tue Jul 30 11:12:20 EDT 2019', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) 
+[GCC 7.2.0]
+numpy 1.16.4  scipy 1.4.0.dev0+0f78e0f
+Date: Sat Aug 17 00:02:02 2019
+PySCF version 1.5
+PySCF path  /home/xingz/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 20
+[INPUT] num. electrons = 10
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 GHOST-H   2.365207691955   0.000000000000   0.000000000000 AA    4.469594765509   0.000000000000   0.000000000000 Bohr
+[INPUT]  2 GHOST-H   2.249446187825   0.730889372040   0.000000000000 AA    4.250837226936   1.381180740512   0.000000000000 Bohr
+[INPUT]  3 GHOST-H   1.913493218018   1.390234199940   0.000000000000 AA    3.615978123266   2.627161886890   0.000000000000 Bohr
+[INPUT]  4 GHOST-H   1.390234199940   1.913493218018   0.000000000000 AA    2.627161886890   3.615978123266   0.000000000000 Bohr
+[INPUT]  5 GHOST-H   0.730889372040   2.249446187825   0.000000000000 AA    1.381180740512   4.250837226936   0.000000000000 Bohr
+[INPUT]  6 GHOST-H   0.000000000000   2.365207691955   0.000000000000 AA    0.000000000000   4.469594765509   0.000000000000 Bohr
+[INPUT]  7 GHOST-H  -0.730889372040   2.249446187825   0.000000000000 AA   -1.381180740512   4.250837226936   0.000000000000 Bohr
+[INPUT]  8 GHOST-H  -1.390234199940   1.913493218018   0.000000000000 AA   -2.627161886890   3.615978123266   0.000000000000 Bohr
+[INPUT]  9 GHOST-H  -1.913493218018   1.390234199940   0.000000000000 AA   -3.615978123266   2.627161886890   0.000000000000 Bohr
+[INPUT] 10 GHOST-H  -2.249446187825   0.730889372040   0.000000000000 AA   -4.250837226936   1.381180740512   0.000000000000 Bohr
+[INPUT] 11 H     -2.365207691955   0.000000000000   0.000000000000 AA   -4.469594765509   0.000000000000   0.000000000000 Bohr
+[INPUT] 12 H     -2.249446187825  -0.730889372040   0.000000000000 AA   -4.250837226936  -1.381180740512   0.000000000000 Bohr
+[INPUT] 13 H     -1.913493218018  -1.390234199940   0.000000000000 AA   -3.615978123266  -2.627161886890   0.000000000000 Bohr
+[INPUT] 14 H     -1.390234199940  -1.913493218018   0.000000000000 AA   -2.627161886890  -3.615978123266   0.000000000000 Bohr
+[INPUT] 15 H     -0.730889372040  -2.249446187825   0.000000000000 AA   -1.381180740512  -4.250837226936   0.000000000000 Bohr
+[INPUT] 16 H     -0.000000000000  -2.365207691955   0.000000000000 AA   -0.000000000000  -4.469594765509   0.000000000000 Bohr
+[INPUT] 17 H      0.730889372040  -2.249446187825   0.000000000000 AA    1.381180740512  -4.250837226936   0.000000000000 Bohr
+[INPUT] 18 H      1.390234199940  -1.913493218018   0.000000000000 AA    2.627161886890  -3.615978123266   0.000000000000 Bohr
+[INPUT] 19 H      1.913493218018  -1.390234199940   0.000000000000 AA    3.615978123266  -2.627161886890   0.000000000000 Bohr
+[INPUT] 20 H      2.249446187825  -0.730889372040   0.000000000000 AA    4.250837226936  -1.381180740512   0.000000000000 Bohr
+
+nuclear repulsion = 14.2680681433447
+number of shells = 20
+number of NR pGTOs = 120
+number of NR cGTOs = 20
+basis = sto-6g
+ecp = {}
+CPU time:        39.85
+
+
+******** <class 'pydmfet.dfet_ao.scf.EmbedSCF'> flags ********
+method = EmbedSCF-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = False
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/research/tmp5clnnd8i
+max_memory 16000 MB (current use 176 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2add7571c400>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2add7571c378>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= -4.85232923459324
+HOMO: -0.3832017547378838 LUMO: -0.3643496422728187
+mo_energy:
+[-0.649  -0.6187 -0.5173 -0.3929 -0.3832 -0.3643  0.0879  0.3777  0.406
+  0.6416]
+e_fermi =  -0.37334416258177766
+[2.    2.    2.    1.96  1.756 0.284]
+entropy correction =  -0.008769845495762445
+cycle= 1 E= -6.07059217146949  delta_E= -1.22  |g|= 0.254  |ddm|= 2.55
+HOMO: -0.3554782163551233 LUMO: -0.29258843237598775
+mo_energy:
+[-0.746 -0.701 -0.583 -0.424 -0.355 -0.293  0.12   0.345  0.401  0.608]
+e_fermi =  -0.324033321741756
+[2.    2.    2.    2.    1.996 0.004]
+entropy correction =  -0.00027019567152979025
+cycle= 2 E= -5.90483748384133  delta_E= 0.166  |g|= 0.617  |ddm|= 2.92
+HOMO: -0.3624687892752362 LUMO: -0.3254851384599993
+mo_energy:
+[-0.693 -0.657 -0.546 -0.399 -0.362 -0.325  0.109  0.336  0.386  0.599]
+e_fermi =  -0.3439752821733373
+[2.    2.    2.    2.    1.952 0.048]
+entropy correction =  -0.0022786184237427033
+cycle= 3 E= -5.95095254859089  delta_E= -0.0461  |g|= 0.469  |ddm|= 1.49
+HOMO: -0.3659078843612159 LUMO: -0.34313676769777063
+mo_energy:
+[-0.655 -0.619 -0.517 -0.384 -0.366 -0.343  0.103  0.329  0.374  0.591]
+e_fermi =  -0.3544457090917197
+[2.    2.    2.    1.995 1.816 0.189]
+entropy correction =  -0.006370206609739335
+cycle= 4 E= -5.90433361048732  delta_E= 0.0466  |g|= 0.47  |ddm|= 2.46
+HOMO: -0.36188346017050105 LUMO: -0.34277832126213037
+mo_energy:
+[-0.646 -0.61  -0.511 -0.388 -0.362 -0.343  0.101  0.328  0.372  0.59 ]
+e_fermi =  -0.3523140592015729
+[2.    2.    2.    1.998 1.743 0.259]
+entropy correction =  -0.00774859550468922
+cycle= 5 E= -5.90559487818637  delta_E= -0.00126  |g|= 0.478  |ddm|= 2.89
+HOMO: -0.3638964580942623 LUMO: -0.35464617123298453
+mo_energy:
+[-0.641 -0.611 -0.508 -0.377 -0.364 -0.355  0.101  0.327  0.371  0.589]
+e_fermi =  -0.35894831751744766
+[2.    2.    2.    1.947 1.458 0.594]
+entropy correction =  -0.013142583445538585
+cycle= 6 E= -6.10444563881462  delta_E= -0.199  |g|= 0.145  |ddm|= 2.17
+HOMO: -0.3678809201886294 LUMO: -0.35015244663814
+mo_energy:
+[-0.657 -0.621 -0.518 -0.385 -0.368 -0.35   0.099  0.327  0.372  0.588]
+e_fermi =  -0.3588992628557895
+[2.    2.    2.    1.988 1.715 0.296]
+entropy correction =  -0.008643641362959299
+cycle= 7 E= -5.92618289656255  delta_E= 0.178  |g|= 0.449  |ddm|= 2.02
+HOMO: -0.36868597016324467 LUMO: -0.35309425133423283
+mo_energy:
+[-0.657 -0.622 -0.518 -0.383 -0.369 -0.353  0.099  0.327  0.372  0.588]
+e_fermi =  -0.36069656491763863
+[2.    2.    2.    1.978 1.663 0.359]
+entropy correction =  -0.009846839605544087
+cycle= 8 E= -5.96571542556085  delta_E= -0.0395  |g|= 0.401  |ddm|= 0.205
+HOMO: -0.3683613550606612 LUMO: -0.3589387016823361
+mo_energy:
+[-0.656 -0.622 -0.518 -0.377 -0.368 -0.359  0.099  0.327  0.371  0.588]
+e_fermi =  -0.3629645983372891
+[2.    2.    2.    1.889 1.493 0.618]
+entropy correction =  -0.01398325394642613
+cycle= 9 E= -6.09481850712428  delta_E= -0.129  |g|= 0.17  |ddm|= 1.72
+HOMO: -0.3699341277479346 LUMO: -0.36143543792461963
+mo_energy:
+[-0.652 -0.62  -0.515 -0.377 -0.37  -0.361  0.097  0.326  0.37   0.588]
+e_fermi =  -0.36474440624394083
+[2.    2.    2.    1.842 1.477 0.681]
+entropy correction =  -0.014917313363900533
+cycle= 10 E= -6.12048336448206  delta_E= -0.0257  |g|= 0.043  |ddm|= 0.693
+HOMO: -0.3699185372545913 LUMO: -0.3610294500749943
+mo_energy:
+[-0.654 -0.622 -0.517 -0.378 -0.37  -0.361  0.098  0.327  0.371  0.588]
+e_fermi =  -0.3646706846174541
+[2.    2.    2.    1.867 1.481 0.651]
+entropy correction =  -0.014472224125788838
+cycle= 11 E= -6.12208945700628  delta_E= -0.00161  |g|= 0.0132  |ddm|= 0.234
+HOMO: -0.369298975032787 LUMO: -0.36080208187461854
+mo_energy:
+[-0.653 -0.621 -0.516 -0.377 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3641950826710854
+[2.    2.    2.    1.857 1.47  0.673]
+entropy correction =  -0.014748412086439762
+cycle= 12 E= -6.12220933406567  delta_E= -0.00012  |g|= 0.00706  |ddm|= 0.0647
+HOMO: -0.3693871000781203 LUMO: -0.36090550118428993
+mo_energy:
+[-0.653 -0.621 -0.516 -0.377 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3642942113682854
+[2.    2.    2.    1.857 1.469 0.674]
+entropy correction =  -0.014748007342866734
+cycle= 13 E= -6.12224220137892  delta_E= -3.29e-05  |g|= 0.004  |ddm|= 0.0324
+HOMO: -0.3694690080092002 LUMO: -0.3609581722361065
+mo_energy:
+[-0.653 -0.621 -0.516 -0.377 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3643640852012884
+[2.    2.    2.    1.858 1.47  0.672]
+entropy correction =  -0.014730328738018463
+cycle= 14 E= -6.12225740756999  delta_E= -1.52e-05  |g|= 0.000346  |ddm|= 0.0106
+HOMO: -0.3694701765711038 LUMO: -0.360958691040211
+mo_energy:
+[-0.653 -0.621 -0.516 -0.377 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.36436500071202577
+[2.    2.    2.    1.858 1.47  0.672]
+entropy correction =  -0.01472990594334045
+cycle= 15 E= -6.12225751983732  delta_E= -1.12e-07  |g|= 9.03e-05  |ddm|= 0.00261
+HOMO: -0.3694776513758787 LUMO: -0.3609658547274625
+mo_energy:
+[-0.653 -0.621 -0.516 -0.377 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3643724880190464
+[2.    2.    2.    1.858 1.47  0.672]
+entropy correction =  -0.014729429046914534
+cycle= 16 E= -6.12225752643235  delta_E= -6.6e-09  |g|= 3.39e-05  |ddm|= 0.000666
+HOMO: -0.3694760025814235 LUMO: -0.360964680226358
+mo_energy:
+[-0.653 -0.621 -0.516 -0.377 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3643709110185623
+[2.    2.    2.    1.858 1.47  0.672]
+entropy correction =  -0.014729969528170777
+cycle= 17 E= -6.12225752704878  delta_E= -6.16e-10  |g|= 1.61e-05  |ddm|= 0.000164
+HOMO: -0.36947600875634556 LUMO: -0.3609651672162147
+mo_energy:
+[-0.653 -0.621 -0.516 -0.377 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.36437115009889814
+[2.    2.    2.    1.858 1.47  0.672]
+entropy correction =  -0.014730188669272417
+Extra cycle  E= -6.12225741461262  delta_E= 1.12e-07  |g|= 0.000342  |ddm|= 0.00108
+converged SCF energy = -6.12225741461262
+
+
+******** <class 'pydmfet.dfet_ao.scf.EmbedSCF'> flags ********
+method = EmbedSCF-RKS-RHF
+initial guess = minao
+damping factor = 0
+level shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+DIIS start cycle = 1
+DIIS space = 8
+SCF tol = 1e-09
+SCF gradient tol = None
+max. SCF cycles = 50
+direct_scf = False
+chkfile to save SCF result = /tigress/xingz/pydmfet/examples/research/tmpvlh8dqjn
+max_memory 16000 MB (current use 705 MB)
+XC functionals = pbe,pbe
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs (JCP 102, 346 (M4)) radial grids
+    
+becke partition: Becke, JCP, 88, 2547 (1988)
+pruning grids: <function nwchem_prune at 0x2add7571c400>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x2add7571c378>
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= -4.85330498477355
+HOMO: -0.38357785389071486 LUMO: -0.36507064421471297
+mo_energy:
+[-0.649 -0.619 -0.517 -0.393 -0.384 -0.365  0.088  0.378  0.406  0.642]
+e_fermi =  -0.3738877365882771
+[2.    2.    2.    1.959 1.748 0.293]
+entropy correction =  -0.008947671393226395
+cycle= 1 E= -6.07790143939811  delta_E= -1.22  |g|= 0.243  |ddm|= 2.53
+HOMO: -0.35374124856514244 LUMO: -0.2977691438474075
+mo_energy:
+[-0.74  -0.697 -0.579 -0.422 -0.354 -0.298  0.119  0.344  0.399  0.607]
+e_fermi =  -0.3257551931655266
+[2.    2.    2.    2.    1.993 0.007]
+entropy correction =  -0.0004876047616122714
+cycle= 2 E= -5.94881290077665  delta_E= 0.129  |g|= 0.572  |ddm|=  2.8
+HOMO: -0.3636934500409354 LUMO: -0.3468191834684688
+mo_energy:
+[-0.664 -0.632 -0.525 -0.384 -0.364 -0.347  0.104  0.331  0.377  0.594]
+e_fermi =  -0.355198719748622
+[2.    2.    2.    1.994 1.691 0.315]
+entropy correction =  -0.008869707559556395
+cycle= 3 E= -6.07544295114427  delta_E= -0.127  |g|= 0.242  |ddm|= 1.03
+HOMO: -0.3609222021303835 LUMO: -0.35380546984089756
+mo_energy:
+[-0.637 -0.605 -0.503 -0.378 -0.361 -0.354  0.099  0.328  0.369  0.59 ]
+e_fermi =  -0.35718400605280826
+[2.    2.    2.    1.968 1.357 0.674]
+entropy correction =  -0.013486030365950875
+cycle= 4 E= -6.06808298396003  delta_E= 0.00736  |g|= 0.25  |ddm|= 1.82
+HOMO: -0.3622963899567899 LUMO: -0.3542502248885223
+mo_energy:
+[-0.638 -0.606 -0.503 -0.377 -0.362 -0.354  0.099  0.328  0.369  0.59 ]
+e_fermi =  -0.35799509520778167
+[2.    2.    2.    1.952 1.405 0.642]
+entropy correction =  -0.01348531717125991
+cycle= 5 E= -6.07820213296572  delta_E= -0.0101  |g|= 0.226  |ddm|= 0.139
+HOMO: -0.36422740985971336 LUMO: -0.3549061849208945
+mo_energy:
+[-0.649 -0.615 -0.512 -0.379 -0.364 -0.355  0.1    0.329  0.372  0.591]
+e_fermi =  -0.35934585791750157
+[2.    2.    2.    1.964 1.453 0.583]
+entropy correction =  -0.012801488286632079
+cycle= 6 E= -6.03435012470996  delta_E= 0.0439  |g|= 0.308  |ddm|= 0.988
+HOMO: -0.3660932044574282 LUMO: -0.3564804991743015
+mo_energy:
+[-0.649 -0.617 -0.513 -0.379 -0.366 -0.356  0.099  0.328  0.371  0.59 ]
+e_fermi =  -0.3609679620635887
+[2.    2.    2.    1.949 1.472 0.579]
+entropy correction =  -0.012978178662076437
+cycle= 7 E= -6.05371568088644  delta_E= -0.0194  |g|= 0.273  |ddm|= 1.72
+HOMO: -0.3698625217785385 LUMO: -0.36019836442458286
+mo_energy:
+[-0.653 -0.621 -0.517 -0.379 -0.37  -0.36   0.099  0.328  0.372  0.589]
+e_fermi =  -0.36442443471153485
+[2.    2.    2.    1.903 1.496 0.601]
+entropy correction =  -0.013695188755981469
+cycle= 8 E= -6.1238028165378  delta_E= -0.0701  |g|= 0.0307  |ddm|= 0.845
+HOMO: -0.3687377443222963 LUMO: -0.3603657080215139
+mo_energy:
+[-0.652 -0.62  -0.516 -0.377 -0.369 -0.36   0.098  0.326  0.371  0.588]
+e_fermi =  -0.36375658779208225
+[2.    2.    2.    1.866 1.461 0.673]
+entropy correction =  -0.014675149110157017
+cycle= 9 E= -6.12432468993016  delta_E= -0.000522  |g|= 0.0223  |ddm|= 0.127
+HOMO: -0.36929894883362807 LUMO: -0.36098844806846925
+mo_energy:
+[-0.652 -0.62  -0.515 -0.378 -0.369 -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.36435663870268614
+[2.    2.    2.    1.867 1.458 0.675]
+entropy correction =  -0.014683529863758997
+cycle= 10 E= -6.12476353544997  delta_E= -0.000439  |g|= 0.00145  |ddm|= 0.0849
+HOMO: -0.36964141707088743 LUMO: -0.36122052536048976
+mo_energy:
+[-0.652 -0.62  -0.516 -0.378 -0.37  -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.36465617472080514
+[2.    2.    2.    1.87  1.461 0.669]
+entropy correction =  -0.01461129000005686
+cycle= 11 E= -6.12475893323773  delta_E= 4.6e-06  |g|= 0.00252  |ddm|= 0.0134
+HOMO: -0.3696283514219058 LUMO: -0.36121653043171537
+mo_energy:
+[-0.652 -0.62  -0.516 -0.378 -0.37  -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.364648126619666
+[2.    2.    2.    1.87  1.461 0.67 ]
+entropy correction =  -0.01461404377223067
+cycle= 12 E= -6.12476481438482  delta_E= -5.88e-06  |g|= 0.000352  |ddm|= 0.00766
+HOMO: -0.36962586917713286 LUMO: -0.3612180937065161
+mo_energy:
+[-0.652 -0.62  -0.516 -0.378 -0.37  -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3646472516887741
+[2.   2.   2.   1.87 1.46 0.67]
+entropy correction =  -0.01461662611063886
+cycle= 13 E= -6.12476492827424  delta_E= -1.14e-07  |g|= 2.63e-05  |ddm|= 0.00141
+HOMO: -0.3696256054725288 LUMO: -0.3612181118981942
+mo_energy:
+[-0.652 -0.62  -0.516 -0.378 -0.37  -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.36464706470289954
+[2.   2.   2.   1.87 1.46 0.67]
+entropy correction =  -0.014616881846615448
+cycle= 14 E= -6.12476492179363  delta_E= 6.48e-09  |g|= 8.64e-05  |ddm|= 0.000259
+HOMO: -0.3696254088946097 LUMO: -0.3612180403826319
+mo_energy:
+[-0.652 -0.62  -0.516 -0.378 -0.37  -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3646469617309562
+[2.   2.   2.   1.87 1.46 0.67]
+entropy correction =  -0.014616867283562792
+cycle= 15 E= -6.12476492887071  delta_E= -7.08e-09  |g|= 4.28e-06  |ddm|= 0.000222
+HOMO: -0.3696254667635431 LUMO: -0.3612180280833304
+mo_energy:
+[-0.652 -0.62  -0.516 -0.378 -0.37  -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.3646469909701467
+[2.   2.   2.   1.87 1.46 0.67]
+entropy correction =  -0.014616824115068714
+cycle= 16 E= -6.12476492888702  delta_E= -1.63e-11  |g|= 9.19e-07  |ddm|= 2.07e-05
+HOMO: -0.369625479122752 LUMO: -0.36121799980750763
+mo_energy:
+[-0.652 -0.62  -0.516 -0.378 -0.37  -0.361  0.098  0.326  0.371  0.588]
+e_fermi =  -0.36464697888433945
+[2.   2.   2.   1.87 1.46 0.67]
+entropy correction =  -0.014616816018764118
+Extra cycle  E= -6.12476492850805  delta_E= 3.79e-10  |g|= 1.99e-05  |ddm|= 6.42e-05
+converged SCF energy = -6.12476492850805
+ OEP iteration  1
+gtol =  0.0001
+|umat| =  2.285735017966977
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 9.20169899496189
+HOMO:  -0.36947864596071145 LUMO:  -0.36095873813521057
+Fermi energy:      -0.3643696106
+[2.     2.     2.     1.8578 1.4706 0.6716]
+entropy correction =  -0.014725613870852075
+cycle= 1 E= 9.18696625927715  delta_E= -0.0147  |g|= 1.03e-14  |ddm|= 0.0232
+HOMO:  -0.36947864596071217 LUMO:  -0.3609587381352122
+Fermi energy:      -0.3643696106
+[2.     2.     2.     1.8578 1.4706 0.6716]
+entropy correction =  -0.014725613870853095
+cycle= 2 E= 9.18696625927715  delta_E= -7.11e-15  |g|= 1.3e-14  |ddm|= 2.09e-13
+HOMO:  -0.36947864596071034 LUMO:  -0.3609587381352125
+Fermi energy:      -0.3643696106
+[2.     2.     2.     1.8578 1.4706 0.6716]
+entropy correction =  -0.014725613870853898
+Extra cycle  E= 9.18696625927714  delta_E= -7.11e-15  |g|= 1.34e-14  |ddm|= 3.26e-13
+entropy correction =  -0.014725613870853898
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 9.2033536872743
+HOMO:  -0.3696248199669471 LUMO:  -0.3612182401495477
+Fermi energy:      -0.3646468728
+[2.     2.     2.     1.8697 1.4604 0.67  ]
+entropy correction =  -0.014616969437021017
+cycle= 1 E= 9.18873686269203  delta_E= -0.0146  |g|= 9.44e-15  |ddm|= 0.00135
+HOMO:  -0.36962481996694807 LUMO:  -0.3612182401495492
+Fermi energy:      -0.3646468728
+[2.     2.     2.     1.8697 1.4604 0.67  ]
+entropy correction =  -0.01461696943702123
+cycle= 2 E= 9.18873686269202  delta_E= -8.88e-15  |g|= 7.7e-15  |ddm|= 3.72e-13
+HOMO:  -0.3696248199669477 LUMO:  -0.36121824014954973
+Fermi energy:      -0.3646468728
+[2.     2.     2.     1.8697 1.4604 0.67  ]
+entropy correction =  -0.014616969437021721
+Extra cycle  E= 9.18873686269204  delta_E= 1.78e-14  |g|= 1.14e-14  |ddm|= 1.82e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014616969437021721
+-W =  7.671960223445744
+2-norm (grad),       max(grad):
+0.23849072117461365 ,  0.058382127957222564
+time of hessian construction : 0.210  (cpu),  0.006  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  2.285735017966977
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 9.20169899496189
+HOMO:  -0.36947864596070995 LUMO:  -0.36095873813521434
+Fermi energy:      -0.3643696106
+[2.     2.     2.     1.8578 1.4706 0.6716]
+entropy correction =  -0.014725613870855333
+cycle= 1 E= 9.18696625927715  delta_E= -0.0147  |g|= 1.07e-14  |ddm|= 0.0232
+HOMO:  -0.36947864596071045 LUMO:  -0.3609587381352115
+Fermi energy:      -0.3643696106
+[2.     2.     2.     1.8578 1.4706 0.6716]
+entropy correction =  -0.014725613870853107
+cycle= 2 E= 9.18696625927715  delta_E= -1.78e-15  |g|= 8.89e-15  |ddm|= 3.57e-13
+HOMO:  -0.36947864596071045 LUMO:  -0.3609587381352118
+Fermi energy:      -0.3643696106
+[2.     2.     2.     1.8578 1.4706 0.6716]
+entropy correction =  -0.014725613870853676
+Extra cycle  E= 9.18696625927714  delta_E= -1.42e-14  |g|= 1.08e-14  |ddm|= 1.55e-13
+entropy correction =  -0.014725613870853676
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 9.2033536872743
+HOMO:  -0.3696248199669481 LUMO:  -0.36121824014954934
+Fermi energy:      -0.3646468728
+[2.     2.     2.     1.8697 1.4604 0.67  ]
+entropy correction =  -0.01461696943702153
+cycle= 1 E= 9.18873686269202  delta_E= -0.0146  |g|= 7.66e-15  |ddm|= 0.00135
+HOMO:  -0.36962481996694785 LUMO:  -0.3612182401495492
+Fermi energy:      -0.3646468728
+[2.     2.     2.     1.8697 1.4604 0.67  ]
+entropy correction =  -0.014616969437021546
+cycle= 2 E= 9.18873686269203  delta_E= 3.55e-15  |g|= 1.19e-14  |ddm|= 6e-14
+HOMO:  -0.36962481996694796 LUMO:  -0.3612182401495503
+Fermi energy:      -0.3646468728
+[2.     2.     2.     1.8697 1.4604 0.67  ]
+entropy correction =  -0.014616969437021888
+Extra cycle  E= 9.18873686269203  delta_E= 7.11e-15  |g|= 9.47e-15  |ddm|= 9.81e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014616969437021888
+-W =  7.6719602234457405
+2-norm (grad),       max(grad):
+0.23849072117462292 ,  0.05838212795722587
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  2.2857775328211645
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 9.20011021594909
+HOMO:  -0.36963458659068915 LUMO:  -0.36020575138748345
+Fermi energy:      -0.3642215649
+[2.     2.     2.     1.8873 1.494  0.6187]
+entropy correction =  -0.014009650288016902
+cycle= 1 E= 9.18513611174143  delta_E= -0.015  |g|= 9.58e-15  |ddm|= 0.211
+HOMO:  -0.36963458659069287 LUMO:  -0.3602057513874862
+Fermi energy:      -0.3642215649
+[2.     2.     2.     1.8873 1.494  0.6187]
+entropy correction =  -0.014009650288015811
+cycle= 2 E= 9.18513611174142  delta_E= -1.78e-15  |g|= 1.34e-14  |ddm|= 2.92e-13
+HOMO:  -0.36963458659069165 LUMO:  -0.3602057513874843
+Fermi energy:      -0.3642215649
+[2.     2.     2.     1.8873 1.494  0.6187]
+entropy correction =  -0.01400965028801588
+Extra cycle  E= 9.18513611174146  delta_E= 3.55e-14  |g|= 1.48e-14  |ddm|= 3.63e-13
+entropy correction =  -0.01400965028801588
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 9.20172825722959
+HOMO:  -0.3699608060781271 LUMO:  -0.36044524027467045
+Fermi energy:      -0.3645403175
+[2.     2.     2.     1.8935 1.4945 0.6119]
+entropy correction =  -0.013891071070621349
+cycle= 1 E= 9.18688352695539  delta_E= -0.0148  |g|= 8.04e-15  |ddm|= 0.202
+HOMO:  -0.36996080607812715 LUMO:  -0.36044524027467006
+Fermi energy:      -0.3645403175
+[2.     2.     2.     1.8935 1.4945 0.6119]
+entropy correction =  -0.013891071070620988
+cycle= 2 E= 9.1868835269554  delta_E= 8.88e-15  |g|= 9.76e-15  |ddm|= 6.86e-14
+HOMO:  -0.3699608060781274 LUMO:  -0.3604452402746711
+Fermi energy:      -0.3645403175
+[2.     2.     2.     1.8935 1.4945 0.6119]
+entropy correction =  -0.013891071070621399
+Extra cycle  E= 9.18688352695539  delta_E= -1.24e-14  |g|= 8.89e-15  |ddm|= 2.79e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013891071070621399
+-W =  7.671457347279864
+2-norm (grad),       max(grad):
+0.039402962516771764 ,  0.009670196928954988
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  3.601044767012575
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.89403240191385
+HOMO:  -0.4566411550069425 LUMO:  -0.45288356359294246
+Fermi energy:      -0.4536615681
+[2.     2.     2.     1.7882 1.2894 0.9224]
+entropy correction =  -0.016787843880660763
+cycle= 1 E= 8.87387167337214  delta_E= -0.0202  |g|= 1.44e-14  |ddm|= 0.496
+HOMO:  -0.45664115500694397 LUMO:  -0.45288356359294024
+Fermi energy:      -0.4536615681
+[2.     2.     2.     1.7882 1.2894 0.9224]
+entropy correction =  -0.016787843880659733
+cycle= 2 E= 8.87387167337214  delta_E= 5.33e-15  |g|= 1.2e-14  |ddm|= 5.06e-13
+HOMO:  -0.456641155006946 LUMO:  -0.4528835635929398
+Fermi energy:      -0.4536615681
+[2.     2.     2.     1.7882 1.2894 0.9224]
+entropy correction =  -0.016787843880658845
+Extra cycle  E= 8.87387167337215  delta_E= 7.11e-15  |g|= 1.22e-14  |ddm|= 3.26e-13
+entropy correction =  -0.016787843880658845
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.89232397889073
+HOMO:  -0.45706957965980655 LUMO:  -0.45326505653267396
+Fermi energy:      -0.4536534313
+[2.     2.     2.     1.7099 1.3289 0.9612]
+entropy correction =  -0.017446197699114877
+cycle= 1 E= 8.87179736074208  delta_E= -0.0205  |g|= 7.18e-15  |ddm|= 0.535
+HOMO:  -0.4570695796598066 LUMO:  -0.45326505653267474
+Fermi energy:      -0.4536534313
+[2.     2.     2.     1.7099 1.3289 0.9612]
+entropy correction =  -0.017446197699115065
+cycle= 2 E= 8.87179736074208  delta_E= 8.88e-15  |g|= 8.29e-15  |ddm|= 1.27e-13
+HOMO:  -0.457069579659806 LUMO:  -0.45326505653267346
+Fermi energy:      -0.4536534313
+[2.     2.     2.     1.7099 1.3289 0.9612]
+entropy correction =  -0.01744619769911494
+Extra cycle  E= 8.87179736074208  delta_E=    0  |g|= 9.41e-15  |ddm|= 8.3e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.01744619769911494
+-W =  7.660218206737969
+2-norm (grad),       max(grad):
+0.7655950452868199 ,  0.16725938884822514
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  3.600728966234161
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.89506870609812
+HOMO:  -0.45777307969735453 LUMO:  -0.4479483594903636
+Fermi energy:      -0.4519361352
+[2.     2.     2.     1.8536 1.5253 0.6211]
+entropy correction =  -0.01429513579645676
+cycle= 1 E= 8.87544328229744  delta_E= -0.0196  |g|= 1.03e-14  |ddm|= 0.152
+HOMO:  -0.4577730796973532 LUMO:  -0.44794835949036316
+Fermi energy:      -0.4519361352
+[2.     2.     2.     1.8536 1.5253 0.6211]
+entropy correction =  -0.014295135796457139
+cycle= 2 E= 8.87544328229743  delta_E= -3.55e-15  |g|= 9.02e-15  |ddm|= 1.08e-13
+HOMO:  -0.4577730796973523 LUMO:  -0.44794835949036255
+Fermi energy:      -0.4519361352
+[2.     2.     2.     1.8536 1.5253 0.6211]
+entropy correction =  -0.014295135796457303
+Extra cycle  E= 8.87544328229744  delta_E= 1.07e-14  |g|= 1.36e-14  |ddm|= 1.66e-13
+entropy correction =  -0.014295135796457303
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.89341808679721
+HOMO:  -0.4579852307366264 LUMO:  -0.448282951598363
+Fermi energy:      -0.4518944659
+[2.     2.     2.     1.8028 1.5435 0.6538]
+entropy correction =  -0.014912843474006428
+cycle= 1 E= 8.87362357952446  delta_E= -0.0198  |g|= 1.12e-14  |ddm|= 0.167
+HOMO:  -0.4579852307366271 LUMO:  -0.44828295159836407
+Fermi energy:      -0.4518944659
+[2.     2.     2.     1.8028 1.5435 0.6538]
+entropy correction =  -0.014912843474006825
+cycle= 2 E= 8.87362357952446  delta_E= -3.55e-15  |g|= 8.41e-15  |ddm|= 1.18e-13
+HOMO:  -0.4579852307366259 LUMO:  -0.4482829515983632
+Fermi energy:      -0.4518944659
+[2.     2.     2.     1.8028 1.5435 0.6538]
+entropy correction =  -0.014912843474006768
+Extra cycle  E= 8.87362357952446  delta_E= -3.55e-15  |g|= 1.34e-14  |ddm|= 8.57e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014912843474006768
+-W =  7.658219234855061
+2-norm (grad),       max(grad):
+0.15471024422320026 ,  0.03200597182420206
+time of hessian construction : 0.080  (cpu),  0.002  (wall) 
+time of hessian construction : 0.240  (cpu),  0.007  (wall) 
+|umat| =  3.6005891752101338
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.89548305239477
+HOMO:  -0.4571478904404289 LUMO:  -0.4468416504118553
+Fermi energy:      -0.4512831621
+[2.     2.     2.     1.8897 1.5274 0.5829]
+entropy correction =  -0.013637199234146458
+cycle= 1 E= 8.87561972369925  delta_E= -0.0199  |g|= 1.19e-14  |ddm|= 0.257
+HOMO:  -0.45714789044043086 LUMO:  -0.44684165041185503
+Fermi energy:      -0.4512831621
+[2.     2.     2.     1.8897 1.5274 0.5829]
+entropy correction =  -0.013637199234145388
+cycle= 2 E= 8.87561972369926  delta_E= 8.88e-15  |g|= 1.19e-14  |ddm|= 2.75e-13
+HOMO:  -0.4571478904404319 LUMO:  -0.44684165041185486
+Fermi energy:      -0.4512831621
+[2.     2.     2.     1.8897 1.5274 0.5829]
+entropy correction =  -0.013637199234145367
+Extra cycle  E= 8.87561972369926  delta_E=    0  |g|= 1.35e-14  |ddm|= 4.21e-13
+entropy correction =  -0.013637199234145367
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.89371183461556
+HOMO:  -0.4569851251851104 LUMO:  -0.44705169688835145
+Fermi energy:      -0.4511445314
+[2.     2.     2.     1.8623 1.5256 0.6121]
+entropy correction =  -0.014145554996099858
+cycle= 1 E= 8.8738486133233  delta_E= -0.0199  |g|= 8.68e-15  |ddm|= 0.229
+HOMO:  -0.45698512518511064 LUMO:  -0.44705169688835195
+Fermi energy:      -0.4511445314
+[2.     2.     2.     1.8623 1.5256 0.6121]
+entropy correction =  -0.01414555499609997
+cycle= 2 E= 8.8738486133233  delta_E=    0  |g|= 9.12e-15  |ddm|= 1.75e-13
+HOMO:  -0.45698512518511003 LUMO:  -0.447051696888349
+Fermi energy:      -0.4511445314
+[2.     2.     2.     1.8623 1.5256 0.6121]
+entropy correction =  -0.01414555499609858
+Extra cycle  E= 8.8738486133233  delta_E= -3.55e-15  |g|= 9.2e-15  |ddm|= 3.22e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.01414555499609858
+-W =  7.6579288795291065
+2-norm (grad),       max(grad):
+0.05327805972992575 ,  0.012286666621265353
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  6.286957675245699
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.37594239096287
+HOMO:  -0.5776719876796176 LUMO:  -0.4480124099582864
+Fermi energy:      -0.5128421648
+[2. 2. 2. 2. 2.]
+entropy correction =  -6.532229015372262e-07
+cycle= 1 E= 7.97217492872334  delta_E= -0.404  |g|= 1.47e-14  |ddm|= 2.64
+HOMO:  -0.5776719876796128 LUMO:  -0.4480124099582906
+Fermi energy:      -0.5128421648
+[2. 2. 2. 2. 2.]
+entropy correction =  -6.532229015377298e-07
+cycle= 2 E= 7.97217492872334  delta_E= -7.11e-15  |g|= 1.85e-14  |ddm|= 4.25e-14
+HOMO:  -0.5776719876796207 LUMO:  -0.44801240995829283
+Fermi energy:      -0.5128421648
+[2. 2. 2. 2. 2.]
+entropy correction =  -6.532229015374126e-07
+Extra cycle  E= 7.97217492872334  delta_E= 7.11e-15  |g|= 1.57e-14  |ddm|= 4.03e-14
+entropy correction =  -6.532229015374126e-07
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.45337452187593
+HOMO:  -0.5349443016749537 LUMO:  -0.44589736234339233
+Fermi energy:      -0.4904208320
+[2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00 1.9997e+00 2.7146e-04]
+entropy correction =  -2.688782307405157e-05
+cycle= 1 E= 8.04471911932984  delta_E= -0.409  |g|= 1.02e-14  |ddm|= 2.64
+HOMO:  -0.5349443016749545 LUMO:  -0.4458973623433911
+Fermi energy:      -0.4904208320
+[2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00 1.9997e+00 2.7146e-04]
+entropy correction =  -2.6887823074047058e-05
+cycle= 2 E= 8.04471911932984  delta_E=    0  |g|= 1.29e-14  |ddm|= 2.23e-14
+HOMO:  -0.5349443016749545 LUMO:  -0.44589736234339217
+Fermi energy:      -0.4904208320
+[2.0000e+00 2.0000e+00 2.0000e+00 2.0000e+00 1.9997e+00 2.7146e-04]
+entropy correction =  -2.6887823074049304e-05
+Extra cycle  E= 8.04471911932983  delta_E= -7.11e-15  |g|= 1.33e-14  |ddm|= 2.29e-14
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -2.6887823074049304e-05
+-W =  8.387766167300777
+2-norm (grad),       max(grad):
+3.4408206482450083 ,  0.5915123562416058
+time of hessian construction : 0.020  (cpu),  0.001  (wall) 
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+|umat| =  4.255721680456492
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.80808973853536
+HOMO:  -0.4935200527495709 LUMO:  -0.4862233718720862
+Fermi energy:      -0.4873811318
+[2.     2.     1.874  1.6944 1.5469 0.8847]
+entropy correction =  -0.01884275303352687
+cycle= 1 E= 8.7815852899865  delta_E= -0.0265  |g|= 1.5e-14  |ddm|= 0.562
+HOMO:  -0.4935200527495704 LUMO:  -0.4862233718720855
+Fermi energy:      -0.4873811318
+[2.     2.     1.874  1.6944 1.5469 0.8847]
+entropy correction =  -0.018842753033526363
+cycle= 2 E= 8.78158528998651  delta_E= 7.11e-15  |g|= 1.34e-14  |ddm|= 1.66e-13
+HOMO:  -0.49352005274956984 LUMO:  -0.486223371872083
+Fermi energy:      -0.4873811318
+[2.     2.     1.874  1.6944 1.5469 0.8847]
+entropy correction =  -0.018842753033525308
+Extra cycle  E= 8.7815852899865  delta_E= -3.55e-15  |g|= 1.2e-14  |ddm|= 4.02e-13
+entropy correction =  -0.018842753033525308
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.82468270193877
+HOMO:  -0.4932102504703999 LUMO:  -0.4872112749375278
+Fermi energy:      -0.4876235401
+[2.     2.     1.9196 1.6146 1.507  0.9588]
+entropy correction =  -0.019094505825326444
+cycle= 1 E= 8.79870571798399  delta_E= -0.026  |g|= 1.07e-14  |ddm|= 0.613
+HOMO:  -0.49321025047039985 LUMO:  -0.48721127493752725
+Fermi energy:      -0.4876235401
+[2.     2.     1.9196 1.6146 1.507  0.9588]
+entropy correction =  -0.01909450582532632
+cycle= 2 E= 8.79870571798397  delta_E= -1.42e-14  |g|= 1.13e-14  |ddm|= 1.46e-13
+HOMO:  -0.4932102504704 LUMO:  -0.48721127493752814
+Fermi energy:      -0.4876235401
+[2.     2.     1.9196 1.6146 1.507  0.9588]
+entropy correction =  -0.019094505825326787
+Extra cycle  E= 8.79870571798397  delta_E= 3.55e-15  |g|= 9.31e-15  |ddm|= 1.47e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.019094505825326787
+-W =  7.661380440789356
+2-norm (grad),       max(grad):
+0.8029522439527594 ,  0.14826038140544223
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  3.7499547636948747
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.90220031054928
+HOMO:  -0.46030714827319547 LUMO:  -0.45054153658867596
+Fermi energy:      -0.4546578212
+[2.     2.     1.9999 1.8783 1.5116 0.6101]
+entropy correction =  -0.014006712642817103
+cycle= 1 E= 8.88173631005041  delta_E= -0.0205  |g|= 1.51e-14  |ddm|= 0.215
+HOMO:  -0.4603071482731959 LUMO:  -0.4505415365886766
+Fermi energy:      -0.4546578212
+[2.     2.     1.9999 1.8783 1.5116 0.6101]
+entropy correction =  -0.01400671264281711
+cycle= 2 E= 8.8817363100504  delta_E= -3.55e-15  |g|= 1.08e-14  |ddm|= 1.11e-13
+HOMO:  -0.4603071482731954 LUMO:  -0.45054153658867613
+Fermi energy:      -0.4546578212
+[2.     2.     1.9999 1.8783 1.5116 0.6101]
+entropy correction =  -0.014006712642817325
+Extra cycle  E= 8.8817363100504  delta_E= -3.55e-15  |g|= 1.19e-14  |ddm|= 1.67e-13
+entropy correction =  -0.014006712642817325
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.90759309666258
+HOMO:  -0.4609444712655345 LUMO:  -0.4514182637916871
+Fermi energy:      -0.4552519488
+[2.     2.     1.9999 1.8509 1.5148 0.6344]
+entropy correction =  -0.014445302671951947
+cycle= 1 E= 8.88772694990544  delta_E= -0.0199  |g|= 9.91e-15  |ddm|= 0.156
+HOMO:  -0.46094447126553445 LUMO:  -0.4514182637916873
+Fermi energy:      -0.4552519488
+[2.     2.     1.9999 1.8509 1.5148 0.6344]
+entropy correction =  -0.014445302671951925
+cycle= 2 E= 8.88772694990544  delta_E= -3.55e-15  |g|= 1.28e-14  |ddm|= 1.19e-13
+HOMO:  -0.46094447126553467 LUMO:  -0.4514182637916883
+Fermi energy:      -0.4552519488
+[2.     2.     1.9999 1.8509 1.5148 0.6344]
+entropy correction =  -0.014445302671952443
+Extra cycle  E= 8.88772694990545  delta_E= 8.88e-15  |g|= 7.22e-15  |ddm|= 9.79e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014445302671952443
+-W =  7.656982085757405
+2-norm (grad),       max(grad):
+0.08112241711196644 ,  0.01637362961539357
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+|umat| =  3.762086425620351
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.8910084141769
+HOMO:  -0.46191075408152915 LUMO:  -0.45231425086877874
+Fermi energy:      -0.4564178618
+[2.     2.     1.9999 1.8889 1.5    0.6112]
+entropy correction =  -0.013929689106900104
+cycle= 1 E= 8.87061875566415  delta_E= -0.0204  |g|= 1.63e-14  |ddm|= 0.23
+HOMO:  -0.4619107540815292 LUMO:  -0.45231425086878063
+Fermi energy:      -0.4564178618
+[2.     2.     1.9999 1.8889 1.5    0.6112]
+entropy correction =  -0.013929689106900772
+cycle= 2 E= 8.87061875566415  delta_E= 3.55e-15  |g|= 1.27e-14  |ddm|= 3.36e-13
+HOMO:  -0.4619107540815294 LUMO:  -0.45231425086878063
+Fermi energy:      -0.4564178618
+[2.     2.     1.9999 1.8889 1.5    0.6112]
+entropy correction =  -0.013929689106901013
+Extra cycle  E= 8.87061875566418  delta_E= 3.2e-14  |g|= 1.44e-14  |ddm|= 2.15e-13
+entropy correction =  -0.013929689106901013
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.89347196795662
+HOMO:  -0.46257616378506466 LUMO:  -0.4528061173140648
+Fermi energy:      -0.4570465102
+[2.     2.     1.9999 1.8977 1.5027 0.5997]
+entropy correction =  -0.013740807087744052
+cycle= 1 E= 8.87339371304  delta_E= -0.0201  |g|= 7.62e-15  |ddm|= 0.223
+HOMO:  -0.46257616378506394 LUMO:  -0.45280611731406406
+Fermi energy:      -0.4570465102
+[2.     2.     1.9999 1.8977 1.5027 0.5997]
+entropy correction =  -0.01374080708774396
+cycle= 2 E= 8.87339371303998  delta_E= -1.07e-14  |g|= 7.01e-15  |ddm|= 1.13e-13
+HOMO:  -0.4625761637850657 LUMO:  -0.4528061173140651
+Fermi energy:      -0.4570465102
+[2.     2.     1.9999 1.8977 1.5027 0.5997]
+entropy correction =  -0.013740807087743799
+Extra cycle  E= 8.87339371303999  delta_E= 3.55e-15  |g|= 8.74e-15  |ddm|= 2.44e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013740807087743799
+-W =  7.656597827619118
+2-norm (grad),       max(grad):
+0.01736387381035603 ,  0.003540474891179368
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  4.095583492365965
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.80337584273805
+HOMO:  -0.48150222683068944 LUMO:  -0.4719391615420753
+Fermi energy:      -0.4759167728
+[2.     2.     1.9962 1.8749 1.5069 0.622 ]
+entropy correction =  -0.014260422318025419
+cycle= 1 E= 8.78084043929315  delta_E= -0.0225  |g|= 1.52e-14  |ddm|= 0.186
+HOMO:  -0.481502226830689 LUMO:  -0.4719391615420734
+Fermi energy:      -0.4759167728
+[2.     2.     1.9962 1.8749 1.5069 0.622 ]
+entropy correction =  -0.014260422318024641
+cycle= 2 E= 8.78084043929316  delta_E= 1.78e-15  |g|= 1.02e-14  |ddm|= 4.27e-13
+HOMO:  -0.4815022268306865 LUMO:  -0.4719391615420728
+Fermi energy:      -0.4759167728
+[2.     2.     1.9962 1.8749 1.5069 0.622 ]
+entropy correction =  -0.014260422318025202
+Extra cycle  E= 8.78084043929316  delta_E= 8.88e-15  |g|= 1.17e-14  |ddm|= 1.94e-13
+entropy correction =  -0.014260422318025202
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.80400934227324
+HOMO:  -0.48093442998308494 LUMO:  -0.47171573898157965
+Fermi energy:      -0.4753012551
+[2.     2.     1.9966 1.8369 1.5104 0.6561]
+entropy correction =  -0.014843018198581422
+cycle= 1 E= 8.78096382336968  delta_E= -0.023  |g|= 1.12e-14  |ddm|= 0.175
+HOMO:  -0.48093442998308533 LUMO:  -0.47171573898157976
+Fermi energy:      -0.4753012551
+[2.     2.     1.9966 1.8369 1.5104 0.6561]
+entropy correction =  -0.01484301819858128
+cycle= 2 E= 8.78096382336967  delta_E= -3.55e-15  |g|= 9.36e-15  |ddm|= 2.97e-13
+HOMO:  -0.4809344299830849 LUMO:  -0.4717157389815798
+Fermi energy:      -0.4753012551
+[2.     2.     1.9966 1.8369 1.5104 0.6561]
+entropy correction =  -0.014843018198581524
+Extra cycle  E= 8.78096382336967  delta_E=    0  |g|= 9.76e-15  |ddm|= 7.14e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014843018198581524
+-W =  7.655747028826387
+2-norm (grad),       max(grad):
+0.11267380249297747 ,  0.029911331670311014
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  4.098529070689415
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.81522650788664
+HOMO:  -0.47864615085253925 LUMO:  -0.46885609922968063
+Fermi energy:      -0.4730833346
+[2.     2.     1.9982 1.8958 1.5052 0.6008]
+entropy correction =  -0.013824702966144383
+cycle= 1 E= 8.79279388466056  delta_E= -0.0224  |g|= 1.26e-14  |ddm|= 0.234
+HOMO:  -0.478646150852539 LUMO:  -0.468856099229682
+Fermi energy:      -0.4730833346
+[2.     2.     1.9982 1.8958 1.5052 0.6008]
+entropy correction =  -0.013824702966145302
+cycle= 2 E= 8.79279388466057  delta_E= 7.11e-15  |g|= 1.29e-14  |ddm|= 2.4e-13
+HOMO:  -0.47864615085253753 LUMO:  -0.4688560992296807
+Fermi energy:      -0.4730833346
+[2.     2.     1.9982 1.8958 1.5052 0.6008]
+entropy correction =  -0.013824702966145238
+Extra cycle  E= 8.79279388466054  delta_E= -2.49e-14  |g|= 1.76e-14  |ddm|= 4.3e-14
+entropy correction =  -0.013824702966145238
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.81837411699234
+HOMO:  -0.47776492382433405 LUMO:  -0.4686942877150467
+Fermi energy:      -0.4724133005
+[2.     2.     1.9985 1.8678 1.4893 0.6443]
+entropy correction =  -0.014461251394936751
+cycle= 1 E= 8.7958229034515  delta_E= -0.0226  |g|= 1.29e-14  |ddm|= 0.19
+HOMO:  -0.4777649238243345 LUMO:  -0.46869428771504734
+Fermi energy:      -0.4724133005
+[2.     2.     1.9985 1.8678 1.4893 0.6443]
+entropy correction =  -0.014461251394937001
+cycle= 2 E= 8.7958229034515  delta_E= -7.11e-15  |g|= 8.47e-15  |ddm|= 1.26e-13
+HOMO:  -0.4777649238243348 LUMO:  -0.4686942877150478
+Fermi energy:      -0.4724133005
+[2.     2.     1.9985 1.8678 1.4893 0.6443]
+entropy correction =  -0.01446125139493729
+Extra cycle  E= 8.7958229034515  delta_E= 5.33e-15  |g|= 1.29e-14  |ddm|= 1.35e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.01446125139493729
+-W =  7.655051263176102
+2-norm (grad),       max(grad):
+0.045941052301758885 ,  0.009627803013497735
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  4.757230468933414
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.69921352703017
+HOMO:  -0.5101305962969038 LUMO:  -0.4996351428505906
+Fermi energy:      -0.5038011136
+[2.     2.     1.9475 1.8865 1.5601 0.6059]
+entropy correction =  -0.014796456355594699
+cycle= 1 E= 8.67122717410372  delta_E= -0.028  |g|= 1.29e-14  |ddm|= 0.292
+HOMO:  -0.5101305962969069 LUMO:  -0.49963514285059263
+Fermi energy:      -0.5038011136
+[2.     2.     1.9475 1.8865 1.5601 0.6059]
+entropy correction =  -0.014796456355595114
+cycle= 2 E= 8.67122717410372  delta_E= -7.11e-15  |g|= 1.14e-14  |ddm|= 2.64e-13
+HOMO:  -0.5101305962969083 LUMO:  -0.4996351428505932
+Fermi energy:      -0.5038011136
+[2.     2.     1.9475 1.8865 1.5601 0.6059]
+entropy correction =  -0.014796456355594486
+Extra cycle  E= 8.67122717410371  delta_E= -3.55e-15  |g|= 1.32e-14  |ddm|= 2.2e-13
+entropy correction =  -0.014796456355594486
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.730563225466
+HOMO:  -0.5077593108446472 LUMO:  -0.5012796125896436
+Fermi energy:      -0.5036238149
+[2.     2.     1.9861 1.8526 1.3915 0.7698]
+entropy correction =  -0.015853094123128755
+cycle= 1 E= 8.70392430997487  delta_E= -0.0266  |g|= 1.24e-14  |ddm|= 0.322
+HOMO:  -0.5077593108446484 LUMO:  -0.5012796125896458
+Fermi energy:      -0.5036238149
+[2.     2.     1.9861 1.8526 1.3915 0.7698]
+entropy correction =  -0.01585309412312911
+cycle= 2 E= 8.70392430997488  delta_E= 7.11e-15  |g|= 1.11e-14  |ddm|= 2.88e-13
+HOMO:  -0.5077593108446485 LUMO:  -0.5012796125896453
+Fermi energy:      -0.5036238149
+[2.     2.     1.9861 1.8526 1.3915 0.7698]
+entropy correction =  -0.015853094123128887
+Extra cycle  E= 8.70392430997488  delta_E=    0  |g|= 1.17e-14  |ddm|= 1.62e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.015853094123128887
+-W =  7.653982807377355
+2-norm (grad),       max(grad):
+0.27406989053639963 ,  0.08770295118016891
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+|umat| =  4.757085844420328
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.70347775404017
+HOMO:  -0.5071716941919916 LUMO:  -0.49834739806741585
+Fermi energy:      -0.5020792778
+[2.     2.     1.9637 1.9237 1.4694 0.6432]
+entropy correction =  -0.014593458452555537
+cycle= 1 E= 8.67561586045681  delta_E= -0.0279  |g|= 1.66e-14  |ddm|= 0.292
+HOMO:  -0.5071716941919872 LUMO:  -0.49834739806741346
+Fermi energy:      -0.5020792778
+[2.     2.     1.9637 1.9237 1.4694 0.6432]
+entropy correction =  -0.014593458452555831
+cycle= 2 E= 8.67561586045681  delta_E= -7.11e-15  |g|= 1.44e-14  |ddm|= 2.45e-13
+HOMO:  -0.5071716941919888 LUMO:  -0.49834739806741285
+Fermi energy:      -0.5020792778
+[2.     2.     1.9637 1.9237 1.4694 0.6432]
+entropy correction =  -0.014593458452554995
+Extra cycle  E= 8.67561586045682  delta_E= 1.24e-14  |g|= 1.82e-14  |ddm|= 2.61e-13
+entropy correction =  -0.014593458452554995
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.72978735886113
+HOMO:  -0.5086508295004707 LUMO:  -0.49938016519509953
+Fermi energy:      -0.5031893999
+[2.     2.     1.9864 1.8795 1.4976 0.6365]
+entropy correction =  -0.01457560229831254
+cycle= 1 E= 8.70345027234844  delta_E= -0.0263  |g|= 1.09e-14  |ddm|= 0.21
+HOMO:  -0.5086508295004696 LUMO:  -0.49938016519509865
+Fermi energy:      -0.5031893999
+[2.     2.     1.9864 1.8795 1.4976 0.6365]
+entropy correction =  -0.014575602298312678
+cycle= 2 E= 8.70345027234844  delta_E= 7.11e-15  |g|= 9.75e-15  |ddm|= 8.77e-14
+HOMO:  -0.5086508295004706 LUMO:  -0.4993801651950994
+Fermi energy:      -0.5031893999
+[2.     2.     1.9864 1.8795 1.4976 0.6365]
+entropy correction =  -0.01457560229831244
+Extra cycle  E= 8.70345027234844  delta_E= -3.55e-15  |g|= 1.33e-14  |ddm|= 1.08e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.01457560229831244
+-W =  7.653288997966158
+2-norm (grad),       max(grad):
+0.1446266705763325 ,  0.026877857174217437
+time of hessian construction : 0.150  (cpu),  0.004  (wall) 
+time of hessian construction : 0.140  (cpu),  0.004  (wall) 
+|umat| =  4.757460217362311
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.70754529811266
+HOMO:  -0.5061541585079732 LUMO:  -0.49687480006998513
+Fermi energy:      -0.5007461452
+[2.     2.     1.9822 1.8931 1.4936 0.6311]
+entropy correction =  -0.014487064688616078
+cycle= 1 E= 8.68028123135184  delta_E= -0.0273  |g|= 1.58e-14  |ddm|= 0.23
+HOMO:  -0.5061541585079719 LUMO:  -0.49687480006998574
+Fermi energy:      -0.5007461452
+[2.     2.     1.9822 1.8931 1.4936 0.6311]
+entropy correction =  -0.014487064688616798
+cycle= 2 E= 8.68028123135183  delta_E= -8.88e-15  |g|= 1.52e-14  |ddm|= 2.17e-13
+HOMO:  -0.506154158507972 LUMO:  -0.4968748000699865
+Fermi energy:      -0.5007461452
+[2.     2.     1.9822 1.8931 1.4936 0.6311]
+entropy correction =  -0.014487064688617502
+Extra cycle  E= 8.68028123135183  delta_E=    0  |g|= 1.54e-14  |ddm|= 8.33e-14
+entropy correction =  -0.014487064688617502
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.72984921932763
+HOMO:  -0.508061231177688 LUMO:  -0.49802770259095824
+Fermi energy:      -0.5023870557
+[2.     2.     1.9893 1.9075 1.5135 0.5897]
+entropy correction =  -0.013818879204153284
+cycle= 1 E= 8.70355705884584  delta_E= -0.0263  |g|= 1.28e-14  |ddm|= 0.268
+HOMO:  -0.508061231177688 LUMO:  -0.49802770259095896
+Fermi energy:      -0.5023870557
+[2.     2.     1.9893 1.9075 1.5135 0.5897]
+entropy correction =  -0.013818879204153737
+cycle= 2 E= 8.70355705884585  delta_E= 3.55e-15  |g|= 1.09e-14  |ddm|= 1.24e-13
+HOMO:  -0.5080612311776883 LUMO:  -0.49802770259095913
+Fermi energy:      -0.5023870557
+[2.     2.     1.9893 1.9075 1.5135 0.5897]
+entropy correction =  -0.013818879204153669
+Extra cycle  E= 8.70355705884583  delta_E= -1.78e-14  |g|= 1.23e-14  |ddm|= 1.7e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013818879204153669
+-W =  7.652637039842729
+2-norm (grad),       max(grad):
+0.05218120903341331 ,  0.010904251508784213
+time of hessian construction : 0.090  (cpu),  0.002  (wall) 
+time of hessian construction : 0.090  (cpu),  0.002  (wall) 
+|umat| =  5.427339121820735
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.60147501483683
+HOMO:  -0.5236847596467433 LUMO:  -0.5143632206536194
+Fermi energy:      -0.5185701841
+[2.     2.     1.9944 1.9321 1.4711 0.6025]
+entropy correction =  -0.013571816271315556
+cycle= 1 E= 8.57034360384983  delta_E= -0.0311  |g|= 1.69e-14  |ddm|= 0.299
+HOMO:  -0.5236847596467458 LUMO:  -0.514363220653622
+Fermi energy:      -0.5185701841
+[2.     2.     1.9944 1.9321 1.4711 0.6025]
+entropy correction =  -0.01357181627131576
+cycle= 2 E= 8.57034360384983  delta_E= 5.33e-15  |g|= 1.76e-14  |ddm|= 5.49e-13
+HOMO:  -0.5236847596467458 LUMO:  -0.5143632206536238
+Fermi energy:      -0.5185701841
+[2.     2.     1.9944 1.9321 1.4711 0.6025]
+entropy correction =  -0.013571816271316404
+Extra cycle  E= 8.57034360384982  delta_E= -1.07e-14  |g|= 1.6e-14  |ddm|= 2.85e-13
+entropy correction =  -0.013571816271316404
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.64508159864015
+HOMO:  -0.5223541579781171 LUMO:  -0.5128118824415288
+Fermi energy:      -0.5169388022
+[2.     2.     1.9939 1.9027 1.4941 0.6092]
+entropy correction =  -0.01395578644865332
+cycle= 1 E= 8.61288304056299  delta_E= -0.0322  |g|= 1.42e-14  |ddm|= 0.19
+HOMO:  -0.5223541579781179 LUMO:  -0.5128118824415284
+Fermi energy:      -0.5169388022
+[2.     2.     1.9939 1.9027 1.4941 0.6092]
+entropy correction =  -0.013955786448652537
+cycle= 2 E= 8.61288304056298  delta_E= -3.55e-15  |g|= 1.07e-14  |ddm|= 1.31e-13
+HOMO:  -0.5223541579781166 LUMO:  -0.5128118824415274
+Fermi energy:      -0.5169388022
+[2.     2.     1.9939 1.9027 1.4941 0.6092]
+entropy correction =  -0.013955786448652804
+Extra cycle  E= 8.61288304056299  delta_E= 1.07e-14  |g|= 1.41e-14  |ddm|= 2.04e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013955786448652804
+-W =  7.651207719500163
+2-norm (grad),       max(grad):
+0.12201451977562618 ,  0.025061987779887343
+time of hessian construction : 0.140  (cpu),  0.004  (wall) 
+time of hessian construction : 0.090  (cpu),  0.003  (wall) 
+|umat| =  5.428023635036538
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.60060312657845
+HOMO:  -0.5246642890305157 LUMO:  -0.5153082303918313
+Fermi energy:      -0.5192068294
+[2.     2.     1.9952 1.8787 1.4973 0.6288]
+entropy correction =  -0.014319173154646566
+cycle= 1 E= 8.57021599526822  delta_E= -0.0304  |g|= 1.51e-14  |ddm|= 0.216
+HOMO:  -0.5246642890305121 LUMO:  -0.5153082303918308
+Fermi energy:      -0.5192068294
+[2.     2.     1.9952 1.8787 1.4973 0.6288]
+entropy correction =  -0.014319173154648148
+cycle= 2 E= 8.57021599526822  delta_E= 1.78e-15  |g|= 1.63e-14  |ddm|= 4.67e-13
+HOMO:  -0.5246642890305133 LUMO:  -0.5153082303918362
+Fermi energy:      -0.5192068294
+[2.     2.     1.9952 1.8787 1.4973 0.6288]
+entropy correction =  -0.014319173154650438
+Extra cycle  E= 8.57021599526822  delta_E= -5.33e-15  |g|= 1.47e-14  |ddm|= 4.78e-13
+entropy correction =  -0.014319173154650438
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.63795050214229
+HOMO:  -0.5238825652071335 LUMO:  -0.5140852086945995
+Fermi energy:      -0.5183129334
+[2.     2.     1.994  1.8996 1.5057 0.6007]
+entropy correction =  -0.013900494117730651
+cycle= 1 E= 8.60606227651219  delta_E= -0.0319  |g|= 1.39e-14  |ddm|= 0.224
+HOMO:  -0.5238825652071336 LUMO:  -0.5140852086946002
+Fermi energy:      -0.5183129334
+[2.     2.     1.994  1.8996 1.5057 0.6007]
+entropy correction =  -0.013900494117731088
+cycle= 2 E= 8.6060622765122  delta_E= 1.78e-15  |g|= 1.23e-14  |ddm|= 1.32e-13
+HOMO:  -0.5238825652071333 LUMO:  -0.5140852086945991
+Fermi energy:      -0.5183129334
+[2.     2.     1.994  1.8996 1.5057 0.6007]
+entropy correction =  -0.01390049411773045
+Extra cycle  E= 8.60606227651219  delta_E= -5.33e-15  |g|= 1.17e-14  |ddm|= 1.32e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.01390049411773045
+-W =  7.650259755488712
+2-norm (grad),       max(grad):
+0.04589753534076677 ,  0.011497086565387837
+time of hessian construction : 0.070  (cpu),  0.002  (wall) 
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+|umat| =  6.738121612958675
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.16930748955306
+HOMO:  -0.593854734743902 LUMO:  -0.5747374286449117
+Fermi energy:      -0.5835214495
+[2.     2.     1.9897 1.9407 1.7752 0.2944]
+entropy correction =  -0.00935257140804755
+cycle= 1 E= 8.08013564664697  delta_E= -0.0892  |g|= 1.75e-14  |ddm|= 2.35
+HOMO:  -0.5938547347439046 LUMO:  -0.5747374286449081
+Fermi energy:      -0.5835214495
+[2.     2.     1.9897 1.9407 1.7752 0.2944]
+entropy correction =  -0.009352571408045024
+cycle= 2 E= 8.08013564664697  delta_E= 5.33e-15  |g|= 1.47e-14  |ddm|= 1.53e-13
+HOMO:  -0.5938547347439018 LUMO:  -0.5747374286449091
+Fermi energy:      -0.5835214495
+[2.     2.     1.9897 1.9407 1.7752 0.2944]
+entropy correction =  -0.009352571408045848
+Extra cycle  E= 8.08013564664695  delta_E= -1.78e-14  |g|= 1.29e-14  |ddm|= 1.61e-13
+entropy correction =  -0.009352571408045848
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.43162251560186
+HOMO:  -0.6038403936846638 LUMO:  -0.4125334974608849
+Fermi energy:      -0.5077687075
+[2. 2. 2. 2. 2.]
+entropy correction =  -2.1701114784549073e-09
+cycle= 1 E= 8.01858299968808  delta_E= -0.413  |g|= 1.19e-14  |ddm|= 2.54
+HOMO:  -0.6038403936846667 LUMO:  -0.4125334974608844
+Fermi energy:      -0.5077687075
+[2. 2. 2. 2. 2.]
+entropy correction =  -2.1701114784542526e-09
+cycle= 2 E= 8.01858299968807  delta_E= -3.55e-15  |g|= 1.23e-14  |ddm|= 1.81e-14
+HOMO:  -0.603840393684664 LUMO:  -0.4125334974608851
+Fermi energy:      -0.5077687075
+[2. 2. 2. 2. 2.]
+entropy correction =  -2.170111478454897e-09
+Extra cycle  E= 8.01858299968807  delta_E=    0  |g|= 1.58e-14  |ddm|= 2.78e-14
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -2.170111478454897e-09
+-W =  8.069779331345703
+2-norm (grad),       max(grad):
+3.247665179437756 ,  0.5914632100090873
+time of hessian construction : 0.060  (cpu),  0.001  (wall) 
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+|umat| =  5.739386852472018
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.49776848516373
+HOMO:  -0.5438062178067972 LUMO:  -0.5342746719651357
+Fermi energy:      -0.5381341559
+[2.     1.9999 1.9984 1.8562 1.5133 0.6321]
+entropy correction =  -0.014441706542604958
+cycle= 1 E= 8.46390842209488  delta_E= -0.0339  |g|= 1.78e-14  |ddm|= 0.237
+HOMO:  -0.5438062178067924 LUMO:  -0.5342746719651313
+Fermi energy:      -0.5381341559
+[2.     1.9999 1.9984 1.8562 1.5133 0.6321]
+entropy correction =  -0.014441706542605211
+cycle= 2 E= 8.46390842209488  delta_E= 5.33e-15  |g|= 1.76e-14  |ddm|= 3.03e-13
+HOMO:  -0.5438062178067954 LUMO:  -0.5342746719651335
+Fermi energy:      -0.5381341559
+[2.     1.9999 1.9984 1.8562 1.5133 0.6321]
+entropy correction =  -0.014441706542604599
+Extra cycle  E= 8.46390842209486  delta_E= -1.95e-14  |g|= 1.1e-14  |ddm|= 4.26e-13
+entropy correction =  -0.014441706542604599
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.59052534364966
+HOMO:  -0.535416980834275 LUMO:  -0.5336080405780054
+Fermi energy:      -0.5335004440
+[2.     1.9988 1.9718 1.8293 1.1893 1.0108]
+entropy correction =  -0.01738997165792953
+cycle= 1 E= 8.54848021604185  delta_E= -0.042  |g|= 1.48e-14  |ddm|= 1.19
+HOMO:  -0.5354169808342759 LUMO:  -0.5336080405780057
+Fermi energy:      -0.5335004440
+[2.     1.9988 1.9718 1.8293 1.1893 1.0108]
+entropy correction =  -0.017389971657929208
+cycle= 2 E= 8.54848021604185  delta_E=    0  |g|= 1.3e-14  |ddm|= 8.58e-14
+HOMO:  -0.5354169808342779 LUMO:  -0.5336080405780059
+Fermi energy:      -0.5335004440
+[2.     1.9988 1.9718 1.8293 1.1893 1.0108]
+entropy correction =  -0.017389971657929604
+Extra cycle  E= 8.54848021604184  delta_E= -1.07e-14  |g|= 1.19e-14  |ddm|= 2.6e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.017389971657929604
+-W =  7.659125593480493
+2-norm (grad),       max(grad):
+0.8909734996951364 ,  0.22016541777418547
+time of hessian construction : 0.120  (cpu),  0.003  (wall) 
+time of hessian construction : 0.080  (cpu),  0.002  (wall) 
+|umat| =  5.463085893808704
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.60011725383774
+HOMO:  -0.523788605516351 LUMO:  -0.5140458912306229
+Fermi energy:      -0.5181881984
+[2.     2.     1.998  1.8861 1.508  0.6079]
+entropy correction =  -0.013985972513106404
+cycle= 1 E= 8.56888210325385  delta_E= -0.0312  |g|= 1.83e-14  |ddm|= 0.224
+HOMO:  -0.5237886055163528 LUMO:  -0.5140458912306246
+Fermi energy:      -0.5181881984
+[2.     2.     1.998  1.8861 1.508  0.6079]
+entropy correction =  -0.013985972513106425
+cycle= 2 E= 8.56888210325383  delta_E= -2.49e-14  |g|= 1.11e-14  |ddm|= 1.48e-13
+HOMO:  -0.5237886055163533 LUMO:  -0.5140458912306228
+Fermi energy:      -0.5181881984
+[2.     2.     1.998  1.8861 1.508  0.6079]
+entropy correction =  -0.013985972513105068
+Extra cycle  E= 8.56888210325383  delta_E= 5.33e-15  |g|= 1.56e-14  |ddm|= 3e-13
+entropy correction =  -0.013985972513105068
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.63890904004826
+HOMO:  -0.5241151047087329 LUMO:  -0.5146542849287468
+Fermi energy:      -0.5186816093
+[2.     1.9999 1.9976 1.8893 1.4955 0.6177]
+entropy correction =  -0.014067533578905542
+cycle= 1 E= 8.60821366034856  delta_E= -0.0307  |g|= 1.86e-14  |ddm|= 0.216
+HOMO:  -0.5241151047087333 LUMO:  -0.5146542849287461
+Fermi energy:      -0.5186816093
+[2.     1.9999 1.9976 1.8893 1.4955 0.6177]
+entropy correction =  -0.014067533578904867
+cycle= 2 E= 8.60821366034856  delta_E=    0  |g|= 2.02e-14  |ddm|= 1.54e-13
+HOMO:  -0.5241151047087339 LUMO:  -0.5146542849287493
+Fermi energy:      -0.5186816093
+[2.     1.9999 1.9976 1.8893 1.4955 0.6177]
+entropy correction =  -0.014067533578906546
+Extra cycle  E= 8.60821366034856  delta_E= 5.33e-15  |g|= 1.11e-14  |ddm|= 3.93e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014067533578906546
+-W =  7.649644031662708
+2-norm (grad),       max(grad):
+0.02142138584757411 ,  0.005537206926414906
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+|umat| =  5.628161582971263
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.57869837837085
+HOMO:  -0.5251085122552129 LUMO:  -0.5157481244054833
+Fermi energy:      -0.5196724485
+[2.     2.     1.9995 1.8783 1.4957 0.6265]
+entropy correction =  -0.014181872356061213
+cycle= 1 E= 8.54627937346515  delta_E= -0.0324  |g|= 1.44e-14  |ddm|= 0.206
+HOMO:  -0.525108512255214 LUMO:  -0.5157481244054797
+Fermi energy:      -0.5196724485
+[2.     2.     1.9995 1.8783 1.4957 0.6265]
+entropy correction =  -0.01418187235605875
+cycle= 2 E= 8.54627937346516  delta_E= 1.78e-14  |g|= 1.36e-14  |ddm|= 7.65e-13
+HOMO:  -0.5251085122552145 LUMO:  -0.5157481244054857
+Fermi energy:      -0.5196724485
+[2.     2.     1.9995 1.8783 1.4957 0.6265]
+entropy correction =  -0.014181872356061694
+Extra cycle  E= 8.54627937346516  delta_E= -1.78e-15  |g|= 2.18e-14  |ddm|= 8.22e-13
+entropy correction =  -0.014181872356061694
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.62115252948754
+HOMO:  -0.5254614065159627 LUMO:  -0.5160172048447023
+Fermi energy:      -0.5200672738
+[2.     1.9999 1.999  1.8928 1.4925 0.6158]
+entropy correction =  -0.013976929502986965
+cycle= 1 E= 8.58919703176442  delta_E= -0.032  |g|= 1.28e-14  |ddm|= 0.187
+HOMO:  -0.5254614065159616 LUMO:  -0.5160172048447003
+Fermi energy:      -0.5200672738
+[2.     1.9999 1.999  1.8928 1.4925 0.6158]
+entropy correction =  -0.013976929502986358
+cycle= 2 E= 8.58919703176443  delta_E= 1.07e-14  |g|= 1.21e-14  |ddm|= 2.01e-13
+HOMO:  -0.5254614065159625 LUMO:  -0.5160172048447019
+Fermi energy:      -0.5200672738
+[2.     1.9999 1.999  1.8928 1.4925 0.6158]
+entropy correction =  -0.013976929502986797
+Extra cycle  E= 8.58919703176443  delta_E= -3.55e-15  |g|= 8.21e-15  |ddm|= 1.08e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013976929502986797
+-W =  7.649397960241589
+2-norm (grad),       max(grad):
+0.060993969726315066 ,  0.015119168881815859
+time of hessian construction : 0.060  (cpu),  0.001  (wall) 
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+|umat| =  5.630213350195271
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.57894637571513
+HOMO:  -0.5246033601077389 LUMO:  -0.5150663872285782
+Fermi energy:      -0.5191740265
+[2.     2.     1.9996 1.8944 1.4952 0.6109]
+entropy correction =  -0.013891617086932921
+cycle= 1 E= 8.54650136687797  delta_E= -0.0324  |g|= 1.44e-14  |ddm|= 0.232
+HOMO:  -0.5246033601077371 LUMO:  -0.5150663872285841
+Fermi energy:      -0.5191740265
+[2.     2.     1.9996 1.8944 1.4952 0.6109]
+entropy correction =  -0.013891617086936422
+cycle= 2 E= 8.54650136687797  delta_E=    0  |g|= 1.6e-14  |ddm|= 1.32e-12
+HOMO:  -0.524603360107741 LUMO:  -0.5150663872285813
+Fermi energy:      -0.5191740265
+[2.     2.     1.9996 1.8944 1.4952 0.6109]
+entropy correction =  -0.01389161708693341
+Extra cycle  E= 8.54650136687795  delta_E= -1.95e-14  |g|= 1.52e-14  |ddm|= 9.18e-13
+entropy correction =  -0.01389161708693341
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.62184875975544
+HOMO:  -0.525175665705069 LUMO:  -0.515555231419206
+Fermi energy:      -0.5197022374
+[2.     1.9999 1.9992 1.8949 1.4985 0.6075]
+entropy correction =  -0.01387347679138917
+cycle= 1 E= 8.58981797690248  delta_E= -0.032  |g|= 1.35e-14  |ddm|= 0.228
+HOMO:  -0.5251756657050699 LUMO:  -0.5155552314192092
+Fermi energy:      -0.5197022374
+[2.     1.9999 1.9992 1.8949 1.4985 0.6075]
+entropy correction =  -0.013873476791390199
+cycle= 2 E= 8.58981797690248  delta_E= 1.78e-15  |g|= 1.29e-14  |ddm|= 3.78e-13
+HOMO:  -0.5251756657050678 LUMO:  -0.5155552314192047
+Fermi energy:      -0.5197022374
+[2.     1.9999 1.9992 1.8949 1.4985 0.6075]
+entropy correction =  -0.01387347679138875
+Extra cycle  E= 8.58981797690248  delta_E= -1.78e-15  |g|= 1.22e-14  |ddm|= 5.85e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.01387347679138875
+-W =  7.6491876269144665
+2-norm (grad),       max(grad):
+0.013236145398204835 ,  0.002502804043600232
+time of hessian construction : 0.150  (cpu),  0.004  (wall) 
+time of hessian construction : 0.100  (cpu),  0.003  (wall) 
+|umat| =  5.790003611037611
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.56799164575426
+HOMO:  -0.5241404269135427 LUMO:  -0.51501552716479
+Fermi energy:      -0.5188593574
+[2.     2.     1.9999 1.8827 1.4839 0.6335]
+entropy correction =  -0.014192474234364663
+cycle= 1 E= 8.53425568117047  delta_E= -0.0337  |g|= 2.47e-14  |ddm|= 0.205
+HOMO:  -0.5241404269135386 LUMO:  -0.5150155271647886
+Fermi energy:      -0.5188593574
+[2.     2.     1.9999 1.8827 1.4839 0.6335]
+entropy correction =  -0.01419247423436605
+cycle= 2 E= 8.53425568117046  delta_E= -3.55e-15  |g|= 2.23e-14  |ddm|= 4.04e-13
+HOMO:  -0.5241404269135416 LUMO:  -0.5150155271647909
+Fermi energy:      -0.5188593574
+[2.     2.     1.9999 1.8827 1.4839 0.6335]
+entropy correction =  -0.014192474234365928
+Extra cycle  E= 8.53425568117046  delta_E= -3.55e-15  |g|= 1.2e-14  |ddm|= 3.68e-13
+entropy correction =  -0.014192474234365928
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.60497761352973
+HOMO:  -0.5246736230988599 LUMO:  -0.5158518411604597
+Fermi energy:      -0.5195845046
+[2.     1.9999 1.9999 1.8879 1.4691 0.6432]
+entropy correction =  -0.014236939030431623
+cycle= 1 E= 8.57200445796623  delta_E= -0.033  |g|= 1.11e-14  |ddm|= 0.221
+HOMO:  -0.5246736230988599 LUMO:  -0.5158518411604592
+Fermi energy:      -0.5195845046
+[2.     1.9999 1.9999 1.8879 1.4691 0.6432]
+entropy correction =  -0.014236939030431425
+cycle= 2 E= 8.57200445796623  delta_E=    0  |g|= 1.4e-14  |ddm|= 7.02e-14
+HOMO:  -0.5246736230988591 LUMO:  -0.5158518411604588
+Fermi energy:      -0.5195845046
+[2.     1.9999 1.9999 1.8879 1.4691 0.6432]
+entropy correction =  -0.014236939030431425
+Extra cycle  E= 8.57200445796625  delta_E= 1.78e-14  |g|= 1.26e-14  |ddm|= 3.12e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014236939030431425
+-W =  7.648922829444121
+2-norm (grad),       max(grad):
+0.08907564371783194 ,  0.021474685614117472
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  5.790071045716228
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.56807105823143
+HOMO:  -0.5241607864656559 LUMO:  -0.5144254427515195
+Fermi energy:      -0.5186146432
+[2.     2.     1.9999 1.8922 1.504  0.604 ]
+entropy correction =  -0.013831717493290143
+cycle= 1 E= 8.53426828207038  delta_E= -0.0338  |g|= 1.33e-14  |ddm|= 0.232
+HOMO:  -0.5241607864656562 LUMO:  -0.5144254427515212
+Fermi energy:      -0.5186146432
+[2.     2.     1.9999 1.8922 1.504  0.604 ]
+entropy correction =  -0.013831717493290792
+cycle= 2 E= 8.53426828207038  delta_E=    0  |g|= 1.81e-14  |ddm|= 2.8e-13
+HOMO:  -0.5241607864656573 LUMO:  -0.5144254427515221
+Fermi energy:      -0.5186146432
+[2.     2.     1.9999 1.8922 1.504  0.604 ]
+entropy correction =  -0.01383171749329099
+Extra cycle  E= 8.53426828207038  delta_E= -3.55e-15  |g|= 1.46e-14  |ddm|= 2e-13
+entropy correction =  -0.01383171749329099
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.60471065893346
+HOMO:  -0.5248714438078724 LUMO:  -0.5152439367479765
+Fermi energy:      -0.5193975933
+[2.     1.9999 1.9999 1.8946 1.4986 0.607 ]
+entropy correction =  -0.01384262088076317
+cycle= 1 E= 8.57171638064977  delta_E= -0.033  |g|= 1.45e-14  |ddm|= 0.234
+HOMO:  -0.5248714438078722 LUMO:  -0.5152439367479752
+Fermi energy:      -0.5193975933
+[2.     1.9999 1.9999 1.8946 1.4986 0.607 ]
+entropy correction =  -0.01384262088076265
+cycle= 2 E= 8.57171638064977  delta_E= -5.33e-15  |g|= 1.24e-14  |ddm|= 1.84e-13
+HOMO:  -0.5248714438078727 LUMO:  -0.5152439367479753
+Fermi energy:      -0.5193975933
+[2.     1.9999 1.9999 1.8946 1.4986 0.607 ]
+entropy correction =  -0.013842620880762775
+Extra cycle  E= 8.57171638064977  delta_E= 1.78e-15  |g|= 1.78e-14  |ddm|= 1.85e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013842620880762775
+-W =  7.648844158874348
+2-norm (grad),       max(grad):
+0.01871091421935324 ,  0.0036514551915250992
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+time of hessian construction : 0.070  (cpu),  0.002  (wall) 
+|umat| =  6.124035735964157
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.52167713846882
+HOMO:  -0.5410864186705074 LUMO:  -0.531495839996671
+Fermi energy:      -0.5355094163
+[2.     1.9998 1.9981 1.8769 1.5063 0.6189]
+entropy correction =  -0.014171375397588518
+cycle= 1 E= 8.4849906700673  delta_E= -0.0367  |g|= 1.45e-14  |ddm|= 0.207
+HOMO:  -0.5410864186705081 LUMO:  -0.5314958399966685
+Fermi energy:      -0.5355094163
+[2.     1.9998 1.9981 1.8769 1.5063 0.6189]
+entropy correction =  -0.014171375397587359
+cycle= 2 E= 8.4849906700673  delta_E= -3.55e-15  |g|= 1.58e-14  |ddm|= 4.32e-13
+HOMO:  -0.5410864186705043 LUMO:  -0.5314958399966678
+Fermi energy:      -0.5355094163
+[2.     1.9998 1.9981 1.8769 1.5063 0.6189]
+entropy correction =  -0.014171375397588455
+Extra cycle  E= 8.48499067006731  delta_E= 1.42e-14  |g|= 1.76e-14  |ddm|= 3.25e-13
+entropy correction =  -0.014171375397588455
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.52957823300947
+HOMO:  -0.5422235335425162 LUMO:  -0.5332196679753202
+Fermi energy:      -0.5371477898
+[2.     1.9983 1.9963 1.9111 1.4681 0.6262]
+entropy correction =  -0.014028013826348674
+cycle= 1 E= 8.49451496475759  delta_E= -0.0351  |g|= 1.13e-14  |ddm|= 0.233
+HOMO:  -0.5422235335425181 LUMO:  -0.5332196679753226
+Fermi energy:      -0.5371477898
+[2.     1.9983 1.9963 1.9111 1.4681 0.6262]
+entropy correction =  -0.014028013826349078
+cycle= 2 E= 8.49451496475759  delta_E=    0  |g|= 1.52e-14  |ddm|= 2.19e-13
+HOMO:  -0.542223533542518 LUMO:  -0.533219667975322
+Fermi energy:      -0.5371477898
+[2.     1.9983 1.9963 1.9111 1.4681 0.6262]
+entropy correction =  -0.014028013826349042
+Extra cycle  E= 8.49451496475758  delta_E= -7.11e-15  |g|= 1.47e-14  |ddm|= 6.49e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014028013826349042
+-W =  7.648333718693748
+2-norm (grad),       max(grad):
+0.07214218724373529 ,  0.014230315974409297
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  6.12528238440009
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.5256079102607
+HOMO:  -0.5395275990675235 LUMO:  -0.5300027711345566
+Fermi energy:      -0.5340620885
+[2.     1.9999 1.9987 1.8885 1.4979 0.615 ]
+entropy correction =  -0.014016547015139302
+cycle= 1 E= 8.48919740322667  delta_E= -0.0364  |g|= 1.74e-14  |ddm|= 0.224
+HOMO:  -0.5395275990675242 LUMO:  -0.5300027711345531
+Fermi energy:      -0.5340620885
+[2.     1.9999 1.9987 1.8885 1.4979 0.615 ]
+entropy correction =  -0.014016547015137201
+cycle= 2 E= 8.48919740322668  delta_E= 3.55e-15  |g|= 1.53e-14  |ddm|= 7.17e-13
+HOMO:  -0.5395275990675198 LUMO:  -0.5300027711345497
+Fermi energy:      -0.5340620885
+[2.     1.9999 1.9987 1.8885 1.4979 0.615 ]
+entropy correction =  -0.014016547015137616
+Extra cycle  E= 8.48919740322667  delta_E= -1.07e-14  |g|= 1.48e-14  |ddm|= 2.45e-13
+entropy correction =  -0.014016547015137616
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.53752963026506
+HOMO:  -0.5409978753468029 LUMO:  -0.5313299108953743
+Fermi energy:      -0.5354848277
+[2.     1.9987 1.9976 1.8953 1.5015 0.6069]
+entropy correction =  -0.01395183639815996
+cycle= 1 E= 8.50243376642044  delta_E= -0.0351  |g|= 1.46e-14  |ddm|= 0.23
+HOMO:  -0.5409978753468011 LUMO:  -0.5313299108953718
+Fermi energy:      -0.5354848277
+[2.     1.9987 1.9976 1.8953 1.5015 0.6069]
+entropy correction =  -0.013951836398159334
+cycle= 2 E= 8.50243376642043  delta_E= -8.88e-15  |g|= 1.12e-14  |ddm|= 3.06e-13
+HOMO:  -0.5409978753468015 LUMO:  -0.5313299108953721
+Fermi energy:      -0.5354848277
+[2.     1.9987 1.9976 1.8953 1.5015 0.6069]
+entropy correction =  -0.013951836398159214
+Extra cycle  E= 8.50243376642044  delta_E= 1.42e-14  |g|= 1.48e-14  |ddm|= 6.58e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013951836398159214
+-W =  7.648033960936228
+2-norm (grad),       max(grad):
+0.02052107521769303 ,  0.004654284192631142
+time of hessian construction : 0.080  (cpu),  0.002  (wall) 
+time of hessian construction : 0.150  (cpu),  0.005  (wall) 
+|umat| =  6.793940245304438
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.45242892712736
+HOMO:  -0.5474405461005767 LUMO:  -0.5379265890617151
+Fermi energy:      -0.5421623599
+[2.     1.9998 1.9997 1.9167 1.4837 0.6001]
+entropy correction =  -0.013574968244132589
+cycle= 1 E= 8.41047683489336  delta_E= -0.042  |g|= 1.64e-14  |ddm|= 0.271
+HOMO:  -0.5474405461005802 LUMO:  -0.5379265890617183
+Fermi energy:      -0.5421623599
+[2.     1.9998 1.9997 1.9167 1.4837 0.6001]
+entropy correction =  -0.013574968244132686
+cycle= 2 E= 8.41047683489336  delta_E= 1.78e-15  |g|= 1.51e-14  |ddm|= 4.74e-13
+HOMO:  -0.5474405461005795 LUMO:  -0.5379265890617179
+Fermi energy:      -0.5421623599
+[2.     1.9998 1.9997 1.9167 1.4837 0.6001]
+entropy correction =  -0.013574968244132846
+Extra cycle  E= 8.41047683489335  delta_E= -1.07e-14  |g|= 1.45e-14  |ddm|= 1.11e-13
+entropy correction =  -0.013574968244132846
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.47844843784467
+HOMO:  -0.548982934526148 LUMO:  -0.5389475987639084
+Fermi energy:      -0.5431003054
+[2.     1.9994 1.9971 1.8677 1.5286 0.6071]
+entropy correction =  -0.014168679922636533
+cycle= 1 E= 8.43777612033184  delta_E= -0.0407  |g|= 1.66e-14  |ddm|= 0.231
+HOMO:  -0.5489829345261481 LUMO:  -0.5389475987639086
+Fermi energy:      -0.5431003054
+[2.     1.9994 1.9971 1.8677 1.5286 0.6071]
+entropy correction =  -0.014168679922636443
+cycle= 2 E= 8.43777612033185  delta_E= 1.42e-14  |g|= 1.22e-14  |ddm|= 9.91e-14
+HOMO:  -0.5489829345261483 LUMO:  -0.5389475987639089
+Fermi energy:      -0.5431003054
+[2.     1.9994 1.9971 1.8677 1.5286 0.6071]
+entropy correction =  -0.014168679922636407
+Extra cycle  E= 8.43777612033185  delta_E= -7.11e-15  |g|= 1.03e-14  |ddm|= 6.28e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014168679922636407
+-W =  7.647438854236506
+2-norm (grad),       max(grad):
+0.10638783755158988 ,  0.020838356546675707
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  6.7942138537297065
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.45684503867833
+HOMO:  -0.5481457133082701 LUMO:  -0.5385589925275505
+Fermi energy:      -0.5425742183
+[2.     1.9998 1.9996 1.876  1.5059 0.6187]
+entropy correction =  -0.014130438063668063
+cycle= 1 E= 8.41542478211593  delta_E= -0.0414  |g|= 1.66e-14  |ddm|= 0.24
+HOMO:  -0.5481457133082709 LUMO:  -0.538558992527548
+Fermi energy:      -0.5425742183
+[2.     1.9998 1.9996 1.876  1.5059 0.6187]
+entropy correction =  -0.014130438063666768
+cycle= 2 E= 8.41542478211593  delta_E= -5.33e-15  |g|= 1.97e-14  |ddm|= 5.13e-13
+HOMO:  -0.5481457133082667 LUMO:  -0.5385589925275466
+Fermi energy:      -0.5425742183
+[2.     1.9998 1.9996 1.876  1.5059 0.6187]
+entropy correction =  -0.014130438063667667
+Extra cycle  E= 8.41542478211593  delta_E= 1.78e-15  |g|= 1.77e-14  |ddm|= 3.28e-13
+entropy correction =  -0.014130438063667667
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.47810482118121
+HOMO:  -0.5483503072921816 LUMO:  -0.5390435899605096
+Fermi energy:      -0.5429919125
+[2.     1.9994 1.9972 1.889  1.4898 0.6245]
+entropy correction =  -0.014162787362903544
+cycle= 1 E= 8.43757956086679  delta_E= -0.0405  |g|= 1.43e-14  |ddm|= 0.22
+HOMO:  -0.5483503072921808 LUMO:  -0.5390435899605087
+Fermi energy:      -0.5429919125
+[2.     1.9994 1.9972 1.889  1.4898 0.6245]
+entropy correction =  -0.014162787362903526
+cycle= 2 E= 8.43757956086679  delta_E= 3.55e-15  |g|= 1.44e-14  |ddm|= 1.3e-13
+HOMO:  -0.5483503072921814 LUMO:  -0.53904358996051
+Fermi energy:      -0.5429919125
+[2.     1.9994 1.9972 1.889  1.4898 0.6245]
+entropy correction =  -0.014162787362903861
+Extra cycle  E= 8.43757956086679  delta_E=    0  |g|= 1.28e-14  |ddm|= 9.89e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.014162787362903861
+-W =  7.646852358363094
+2-norm (grad),       max(grad):
+0.04458244528553508 ,  0.008603763833828916
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  6.824878176106775
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.46616197520986
+HOMO:  -0.5462527857371127 LUMO:  -0.5365798916690863
+Fermi energy:      -0.5407372203
+[2.     1.9998 1.9997 1.8921 1.5017 0.6067]
+entropy correction =  -0.013874310004300923
+cycle= 1 E= 8.42502589232181  delta_E= -0.0411  |g|= 1.37e-14  |ddm|= 0.237
+HOMO:  -0.546252785737115 LUMO:  -0.536579891669083
+Fermi energy:      -0.5407372203
+[2.     1.9998 1.9997 1.8921 1.5017 0.6067]
+entropy correction =  -0.01387431000429813
+cycle= 2 E= 8.42502589232183  delta_E= 1.24e-14  |g|= 2.47e-14  |ddm|= 7.53e-13
+HOMO:  -0.5462527857371121 LUMO:  -0.5365798916690866
+Fermi energy:      -0.5407372203
+[2.     1.9998 1.9997 1.8921 1.5017 0.6067]
+entropy correction =  -0.013874310004300892
+Extra cycle  E= 8.42502589232183  delta_E= -1.78e-15  |g|= 1.98e-14  |ddm|= 6.32e-13
+entropy correction =  -0.013874310004300892
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.47456892511468
+HOMO:  -0.5465947912186765 LUMO:  -0.5369770593733417
+Fermi energy:      -0.5411032757
+[2.     1.9997 1.9992 1.892  1.4999 0.6093]
+entropy correction =  -0.013925477944340863
+cycle= 1 E= 8.43389226418994  delta_E= -0.0407  |g|= 1.31e-14  |ddm|= 0.225
+HOMO:  -0.5465947912186759 LUMO:  -0.5369770593733411
+Fermi energy:      -0.5411032757
+[2.     1.9997 1.9992 1.892  1.4999 0.6093]
+entropy correction =  -0.013925477944340726
+cycle= 2 E= 8.43389226418994  delta_E= -3.55e-15  |g|= 1.39e-14  |ddm|= 2.64e-13
+HOMO:  -0.5465947912186765 LUMO:  -0.5369770593733405
+Fermi energy:      -0.5411032757
+[2.     1.9997 1.9992 1.892  1.4999 0.6093]
+entropy correction =  -0.013925477944340323
+Extra cycle  E= 8.43389226418994  delta_E= 3.55e-15  |g|= 1.58e-14  |ddm|= 2.19e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013925477944340323
+-W =  7.64650080277607
+2-norm (grad),       max(grad):
+0.01032121685221362 ,  0.002026279125987185
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+|umat| =  8.160712907692313
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.40399933995726
+HOMO:  -0.5333913474759997 LUMO:  -0.523808984795087
+Fermi energy:      -0.5277659866
+[2.     2.     2.     1.8664 1.5099 0.6237]
+entropy correction =  -0.014227164104922918
+cycle= 1 E= 8.35005893133096  delta_E= -0.0539  |g|= 1.56e-14  |ddm|= 0.246
+HOMO:  -0.5333913474759983 LUMO:  -0.5238089847950863
+Fermi energy:      -0.5277659866
+[2.     2.     2.     1.8664 1.5099 0.6237]
+entropy correction =  -0.014227164104923324
+cycle= 2 E= 8.35005893133096  delta_E= 1.78e-15  |g|= 1.45e-14  |ddm|= 2.5e-13
+HOMO:  -0.5333913474759996 LUMO:  -0.5238089847950873
+Fermi energy:      -0.5277659866
+[2.     2.     2.     1.8664 1.5099 0.6237]
+entropy correction =  -0.014227164104922738
+Extra cycle  E= 8.35005893133096  delta_E= 1.78e-15  |g|= 2.6e-14  |ddm|= 2.08e-13
+entropy correction =  -0.014227164104922738
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.35158588254234
+HOMO:  -0.5357642886194481 LUMO:  -0.5258395858076537
+Fermi energy:      -0.5301303229
+[2.     2.     2.     1.8941 1.5105 0.5955]
+entropy correction =  -0.013726014961249198
+cycle= 1 E= 8.3014075068049  delta_E= -0.0502  |g|= 1.5e-14  |ddm|= 0.246
+HOMO:  -0.5357642886194481 LUMO:  -0.5258395858076537
+Fermi energy:      -0.5301303229
+[2.     2.     2.     1.8941 1.5105 0.5955]
+entropy correction =  -0.013726014961249292
+cycle= 2 E= 8.30140750680489  delta_E= -3.55e-15  |g|= 1.19e-14  |ddm|= 1.49e-13
+HOMO:  -0.535764288619449 LUMO:  -0.5258395858076557
+Fermi energy:      -0.5301303229
+[2.     2.     2.     1.8941 1.5105 0.5955]
+entropy correction =  -0.013726014961249979
+Extra cycle  E= 8.30140750680489  delta_E= -1.78e-15  |g|= 1.92e-14  |ddm|= 2.68e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013726014961249979
+-W =  7.646038815437108
+2-norm (grad),       max(grad):
+0.11278699545325135 ,  0.025891072189842324
+time of hessian construction : 0.040  (cpu),  0.001  (wall) 
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+|umat| =  8.16069812850795
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.413943589544
+HOMO:  -0.5311526953908153 LUMO:  -0.5210517342331872
+Fermi energy:      -0.5253856773
+[2.     2.     2.     1.8879 1.5203 0.5918]
+entropy correction =  -0.013742705831860585
+cycle= 1 E= 8.36079480986924  delta_E= -0.0531  |g|= 2.33e-14  |ddm|= 0.242
+HOMO:  -0.5311526953908156 LUMO:  -0.5210517342331858
+Fermi energy:      -0.5253856773
+[2.     2.     2.     1.8879 1.5203 0.5918]
+entropy correction =  -0.013742705831860333
+cycle= 2 E= 8.36079480986924  delta_E=    0  |g|= 1.51e-14  |ddm|= 3.08e-13
+HOMO:  -0.531152695390816 LUMO:  -0.5210517342331867
+Fermi energy:      -0.5253856773
+[2.     2.     2.     1.8879 1.5203 0.5918]
+entropy correction =  -0.013742705831860533
+Extra cycle  E= 8.36079480986923  delta_E= -1.07e-14  |g|= 2.54e-14  |ddm|= 8.96e-14
+entropy correction =  -0.013742705831860533
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.36443544881978
+HOMO:  -0.5330501827989687 LUMO:  -0.5230368087556609
+Fermi energy:      -0.5272941585
+[2.     2.     2.     1.8823 1.5195 0.5982]
+entropy correction =  -0.013853175616865927
+cycle= 1 E= 8.31475785838794  delta_E= -0.0497  |g|= 1.65e-14  |ddm|= 0.233
+HOMO:  -0.53305018279897 LUMO:  -0.5230368087556623
+Fermi energy:      -0.5272941585
+[2.     2.     2.     1.8823 1.5195 0.5982]
+entropy correction =  -0.013853175616866031
+cycle= 2 E= 8.31475785838795  delta_E= 1.42e-14  |g|= 1.46e-14  |ddm|= 2.45e-13
+HOMO:  -0.5330501827989695 LUMO:  -0.5230368087556624
+Fermi energy:      -0.5272941585
+[2.     2.     2.     1.8823 1.5195 0.5982]
+entropy correction =  -0.013853175616866347
+Extra cycle  E= 8.31475785838794  delta_E= -7.11e-15  |g|= 1.07e-14  |ddm|= 7.84e-14
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013853175616866347
+-W =  7.644710710422105
+2-norm (grad),       max(grad):
+0.04777360284891141 ,  0.008413212726118002
+time of hessian construction : 0.060  (cpu),  0.002  (wall) 
+time of hessian construction : 0.050  (cpu),  0.001  (wall) 
+|umat| =  8.161833779435332
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.42598082849636
+HOMO:  -0.5290006188854558 LUMO:  -0.519378917094032
+Fermi energy:      -0.5235102650
+[2.     2.     2.     1.8913 1.4998 0.6089]
+entropy correction =  -0.013881030309384548
+cycle= 1 E= 8.37325426260196  delta_E= -0.0527  |g|= 2.21e-14  |ddm|= 0.24
+HOMO:  -0.5290006188854535 LUMO:  -0.5193789170940322
+Fermi energy:      -0.5235102650
+[2.     2.     2.     1.8913 1.4998 0.6089]
+entropy correction =  -0.01388103030938589
+cycle= 2 E= 8.37325426260197  delta_E= 5.33e-15  |g|= 2.12e-14  |ddm|= 6.15e-13
+HOMO:  -0.5290006188854544 LUMO:  -0.5193789170940328
+Fermi energy:      -0.5235102650
+[2.     2.     2.     1.8913 1.4998 0.6089]
+entropy correction =  -0.013881030309385424
+Extra cycle  E= 8.37325426260196  delta_E= -7.11e-15  |g|= 3.28e-14  |ddm|= 4.39e-13
+entropy correction =  -0.013881030309385424
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.37681564925971
+HOMO:  -0.5306334928288708 LUMO:  -0.5209566551500773
+Fermi energy:      -0.5251078079
+[2.     2.     2.     1.8904 1.5024 0.6072]
+entropy correction =  -0.013873336588878822
+cycle= 1 E= 8.32692622095754  delta_E= -0.0499  |g|= 1.51e-14  |ddm|= 0.231
+HOMO:  -0.5306334928288722 LUMO:  -0.5209566551500765
+Fermi energy:      -0.5251078079
+[2.     2.     2.     1.8904 1.5024 0.6072]
+entropy correction =  -0.013873336588878049
+cycle= 2 E= 8.32692622095756  delta_E= 1.78e-14  |g|= 1.32e-14  |ddm|= 2.07e-13
+HOMO:  -0.5306334928288713 LUMO:  -0.5209566551500767
+Fermi energy:      -0.5251078079
+[2.     2.     2.     1.8904 1.5024 0.6072]
+entropy correction =  -0.013873336588878309
+Extra cycle  E= 8.32692622095754  delta_E= -1.42e-14  |g|= 2.02e-14  |ddm|= 1.61e-13
+ Adding contributions from fluctuation of occupation numbers.
+ Adding contributions from fluctuation of occupation numbers.
+entropy correction =  -0.013873336588878309
+-W =  7.6445153433160264
+2-norm (grad),       max(grad):
+0.011383784852724165 ,  0.0021732540577019677
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+time of hessian construction : 0.030  (cpu),  0.001  (wall) 
+Warning: Maximum number of iterations has been exceeded.
+         Current function value: 7.644515
+         Iterations: 30
+         Function evaluations: 31
+         Gradient evaluations: 27
+         Hessian evaluations: 26
+time of embedding potential optimization (extended Wu-Yang) : 2757.850  (cpu),  70.639  (wall) 
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.42598082849636
+HOMO:  -0.5290006188854536 LUMO:  -0.5193789170940316
+Fermi energy:      -0.5235102650
+[2.     2.     2.     1.8913 1.4998 0.6089]
+entropy correction =  -0.013881030309385412
+cycle= 1 E= 8.37325426260196  delta_E= -0.0527  |g|= 1.72e-14  |ddm|= 0.24
+HOMO:  -0.5290006188854559 LUMO:  -0.5193789170940324
+Fermi energy:      -0.5235102650
+[2.     2.     2.     1.8913 1.4998 0.6089]
+entropy correction =  -0.013881030309384692
+cycle= 2 E= 8.37325426260196  delta_E= 5.33e-15  |g|= 2.5e-14  |ddm|= 2.28e-13
+HOMO:  -0.5290006188854537 LUMO:  -0.5193789170940328
+Fermi energy:      -0.5235102650
+[2.     2.     2.     1.8913 1.4998 0.6089]
+entropy correction =  -0.013881030309386153
+Extra cycle  E= 8.37325426260196  delta_E= 1.78e-15  |g|= 2.42e-14  |ddm|= 3.92e-13
+entropy correction =  -0.013881030309386153
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= 8.37681564925971
+HOMO:  -0.5306334928288713 LUMO:  -0.5209566551500782
+Fermi energy:      -0.5251078079
+[2.     2.     2.     1.8904 1.5024 0.6072]
+entropy correction =  -0.013873336588879029
+cycle= 1 E= 8.32692622095755  delta_E= -0.0499  |g|= 2.14e-14  |ddm|= 0.231
+HOMO:  -0.5306334928288714 LUMO:  -0.5209566551500765
+Fermi energy:      -0.5251078079
+[2.     2.     2.     1.8904 1.5024 0.6072]
+entropy correction =  -0.013873336588878184
+cycle= 2 E= 8.32692622095755  delta_E= -3.55e-15  |g|= 1.24e-14  |ddm|= 2.3e-13
+HOMO:  -0.5306334928288715 LUMO:  -0.5209566551500763
+Fermi energy:      -0.5251078079
+[2.     2.     2.     1.8904 1.5024 0.6072]
+entropy correction =  -0.013873336588878274
+Extra cycle  E= 8.32692622095754  delta_E= -1.42e-14  |g|= 1.55e-14  |ddm|= 1.04e-13
+entropy correction =  -0.013873336588878274
+diffP_max_imp, diffP_max_bath 
+0.05958710512374642 0.0609724874786821
+STOP: embedding potential optimization exceeds max No. of iterations
+time of embedding potential optimization (split loops) : 2839.540  (cpu),  72.729  (wall) 
+========================================
+ SCF with converged embedding potential 
+========================================
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= -3.1386236727109
+HOMO:  -0.5423246718327016 LUMO:  -0.5235621239628703
+Fermi energy:      -0.5324981902
+[2.     2.     2.     1.959  1.7542 0.2868]
+entropy correction =  -0.008838290459062507
+cycle= 1 E= -6.90429610167729  delta_E= -3.77  |g|= 0.206  |ddm|= 2.53
+HOMO:  -0.5152140009233374 LUMO:  -0.46671724765974654
+Fermi energy:      -0.4909654755
+[2.     2.     2.     2.     1.9845 0.0155]
+entropy correction =  -0.0009097264892226296
+cycle= 2 E= -6.74302311225913  delta_E= 0.161  |g|= 0.544  |ddm|= 2.66
+HOMO:  -0.5215684144969599 LUMO:  -0.4890840928780118
+Fermi energy:      -0.5053204508
+[2.     2.     2.     1.9998 1.9253 0.0749]
+entropy correction =  -0.0031994186478486153
+cycle= 3 E= -6.77859151809726  delta_E= -0.0356  |g|= 0.444  |ddm|= 1.53
+HOMO:  -0.5228014427451486 LUMO:  -0.5105265941836779
+Fermi energy:      -0.5165835703
+[2.     2.     2.     1.9887 1.5524 0.4589]
+entropy correction =  -0.011051379123849714
+cycle= 4 E= -6.82012616383839  delta_E= -0.0415  |g|= 0.359  |ddm|=  2.4
+HOMO:  -0.522517343018187 LUMO:  -0.5034850702478975
+Fermi energy:      -0.5129913973
+[2.     2.     2.     1.9991 1.741  0.2599]
+entropy correction =  -0.007756638548369728
+cycle= 5 E= -6.71239301176482  delta_E= 0.108  |g|=  0.5  |ddm|= 2.67
+HOMO:  -0.5246751718655822 LUMO:  -0.5149469394895159
+Fermi energy:      -0.5196939575
+[2.     2.     2.     1.9814 1.4606 0.558 ]
+entropy correction =  -0.01227827770208141
+cycle= 6 E= -6.8703476751284  delta_E= -0.158  |g|= 0.274  |ddm|= 1.19
+HOMO:  -0.5291702571456924 LUMO:  -0.5186789146824847
+Fermi energy:      -0.5234878502
+[2.     2.     2.     1.9329 1.5141 0.553 ]
+entropy correction =  -0.012909997083897205
+cycle= 7 E= -6.91142590800418  delta_E= -0.0411  |g|= 0.163  |ddm|= 1.44
+HOMO:  -0.5289290821112986 LUMO:  -0.5191828892333429
+Fermi energy:      -0.5235491291
+[2.     2.     2.     1.9194 1.4915 0.5892]
+entropy correction =  -0.013421137448251111
+cycle= 8 E= -6.90588672832629  delta_E= 0.00554  |g|= 0.18  |ddm|= 1.08
+HOMO:  -0.5296309588034037 LUMO:  -0.5207577818891765
+Fermi energy:      -0.5244703584
+[2.     2.     2.     1.8804 1.4747 0.6449]
+entropy correction =  -0.014309063521817114
+cycle= 9 E= -6.93490752902147  delta_E= -0.029  |g|= 0.0309  |ddm|= 0.49
+HOMO:  -0.5302867289388824 LUMO:  -0.5211434822937624
+Fermi energy:      -0.5250068822
+[2.     2.     2.     1.8844 1.4838 0.6318]
+entropy correction =  -0.014157049650174449
+cycle= 10 E= -6.93558817635215  delta_E= -0.000681  |g|= 0.0135  |ddm|= 0.158
+HOMO:  -0.5305088612239988 LUMO:  -0.5214567148551833
+Fermi energy:      -0.5252362792
+[2.     2.     2.     1.8776 1.4833 0.6391]
+entropy correction =  -0.01428042170532955
+cycle= 11 E= -6.93573435930343  delta_E= -0.000146  |g|= 0.00492  |ddm|= 0.0476
+HOMO:  -0.5308010630058054 LUMO:  -0.5216343830205228
+Fermi energy:      -0.5254893184
+[2.     2.     2.     1.8812 1.4863 0.6325]
+entropy correction =  -0.01419098058410768
+cycle= 12 E= -6.93575599176041  delta_E= -2.16e-05  |g|= 0.000998  |ddm|= 0.0208
+HOMO:  -0.5307468664715076 LUMO:  -0.5216041608580734
+Fermi energy:      -0.5254420561
+[2.     2.     2.     1.8802 1.4857 0.634 ]
+entropy correction =  -0.014212498903431356
+cycle= 13 E= -6.93575689811974  delta_E= -9.06e-07  |g|= 0.000309  |ddm|= 0.0051
+HOMO:  -0.5307333915223419 LUMO:  -0.5215945593415072
+Fermi energy:      -0.5254301141
+[2.     2.     2.     1.8802 1.4856 0.6342]
+entropy correction =  -0.014215076064489157
+cycle= 14 E= -6.93575692109779  delta_E= -2.3e-08  |g|= 0.000244  |ddm|= 0.00137
+HOMO:  -0.5307326614854041 LUMO:  -0.5215945901976368
+Fermi energy:      -0.5254298873
+[2.     2.     2.     1.8802 1.4856 0.6342]
+entropy correction =  -0.014215143470067408
+cycle= 15 E= -6.93575697428807  delta_E= -5.32e-08  |g|= 4.86e-05  |ddm|= 0.00103
+HOMO:  -0.5307340874254864 LUMO:  -0.5215956593849085
+Fermi energy:      -0.5254312103
+[2.     2.     2.     1.8802 1.4856 0.6342]
+entropy correction =  -0.014214822988913136
+cycle= 16 E= -6.93575697651028  delta_E= -2.22e-09  |g|= 4.22e-06  |ddm|= 0.000203
+HOMO:  -0.5307343969687882 LUMO:  -0.5215959460166666
+Fermi energy:      -0.5254315068
+[2.     2.     2.     1.8802 1.4856 0.6342]
+entropy correction =  -0.014214816544351909
+cycle= 17 E= -6.93575697652283  delta_E= -1.25e-11  |g|= 1.55e-06  |ddm|= 2.19e-05
+HOMO:  -0.5307344331094567 LUMO:  -0.5215959785657281
+Fermi energy:      -0.5254315385
+[2.     2.     2.     1.8802 1.4856 0.6342]
+entropy correction =  -0.0142148206844327
+Extra cycle  E= -6.93575697564152  delta_E= 8.81e-10  |g|= 3.09e-05  |ddm|= 9.79e-05
+entropy correction =  -0.0142148206844327
+rks_ao.ne_frozen =  0
+Set gradient conv threshold to 3.16228e-05
+tot grids = 233240
+init E= -3.20607988704568
+HOMO:  -0.5441978803476588 LUMO:  -0.5253634727306528
+Fermi energy:      -0.5343037150
+[2.     2.     2.     1.9563 1.7571 0.2866]
+entropy correction =  -0.00885948401246777
+cycle= 1 E= -6.95792884041994  delta_E= -3.75  |g|= 0.197  |ddm|= 2.53
+HOMO:  -0.5151549389850504 LUMO:  -0.4727956121549469
+Fermi energy:      -0.4939751314
+[2.     2.     2.     2.     1.9715 0.0285]
+entropy correction =  -0.0014954650506928916
+cycle= 2 E= -6.85112856631787  delta_E= 0.107  |g|= 0.479  |ddm|= 2.52
+HOMO:  -0.5261591125335924 LUMO:  -0.514610126490691
+Fermi energy:      -0.5201220757
+[2.     2.     2.     1.9617 1.5397 0.4986]
+entropy correction =  -0.011956687562002601
+cycle= 3 E= -6.96106850494931  delta_E= -0.11  |g|= 0.164  |ddm|= 1.47
+HOMO:  -0.5206774355714868 LUMO:  -0.4936643561625955
+Fermi energy:      -0.5071701503
+[2.     2.     2.     2.     1.8742 0.1258]
+entropy correction =  -0.004699367487782936
+cycle= 4 E= -6.63441144493163  delta_E= 0.327  |g|= 0.628  |ddm|= 2.41
+HOMO:  -0.5217866562976691 LUMO:  -0.5049854085858416
+Fermi energy:      -0.5133817050
+[2.     2.     2.     1.9995 1.6861 0.3144]
+entropy correction =  -0.008717387447981334
+cycle= 5 E= -6.74314133101503  delta_E= -0.109  |g|= 0.524  |ddm|= 0.537
+HOMO:  -0.5240045810905928 LUMO:  -0.5135418595596176
+Fermi energy:      -0.5187403301
+[2.     2.     2.     1.9949 1.4826 0.5224]
+entropy correction =  -0.011636481431255577
+cycle= 6 E= -6.84386425811783  delta_E= -0.101  |g|= 0.401  |ddm|= 0.662
+HOMO:  -0.5258310949976853 LUMO:  -0.5153402078776393
+Fermi energy:      -0.5204931937
+[2.     2.     2.     1.9858 1.4883 0.5259]
+entropy correction =  -0.011870519440018202
+cycle= 7 E= -6.87152293702995  delta_E= -0.0277  |g|= 0.357  |ddm|= 0.172
+HOMO:  -0.5260620941299489 LUMO:  -0.5187463406880582
+Fermi energy:      -0.5220392077
+[2.     2.     2.     1.936  1.3819 0.6821]
+entropy correction =  -0.014017440781779742
+cycle= 8 E= -6.94298781427913  delta_E= -0.0715  |g|= 0.219  |ddm|= 0.625
+HOMO:  -0.5288493735543726 LUMO:  -0.520602513393469
+Fermi energy:      -0.5241548003
+[2.     2.     2.     1.9032 1.4378 0.659 ]
+entropy correction =  -0.014215422803991034
+cycle= 9 E= -6.96531506419628  delta_E= -0.0223  |g|= 0.151  |ddm|= 0.252
+HOMO:  -0.5323725225277557 LUMO:  -0.5236311549867421
+Fermi energy:      -0.5272321767
+[2.     2.     2.     1.8722 1.4731 0.6547]
+entropy correction =  -0.014464661709674847
+cycle= 10 E= -6.98251650414027  delta_E= -0.0172  |g|= 0.0646  |ddm|= 0.634
+HOMO:  -0.5328339690776585 LUMO:  -0.5234373196844216
+Fermi energy:      -0.5274193595
+[2.     2.     2.     1.8843 1.4941 0.6216]
+entropy correction =  -0.014062766824465573
+cycle= 11 E= -6.98603734337615  delta_E= -0.00352  |g|= 0.0193  |ddm|= 0.262
+HOMO:  -0.5318540905188667 LUMO:  -0.522723409999477
+Fermi energy:      -0.5265610994
+[2.     2.     2.     1.8811 1.4848 0.634 ]
+entropy correction =  -0.014205132507498433
+cycle= 12 E= -6.98551052515196  delta_E= 0.000527  |g|= 0.0307  |ddm|= 0.138
+HOMO:  -0.5320867084479806 LUMO:  -0.5229350777084465
+Fermi energy:      -0.5267796526
+[2.     2.     2.     1.8807 1.4859 0.6334]
+entropy correction =  -0.014203752510456576
+cycle= 13 E= -6.98636973044609  delta_E= -0.000859  |g|= 0.00341  |ddm|= 0.0946
+HOMO:  -0.5321758087476948 LUMO:  -0.5229900193421758
+Fermi energy:      -0.5268519331
+[2.     2.     2.     1.8809 1.4872 0.6319]
+entropy correction =  -0.01418816795106837
+cycle= 14 E= -6.98638051786191  delta_E= -1.08e-05  |g|= 0.000313  |ddm|= 0.013
+HOMO:  -0.532211788867203 LUMO:  -0.5230162119821389
+Fermi energy:      -0.5268853364
+[2.     2.     2.     1.8813 1.4874 0.6313]
+entropy correction =  -0.014178821342176033
+cycle= 15 E= -6.98638054366045  delta_E= -2.58e-08  |g|= 0.000243  |ddm|= 0.00151
+HOMO:  -0.5322138452308812 LUMO:  -0.5230168241039737
+Fermi energy:      -0.5268859296
+[2.     2.     2.     1.8812 1.4875 0.6313]
+entropy correction =  -0.014179796742876503
+cycle= 16 E= -6.98638057750971  delta_E= -3.38e-08  |g|= 0.000122  |ddm|= 0.00117
+HOMO:  -0.532212780235806 LUMO:  -0.5230156033065111
+Fermi energy:      -0.5268849237
+[2.     2.     2.     1.8812 1.4875 0.6313]
+entropy correction =  -0.01417943016059441
+cycle= 17 E= -6.9863805914243  delta_E= -1.39e-08  |g|= 6.43e-06  |ddm|= 0.00046
+HOMO:  -0.5322124760706728 LUMO:  -0.5230153253012851
+Fermi energy:      -0.5268846170
+[2.     2.     2.     1.8812 1.4875 0.6313]
+entropy correction =  -0.014179475615032456
+cycle= 18 E= -6.98638059144214  delta_E= -1.78e-11  |g|= 3.53e-06  |ddm|= 2.28e-05
+HOMO:  -0.5322122773368401 LUMO:  -0.523015263914186
+Fermi energy:      -0.5268844831
+[2.     2.     2.     1.8812 1.4875 0.6313]
+entropy correction =  -0.014179544660672314
+Extra cycle  E= -6.98638058677004  delta_E= 4.67e-09  |g|= 7.11e-05  |ddm|= 0.000231
+<class 'pydmfet.qcwrap.pyscf_rks_ao.rks_ao'> does not have attributes  coredm add_coredm_ext_energy dm_guess vext_1e ne_frozen
+<class 'pydmfet.dfet_ao.scf.EmbedSCF'> does not have attributes  Ne
+/home/xingz/.local/lib/python3.7/site-packages/scipy-1.4.0.dev0+0f78e0f-py3.7-linux-x86_64.egg/scipy/optimize/_minimize.py:618: OptimizeWarning: Unknown solver options: ftol, svd_thresh
+  callback=callback, **options)
+entropy correction =  -0.014179544660672314
+scf energies:
+EA (no vemb contrib.) =  -19.12306829212028
+EB (no vemb contrib.) =  -19.12592653597834
+W =  -38.266833389287086
+P_imp change (scf - non-scf):  0.18006785555072075
+P_bath change (scf - non-scf):  0.1700102653478729
+|P_frag + P_env - P_ref| =  0.22800061087481838
+max element of (P_frag + P_env - P_ref) =  0.038899149423114565
+mo orthogonality:
+[[-1.3790e-03 -2.8660e-05  1.1545e-04 -8.4321e-04  2.0060e-03  1.7772e-05]
+ [-5.6261e-06 -2.7593e-04 -5.7877e-04 -7.8589e-04 -6.3693e-03 -4.0731e-03]
+ [-2.9863e-04  7.9930e-04  3.3642e-04  8.6953e-04 -2.3067e-03  3.2293e-03]
+ [ 2.3457e-04 -3.7292e-04  3.5254e-04 -3.6348e-02  2.2634e-03 -3.9988e-01]
+ [ 2.1017e-03 -4.8105e-03  4.1968e-03  1.4345e-04  3.3770e-01 -5.4339e-03]
+ [ 3.5280e-04 -1.6143e-03 -3.9026e-03  3.9636e-01 -4.6795e-03  8.3479e-01]]
+|P_imp-P_imp_0| =  0.11692452793115678
+max(P_imp-P_imp_0) =  0.03342582262326621
+|P_bath-P_bath_0| =  0.11737199141029955
+max(P_bath-P_bath_0) =  0.03572380866426016
