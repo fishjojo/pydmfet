@@ -6,7 +6,7 @@
 #include <algorithm> 
 #include <iomanip>
 #include "config.h"
-#include "blas/fblas.h"
+#include "linalg/fblas.h"
 //#include <rank_revealing_algorithms_intel_mkl.h>
 
 //#include <pybind11/pybind11.h>

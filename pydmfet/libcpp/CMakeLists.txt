@@ -46,5 +46,5 @@ include_directories("${PROJECT_BINARY_DIR}")
 set(CMAKE_SKIP_BUILD_RPATH  True)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH True)
 
-add_subdirectory(blas)
+add_subdirectory(linalg)
 add_subdirectory(hess)

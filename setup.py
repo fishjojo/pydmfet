@@ -376,7 +376,7 @@ def configuration(parent_package='', top_path=None):
 
 extensions = []
 extensions += [
-    make_ext('pydmfet.libcpp.libblas', 'blas',
+    make_ext('pydmfet.libcpp.liblinalg', 'linalg',
              'svd.cpp',
              blas_libraries,
              extra_compile_flags=blas_extra_compile_flags,
