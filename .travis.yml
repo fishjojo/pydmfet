@@ -5,10 +5,11 @@ python:
  - "3.7"
 cache: pip
 before_install:
+ - sudo apt-get -qq install gcc gfortran libblas-dev cmake curl
  - pip install -r requirements.txt
 install:
  - ls $TRAVIS_BUILD_DIR
- - pip install .
+ - python setup.py install
 script:
  - cd $TRAVIS_BUILD_DIR/tests
  - python test_travis.py
