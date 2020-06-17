@@ -1,7 +1,7 @@
 PyDMFET
 =======
 
-.. image:: https://img.shields.io/travis/fishjojo/pydmfet/master.svg?label=Travis%20CI
+.. image:: https://api.travis-ci.org/fishjojo/pydmfet.svg?branch=master
       :target: https://travis-ci.org/fishjojo/pydmfet/
 
 PyDMFET is an open-source software for performing 
