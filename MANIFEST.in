@@ -1,0 +1,9 @@
+include MANIFEST.in
+include README.rst setup.py LICENSE.txt
+
+prune pydmfet/libcpp/build
+
+include pydmfet/libcpp/*.so*
+include pydmfet/libcpp/*.dylib*
+
+recursive-include pydmfet/libcpp *.c *.h

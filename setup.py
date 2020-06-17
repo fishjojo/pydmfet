@@ -32,7 +32,7 @@ Operating System :: MacOS
 
 MAJOR = 0
 MINOR = 1
-MICRO = 0
+MICRO = 1
 ISRELEASED = True
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
@@ -437,7 +437,7 @@ def setup_package():
         platforms = ["Linux", "Mac OS-X", "Unix"],
         #test_suite='nose.collector',
         ext_modules=extensions,
-        cmdclass={"sdist": sdist_checked,
+        cmdclass={#"sdist": sdist_checked,
                   "build_ext": BuildExtWithoutPlatformSuffix},
         python_requires='>=3.5',
         zip_safe=False,
