@@ -4,7 +4,7 @@ import time
 from pydmfet import tools
 import ctypes
 
-libsvd = np.ctypeslib.load_library('libsvd', os.path.dirname(__file__))
+libsvd = np.ctypeslib.load_library('libblas', os.path.dirname(__file__))
 
 
 def mkl_svd(A, algorithm = 1):

@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import sysconfig
 import platform
 import subprocess
 
@@ -32,9 +33,8 @@ Operating System :: MacOS
 MAJOR = 0
 MINOR = 1
 MICRO = 0
-ISRELEASED = False
+ISRELEASED = True
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
-
 
 def git_version():
     def _minimal_ext_cmd(cmd):
@@ -101,7 +101,6 @@ if not release:
     finally:
         a.close()
 
-
 def check_submodules():
     """ verify that the submodules are checked out and clean
         use `git submodule update --init`; on failure
@@ -122,7 +121,6 @@ def check_submodules():
     for line in status.splitlines():
         if line.startswith('-') or line.startswith('+'):
             raise ValueError('Submodule not clean: %s' % line)
-
 
 class license_files():
     """LICENSE.txt for sdist creation
@@ -147,12 +145,11 @@ class sdist_checked(sdist):
         with license_files():
             sdist.run(self)
 
-
+'''
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
         self.sourcedir = os.path.abspath(sourcedir)
-
 
 class CMakeBuild(build_ext):
     def run(self):
@@ -169,8 +166,8 @@ class CMakeBuild(build_ext):
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
         cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
                       '-DPYTHON_EXECUTABLE=' + sys.executable,
-                      '-DCMAKE_C_COMPILER=' + 'icc',
-                      '-DCMAKE_CXX_COMPILER=' + 'icpc',
+                      '-DCMAKE_C_COMPILER=' + 'gcc',
+                      '-DCMAKE_CXX_COMPILER=' + 'g++',
                       '-DVERSION_INFO=' + self.distribution.get_version()]
 
         cfg = 'Debug' if self.debug else 'Release'
@@ -192,7 +189,210 @@ class CMakeBuild(build_ext):
             os.makedirs(self.build_temp)
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
+'''
 
+topdir = os.path.abspath(os.path.join(__file__, '..'))
+
+try:
+    import numpy
+except ImportError as e:
+    print('**************************************************')
+    print('* numpy was not installed in your system.  Please run')
+    print('*     pip install numpy')
+    print('* before installing pydmfet.')
+    print('**************************************************')
+    raise e
+
+if (sys.platform.startswith('linux') or
+    sys.platform.startswith('cygwin') or
+    sys.platform.startswith('gnukfreebsd')):
+    ostype = 'linux'
+    so_ext = '.so'
+    LD_LIBRARY_PATH = 'LD_LIBRARY_PATH'
+elif sys.platform.startswith('darwin'):
+    ostype = 'mac'
+    so_ext = '.dylib'
+    LD_LIBRARY_PATH = 'DYLD_LIBRARY_PATH'
+    from distutils.sysconfig import get_config_vars
+    conf_vars = get_config_vars()
+    conf_vars['LDSHARED'] = conf_vars['LDSHARED'].replace('-bundle', '-dynamiclib')
+    conf_vars['CCSHARED'] = " -dynamiclib"
+    if sys.version_info[0] >= 3:  # python3
+        conf_vars['EXT_SUFFIX'] = '.dylib'
+    else:
+        conf_vars['SO'] = '.dylib'
+elif sys.platform.startswith('win'):
+    ostype = 'windows'
+    so_ext = '.dll'
+elif sys.platform.startswith('aix') or sys.platform.startswith('os400'):
+    ostype = 'aix'
+    so_ext = '.so'
+    LD_LIBRARY_PATH = 'LIBPATH'
+    if(os.environ.get('PYSCF_INC_DIR') is None):
+        os.environ['PYSCF_INC_DIR'] = '/QOpenSys/pkgs:/QOpenSys/usr:/usr:/usr/local'
+else:
+    raise OSError('Unknown platform')
+    ostype = None
+
+
+def search_lib_path(libname, extra_paths=None, version=None):
+    paths = os.environ.get(LD_LIBRARY_PATH, '').split(os.pathsep)
+    if 'PYSCF_INC_DIR' in os.environ:
+        PYSCF_INC_DIR = os.environ['PYSCF_INC_DIR'].split(os.pathsep)
+        for p in PYSCF_INC_DIR:
+            paths = [p, os.path.join(p, 'lib'), os.path.join(p, '..', 'lib')] + paths
+    if extra_paths is not None:
+        paths += extra_paths
+
+    len_libname = len(libname)
+    for path in paths:
+        full_libname = os.path.join(path, libname)
+        if os.path.isfile(full_libname):
+            if version is None or ostype == 'mac':
+                return os.path.abspath(path)
+            else:
+                for f in os.listdir(path):
+                    f_name = f[:len_libname]
+                    f_version = f[len_libname+1:]
+                    if (f_name == libname and f_version and
+                        check_version(f_version, version)):
+                        return os.path.abspath(path)
+
+def search_inc_path(incname, extra_paths=None):
+    paths = os.environ.get(LD_LIBRARY_PATH, '').split(os.pathsep)
+    if 'PYSCF_INC_DIR' in os.environ:
+        PYSCF_INC_DIR = os.environ['PYSCF_INC_DIR'].split(os.pathsep)
+        for p in PYSCF_INC_DIR:
+            paths = [p, os.path.join(p, 'include'), os.path.join(p, '..', 'include')] + paths
+    if extra_paths is not None:
+        paths += extra_paths
+    for path in paths:
+        full_incname = os.path.join(path, incname)
+        if os.path.exists(full_incname):
+            return os.path.abspath(path)
+
+if 'LDFLAGS' in os.environ:
+    blas_found = any(x in os.environ['LDFLAGS']
+                     for x in ('blas', 'atlas', 'openblas', 'mkl', 'Accelerate'))
+else:
+    blas_found = False
+
+blas_include = []
+blas_lib_dir = []
+blas_libraries = []
+blas_extra_link_flags = []
+blas_extra_compile_flags = []
+if not blas_found:
+    np_blas = numpy.__config__.get_info('blas_opt')
+    blas_include = np_blas.get('include_dirs', [])
+    blas_lib_dir = np_blas.get('library_dirs', [])
+    blas_libraries = np_blas.get('libraries', [])
+    blas_path_guess = [search_lib_path('lib'+x+so_ext, blas_lib_dir)
+                       for x in blas_libraries]
+    blas_extra_link_flags = np_blas.get('extra_link_args', [])
+    blas_extra_compile_flags = np_blas.get('extra_compile_args', [])
+    if ostype == 'mac':
+        if blas_extra_link_flags:
+            blas_found = True
+    else:
+        if None not in blas_path_guess:
+            blas_found = True
+            blas_lib_dir = list(set(blas_path_guess))
+
+if not blas_found:  # for MKL
+    mkl_path_guess = search_lib_path('libmkl_rt'+so_ext, blas_lib_dir)
+    if mkl_path_guess is not None:
+        blas_libraries = ['mkl_rt']
+        blas_lib_dir = [mkl_path_guess]
+        blas_found = True
+        print("Using MKL library in %s" % mkl_path_guess)
+
+if not blas_found:
+    possible_blas = ('blas', 'atlas', 'openblas')
+    for x in possible_blas:
+        blas_path_guess = search_lib_path('libblas'+so_ext, blas_lib_dir)
+        if blas_path_guess is not None:
+            blas_libraries = [x]
+            blas_lib_dir = [blas_path_guess]
+            blas_found = True
+            print("Using BLAS library %s in %s" % (x, blas_path_guess))
+            break
+
+if not blas_found:
+    print("****************************************************************")
+    print("*** WARNING: BLAS library not found.")
+    print("* You can include the BLAS library in the global environment LDFLAGS, eg")
+    print("*   export LDFLAGS='-L/path/to/blas/lib -lblas'")
+    print("* or specify the BLAS library path in  PYSCF_INC_DIR")
+    print("*   export PYSCF_INC_DIR=/path/to/blas/lib:/path/to/other/lib")
+    print("****************************************************************")
+    raise RuntimeError
+
+distutils_lib_dir = 'lib.{platform}-{version[0]}.{version[1]}'.format(
+    platform=sysconfig.get_platform(),
+    version=sys.version_info)
+
+pydmfet_lib_dir = os.path.join(topdir, 'pydmfet', 'libcpp')
+build_lib_dir = os.path.join('build', distutils_lib_dir, 'pydmfet', 'libcpp')
+default_lib_dir = [build_lib_dir] + blas_lib_dir
+default_include = ['.', 'build', pydmfet_lib_dir] + blas_include
+
+if not os.path.exists(os.path.join(topdir, 'build')):
+    os.mkdir(os.path.join(topdir, 'build'))
+with open(os.path.join(topdir, 'build', 'config.h'), 'w') as f:
+    f.write('''
+#if defined _OPENMP
+#include <omp.h>
+#else
+#define omp_get_thread_num() 0
+#define omp_get_num_threads() 1
+#endif
+''')
+
+
+def make_ext(pkg_name, relpath, srcs, libraries=[], library_dirs=default_lib_dir,
+             include_dirs=default_include, extra_compile_flags=[],
+             extra_link_flags=[], **kwargs):
+    if '/' in relpath:
+        relpath = os.path.join(*relpath.split('/'))
+    if (os.path.isfile(os.path.join(pydmfet_lib_dir, 'build', 'CMakeCache.txt')) and
+        os.path.isfile(os.path.join(pydmfet_lib_dir, *pkg_name.split('.')) + so_ext)):
+        return None
+    else:
+        if sys.platform.startswith('darwin'):
+            soname = pkg_name.split('.')[-1]
+            extra_link_flags = extra_link_flags + ['-install_name', '@loader_path/'+soname+so_ext]
+            runtime_library_dirs = []
+        elif sys.platform.startswith('aix') or sys.platform.startswith('os400'):
+            extra_compile_flags = extra_compile_flags + ['-fopenmp']
+            extra_link_flags = extra_link_flags + ['-lblas', '-lgomp', '-Wl,-brtl']
+            runtime_library_dirs = ['$ORIGIN', '.']
+        else:
+            extra_compile_flags = extra_compile_flags + ['-fopenmp']
+            extra_link_flags = extra_link_flags + ['-fopenmp']
+            runtime_library_dirs = ['$ORIGIN', '.']
+        srcs = make_src(relpath, srcs)
+        return Extension(pkg_name, srcs,
+                         libraries = libraries,
+                         library_dirs = library_dirs,
+                         include_dirs = include_dirs + [os.path.join(pydmfet_lib_dir,relpath)],
+                         extra_compile_args = extra_compile_flags,
+                         extra_link_args = extra_link_flags,
+# Be careful with the ld flag "-Wl,-R$ORIGIN" in the shell.
+# When numpy.distutils is imported, the default CCompiler of distutils will be
+# overwritten. Compilation is executed in shell and $ORIGIN will be converted to ''
+                         runtime_library_dirs = runtime_library_dirs,
+                         **kwargs)
+
+def make_src(relpath, srcs):
+    srcpath = os.path.join(pydmfet_lib_dir, relpath)
+    abs_srcs = []
+    for src in srcs.split():
+        if '/' in src:
+            abs_srcs.append(os.path.relpath(os.path.join(srcpath, *src.split('/'))))
+        else:
+            abs_srcs.append(os.path.relpath(os.path.join(srcpath, src)))
+    return abs_srcs
 
 def configuration(parent_package='', top_path=None):
     from scipy._build_utils.system_info import get_info, NotFoundError
@@ -220,6 +420,30 @@ def configuration(parent_package='', top_path=None):
 
     return config
 
+extensions = []
+extensions += [
+    make_ext('pydmfet.libcpp.libblas', 'blas',
+             'svd.cpp',
+             blas_libraries,
+             extra_compile_flags=blas_extra_compile_flags,
+             extra_link_flags=blas_extra_link_flags),
+    make_ext('pydmfet.libcpp.libhess', 'hess',
+             'hess.cpp',
+             blas_libraries,
+             extra_compile_flags=blas_extra_compile_flags,
+             extra_link_flags=blas_extra_link_flags)]
+extensions = [x for x in extensions if x is not None]
+
+# Python ABI updates since 3.5
+# https://www.python.org/dev/peps/pep-3149/
+class BuildExtWithoutPlatformSuffix(build_ext):
+    def get_ext_filename(self, ext_name):
+        from distutils.sysconfig import get_config_var
+        ext_path = ext_name.split('.')
+        filename = build_ext.get_ext_filename(self, ext_name)
+        name, ext_suffix = os.path.splitext(filename)
+        return os.path.join(*ext_path) + ext_suffix
+
 
 def setup_package():
 
@@ -241,38 +465,40 @@ def setup_package():
     metadata = dict(
         name = "pydmfet",
         maintainer = "Xing Zhang",
-        maintainer_email = "xingz@princeton.edu",
-        description = "sDMFET",
+        maintainer_email = "xzhang8@caltech.edu",
+        description = "subspace DMFET",
         long_description = "",
         author = "Xing Zhang",
+        author_email = "xzhang8@caltech.edu",
+        url = "https://github.com/fishjojo/pydmfet/pydmfet",
         project_urls={
             "Bug Tracker": "https://github.com/fishjojo/pydmfet/issues",
             "Source Code": "https://github.com/fishjojo/pydmfet/pydmfet",
         },
         license = 'BSD',
         classifiers=[_f for _f in CLASSIFIERS.split('\n') if _f],
+        include_package_data=True,
         packages=find_packages(exclude=['*test*', '*example*',
                                         '*setup.py']),
         platforms = ["Linux", "Mac OS-X", "Unix"],
         #test_suite='nose.collector',
-        ext_modules=[CMakeExtension('pydmfet.libcpp.libhess'),
-                     CMakeExtension('pydmfet.libcpp.libsvd')],
+        ext_modules=extensions,
         cmdclass={"sdist": sdist_checked,
-                  "build_ext": CMakeBuild},
+                  "build_ext": BuildExtWithoutPlatformSuffix},
         python_requires='>=3.5',
         zip_safe=False,
     )
 
-    run_build = False
+    run_build = True
 
     from setuptools import setup
     if run_build:
     #    from numpy.distutils.core import setup
         metadata['configuration'] = configuration
-    else:
         metadata['version'] = get_version_info()[0]
-
-    setup(**metadata)
+        setup(**metadata)
+    else:
+        metadata['version'] = get_version_info()[1]
 
 
 if __name__ == "__main__":

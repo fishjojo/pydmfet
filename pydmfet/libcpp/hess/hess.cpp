@@ -1,25 +1,30 @@
-#include <omp.h>
-#include <mkl.h>
 #include <iostream>
-#include <ctime>
-#include <chrono>
+//#include <ctime>
+//#include <chrono>
 #include <math.h>
 #include <vector>
 #include <algorithm> 
 #include <iomanip>
+#include "config.h"
+#include "blas/fblas.h"
 //#include <rank_revealing_algorithms_intel_mkl.h>
 
 //#include <pybind11/pybind11.h>
 
+#define A(i,j)        *(A+(i)+N*(j))
+#define B(i,j)        *(B+(i)+N*(j))
+
 using namespace std;
 
+#if defined __cplusplus
 extern "C" {
+#endif
 
-int degen_subspac(vector<vector<int>> &sub, double* mo_energy, int norb, double e_tol);
-int orb_in_subspac(int orb_i, vector<vector<int>> sub);
-bool orb_pair_in_same_subspac(int orb_i, int orb_j, vector<vector<int>> sub);
-void get_jt(double* jt, int orb_i, vector<vector<int>> sub, double* jCa, int NBas);
-void get_jt_deg(double* jt, vector<vector<int>> sub, int index, double* jCa, int NBas);
+int degen_subspac(vector<vector<int> > &sub, double* mo_energy, int norb, double e_tol);
+int orb_in_subspac(int orb_i, vector<vector<int> > sub);
+bool orb_pair_in_same_subspac(int orb_i, int orb_j, vector<vector<int> > sub);
+void get_jt(double* jt, int orb_i, vector<vector<int> > sub, double* jCa, int NBas);
+void get_jt_deg(double* jt, vector<vector<int> > sub, int index, double* jCa, int NBas);
 
 
 void VRadd(double* C, double* A, double* B, int N)
@@ -47,6 +52,20 @@ void VRcopy(double* y, double* x, int N)
    return;
 }
 
+void Transpose(double* A, double* B, int N)
+{
+  int i,j;
+  if (N > 0) {
+    for (i = 0; i < N; ++i)
+      for (j = 0; j <= i; ++j) {
+        B(i,j) = A(j,i);
+        B(j,i) = A(i,j);
+      }
+    return;
+  }
+}
+
+
 void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int NBas, int NAlpha, int nthread)
 {
    //clock_t startcputime = clock();
@@ -66,6 +85,8 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
       jt[i] = 0.0;
 
 
+   const int I1 = 1;
+
    //mkl_set_dynamic( 0 );
    omp_set_num_threads(nthread);
    //mkl_set_num_threads(1);
@@ -77,7 +98,7 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
          for(int mu=0; mu<NBas; mu++){
             double Cmui=jCa[mu+i*NBas];
             //VRaxpy(jt+index_munu,Cmui,jCa+a*NBas,jt+index_munu,NBas);
-            cblas_daxpy(NBas, Cmui, jCa+a*NBas, 1, jt+index_munu, 1);
+            daxpy_ (&NBas, &Cmui, jCa+a*NBas, &I1, jt+index_munu, &I1);
             index_munu += NBas;
          }
       }
@@ -88,7 +109,8 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
    for(int i=0; i<imax; i++){
       int index_munu = i*N2*NVa;
       for(int a=imax; a<amax; a++){
-         mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt+index_munu, NBas, jt_T+index_munu, NBas);
+         //mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt+index_munu, NBas, jt_T+index_munu, NBas);
+         Transpose(jt+index_munu, jt_T+index_munu, NBas);
          index_munu += N2;
       }
    }
@@ -104,7 +126,7 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
          double dia = 2.0/eps_ia;
          int ioff = N2*index_ia;
          //VRaxpy(jt_dia+ioff, dia, jt+ioff, jt_dia+ioff, N2);
-         cblas_daxpy(N2, dia, jt+ioff, 1, jt_dia+ioff, 1);
+         daxpy_ (&N2, &dia, jt+ioff, &I1, jt_dia+ioff, &I1);
          index_ia++;
       }
    }
@@ -115,24 +137,28 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
       int index_ia = i*NVa;
       for(int a=imax; a<amax; a++){
          int ioff = N2*index_ia;
-         mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt_dia+ioff, NBas, jt_T_dia+ioff, NBas);
+         //mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt_dia+ioff, NBas, jt_T_dia+ioff, NBas);
+         Transpose(jt_dia+ioff, jt_T_dia+ioff, NBas);
          index_ia++;
       }
    }
 
-
+   const char NOTRANS='N';
+   const char TRANS='T';
+   const double D1 = 1.0;
+   const double D0 = 0.0;
 
    double *jHfull = new double [N2*N2];
    //mkl_set_num_threads(nthread);
    //cout<<"mkl_max_threads = "<<mkl_get_max_threads()<<endl;
    //AtimsB(jHfull,jt,jt_dia,N2,N2,NOVa,N2,N2,N2,3);
-   cblas_dgemm (CblasColMajor, CblasNoTrans, CblasTrans, N2, N2, NOVa, 1.0, jt, N2, jt_dia, N2, 0.0, jHfull, N2);
+   dgemm_ (&NOTRANS, &TRANS, &N2, &N2, &NOVa, &D1, jt, &N2, jt_dia, &N2, &D0, jHfull, &N2);
 
    delete [] jt;
    delete [] jt_dia;
 
    double *jHfull_cc = new double [N2*N2];
-   cblas_dgemm (CblasColMajor, CblasNoTrans, CblasTrans, N2, N2, NOVa, 1.0, jt_T, N2, jt_T_dia, N2, 0.0, jHfull_cc, N2);
+   dgemm_ (&NOTRANS, &TRANS, &N2, &N2, &NOVa, &D1, jt_T, &N2, jt_T_dia, &N2, &D0, jHfull_cc, &N2);
 
    delete [] jt_T;
    delete [] jt_T_dia;
@@ -140,7 +166,8 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
    #pragma omp parallel for schedule(static)
    for(int i=0; i<N2; i++){
       int ioff = i*N2;
-      vdAdd(N2, jHfull+ioff, jHfull_cc+ioff, jHfull+ioff);
+      //vdAdd(N2, jHfull+ioff, jHfull_cc+ioff, jHfull+ioff);
+      VRadd(jHfull+ioff, jHfull+ioff, jHfull_cc+ioff, N2);
    } 
    delete [] jHfull_cc;
 
@@ -167,7 +194,8 @@ void calc_hess_dm_fast(double* hess, double* jCa, double* orb_Ea, int dim, int N
          if (mu == nu) ptr = jHfull + (mu+nu*NBas)*N2;
 
          for(int lam=0; lam<NBas; lam++){
-            cblas_dcopy (NBas-lam, ptr+lam*NBas+lam, 1, hess+index, 1);
+            int nelem = NBas-lam;
+            dcopy_ (&nelem, ptr+lam*NBas+lam, &I1, hess+index, &I1);
             index += NBas-lam;
          }
       }
@@ -216,7 +244,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    int NOVa = NOa*NVa;
 
 
-   vector<vector<int>> sub;
+   vector<vector<int> > sub;
    int nsub = 0;
    nsub = degen_subspac(sub, orb_Ea, NOrb, e_tol);
    if(nsub > 0){
@@ -224,7 +252,8 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
       cout<<"nsub = "<<nsub<<"\n";
       for(int i=0; i<nsub; i++){
          cout<<"subspace "<<i+1<<":\n";
-         for(int j=0; j<sub[i].size(); j++){
+         int sub_size = sub[i].size();
+         for(int j=0; j<sub_size; j++){
             if(mo_occ[sub[i][j]] > occ_tol) {cout<<sub[i][j]+1<<", ";}
          }
          cout<<"\n";
@@ -243,6 +272,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    //mkl_set_num_threads(1);
 
    int a_start = 0;
+   const int I1 = 1;
    //if(smear < 1e-8) a_start = imax;
    #pragma omp parallel for schedule(static)
    for(int i=0; i<imax; i++){
@@ -252,7 +282,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
          for(int mu=0; mu<NBas; mu++){
             double Cmui=jCa[mu+i*NBas];
             //VRaxpy(jt+index_munu,Cmui,jCa+a*NBas,jt+index_munu,NBas);
-            cblas_daxpy(NBas, Cmui, jCa+a*NBas, 1, jt+index_munu, 1);
+            daxpy_ (&NBas, &Cmui, jCa+a*NBas, &I1, jt+index_munu, &I1);
             index_munu += NBas;
          }
         }
@@ -265,7 +295,8 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
       int index_munu = i*N2*NVa;
       for(int a=a_start; a<amax; a++){
         if(a != i){
-         mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt+index_munu, NBas, jt_T+index_munu, NBas);
+         //mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt+index_munu, NBas, jt_T+index_munu, NBas);
+         Transpose(jt+index_munu, jt_T+index_munu, NBas);
          index_munu += N2;
         }
       }
@@ -281,7 +312,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
       int index_ia = i*NVa;
       double occ_i = mo_occ[i];
       for(int a=a_start; a<amax; a++){
-        double occ_a = mo_occ[a];
+        //double occ_a = mo_occ[a];
         if(a != i){
          double eps_ia = orb_Ea[i] - orb_Ea[a];
          double dia;
@@ -294,7 +325,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
          }
          int ioff = N2*index_ia;
          //VRaxpy(jt_dia+ioff, dia, jt+ioff, jt_dia+ioff, N2);
-         cblas_daxpy(N2, dia, jt+ioff, 1, jt_dia+ioff, 1);
+         daxpy_ (&N2, &dia, jt+ioff, &I1, jt_dia+ioff, &I1);
          index_ia++;
         }
       }
@@ -308,25 +339,31 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
       for(int a=a_start; a<amax; a++){
         if(a != i){
          int ioff = N2*index_ia;
-         mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt_dia+ioff, NBas, jt_T_dia+ioff, NBas);
+         //mkl_domatcopy ('C', 'T', NBas, NBas, 1.0, jt_dia+ioff, NBas, jt_T_dia+ioff, NBas);
+         Transpose(jt_dia+ioff, jt_T_dia+ioff, NBas);
          index_ia++;
         }
       }
    }
 
 
+   const char NOTRANS='N';
+   const char TRANS='T';
+   const double D1 = 1.0;
+   const double D0 = 0.0;
+
    double *jHfull = new double [N2*N2];
    //mkl_set_num_threads(nthread);
    //cout<<"mkl_max_threads = "<<mkl_get_max_threads()<<endl;
    //AtimsB(jHfull,jt,jt_dia,N2,N2,NOVa,N2,N2,N2,3);
-   cblas_dgemm (CblasColMajor, CblasNoTrans, CblasTrans, N2, N2, NOVa, 1.0, jt, N2, jt_dia, N2, 0.0, jHfull, N2);
+   dgemm_ (&NOTRANS, &TRANS, &N2, &N2, &NOVa, &D1, jt, &N2, jt_dia, &N2, &D0, jHfull, &N2);
 
    delete [] jt;
    delete [] jt_dia;
 
 
    double *jHfull_cc = new double [N2*N2];
-   cblas_dgemm (CblasColMajor, CblasNoTrans, CblasTrans, N2, N2, NOVa, 1.0, jt_T, N2, jt_T_dia, N2, 0.0, jHfull_cc, N2);
+   dgemm_ (&NOTRANS, &TRANS, &N2, &N2, &NOVa, &D1, jt_T, &N2, jt_T_dia, &N2, &D0, jHfull_cc, &N2);
 
    delete [] jt_T;
    delete [] jt_T_dia;
@@ -334,7 +371,8 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
    #pragma omp parallel for schedule(static)
    for(int i=0; i<N2; i++){
       int ioff = i*N2;
-      vdAdd(N2, jHfull+ioff, jHfull_cc+ioff, jHfull+ioff);
+      //vdAdd(N2, jHfull+ioff, jHfull_cc+ioff, jHfull+ioff);
+      VRadd(jHfull+ioff, jHfull+ioff, jHfull_cc+ioff, N2);
    }
    delete [] jHfull_cc;
 
@@ -369,14 +407,14 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
 
         double *jt0 = new double [N2];
         for(int j=0; j<N2; j++) jt0[j] = 0.0;
-        cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+i*NBas, 1, jCa+i*NBas, 1, jt0, NBas);
+        dger_(&NBas, &NBas, &D1, jCa+i*NBas, &I1, jCa+i*NBas, &I1, jt0, &NBas);
 
         double fac = -2.0*occ*(1.0-occ)/smear;
-        cblas_dger(CblasColMajor, N2, N2, fac, jt0, 1, jt, 1, jHfull, N2);
+        dger_(&N2, &N2, &fac, jt0, &I1, jt, &I1, jHfull, &N2);
 
         double fac2 = occ*(1.0-occ);
-        cblas_daxpy(N2, fac2, jt, 1, jt_sum, 1);
-        cblas_daxpy(N2, fac2, jt0, 1, jt0_sum, 1);
+        daxpy_ (&N2, &fac2, jt, &I1, jt_sum, &I1);
+        daxpy_ (&N2, &fac2, jt0, &I1, jt0_sum, &I1);
 
         delete [] jt;
         delete [] jt0;
@@ -384,7 +422,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
 
      //chemical potential part
      double fac = 2.0/smear/pfunc;
-     cblas_dger(CblasColMajor, N2, N2, fac, jt0_sum, 1, jt_sum, 1, jHfull, N2);
+     dger_(&N2, &N2, &fac, jt0_sum, &I1, jt_sum, &I1, jHfull, &N2);
 
      delete [] jt_sum;
      delete [] jt0_sum;
@@ -408,7 +446,8 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
          if (mu == nu) ptr = jHfull + (mu+nu*NBas)*N2;
 
          for(int lam=0; lam<NBas; lam++){
-            cblas_dcopy (NBas-lam, ptr+lam*NBas+lam, 1, hess+index, 1);
+            int nelem = NBas-lam;
+            dcopy_ (&nelem, ptr+lam*NBas+lam, &I1, hess+index, &I1);
             index += NBas-lam;
          }
       }
@@ -432,7 +471,7 @@ void calc_hess_dm_fast_frac(double* hess, double* jCa, double* orb_Ea, double* m
 }
 
 
-int degen_subspac(vector<vector<int>> &sub, double* mo_energy, int norb, double e_tol)
+int degen_subspac(vector<vector<int> > &sub, double* mo_energy, int norb, double e_tol)
 {
   double e_prev = -999999.0;
   double e_cur = 0.0;
@@ -463,12 +502,12 @@ int degen_subspac(vector<vector<int>> &sub, double* mo_energy, int norb, double 
 }
 
 
-int orb_in_subspac(int orb_i, vector<vector<int>> sub)
+int orb_in_subspac(int orb_i, vector<vector<int> > sub)
 {
   if(sub.empty()) {return -1;}
 
   int index=0;
-  for(vector<vector<int>>::iterator it=sub.begin(); it != sub.end(); ++it)
+  for(vector<vector<int> >::iterator it=sub.begin(); it != sub.end(); ++it)
   {  //loop over subspaces 
      if(find( (*it).begin(), (*it).end(), orb_i) != (*it).end()) {return index;}
      index++;
@@ -478,10 +517,10 @@ int orb_in_subspac(int orb_i, vector<vector<int>> sub)
 }
 
 
-bool orb_pair_in_same_subspac(int orb_i, int orb_j, vector<vector<int>> sub)
+bool orb_pair_in_same_subspac(int orb_i, int orb_j, vector<vector<int> > sub)
 {
   if(sub.empty()) {return false;}
-  for(vector<vector<int>>::iterator it=sub.begin(); it != sub.end(); ++it)
+  for(vector<vector<int> >::iterator it=sub.begin(); it != sub.end(); ++it)
   {  //loop over subspaces 
      if(find( (*it).begin(), (*it).end(), orb_i) != (*it).end())
      {
@@ -492,7 +531,7 @@ bool orb_pair_in_same_subspac(int orb_i, int orb_j, vector<vector<int>> sub)
 }
 
 
-void get_jt(double* jt, int orb_i, vector<vector<int>> sub, double* jCa, int NBas)
+void get_jt(double* jt, int orb_i, vector<vector<int> > sub, double* jCa, int NBas)
 {
   //jt is accummulated!
   int index = orb_in_subspac(orb_i, sub);
@@ -500,25 +539,31 @@ void get_jt(double* jt, int orb_i, vector<vector<int>> sub, double* jCa, int NBa
     get_jt_deg(jt, sub, index, jCa, NBas);
   }
   else{
-    cblas_dger(CblasColMajor, NBas, NBas, 1.0, jCa+orb_i*NBas, 1, jCa+orb_i*NBas, 1, jt, NBas);
+    const double D1 = 1.0;
+    const int I1 = 1;
+    dger_(&NBas, &NBas, &D1, jCa+orb_i*NBas, &I1, jCa+orb_i*NBas, &I1, jt, &NBas);
   }
 
 }
 
 
-void get_jt_deg(double* jt, vector<vector<int>> sub, int index, double* jCa, int NBas)
+void get_jt_deg(double* jt, vector<vector<int> > sub, int index, double* jCa, int NBas)
 {
   //jt is accummulated!
   int Nd = sub[index].size();
+  const int I1 = 1;
+  double alpha = 1.0/Nd;
   for(vector<int>::iterator it=sub[index].begin(); it != sub[index].end(); ++it)
   {
      int i = *it;
-     cblas_dger(CblasColMajor, NBas, NBas, 1.0/Nd, jCa+i*NBas, 1, jCa+i*NBas, 1, jt, NBas);
+     dger_(&NBas, &NBas, &alpha, jCa+i*NBas, &I1, jCa+i*NBas, &I1, jt, &NBas);
   }
 
 }
 
-}
+#if defined __cplusplus
+} // end extern "C"
+#endif
 
 /*
 namespace py = pybind11;
