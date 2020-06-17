@@ -15,7 +15,7 @@ cache:
   pip: true
 
 before_install:
- - sudo apt-get -qq install gcc gfortran libblas-dev cmake curl
+ - sudo apt-get -qq install gcc gfortran libopenblas-dev cmake
  - pip install -r requirements.txt
  - pip install h5py
  - pip install pyscf
