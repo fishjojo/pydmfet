@@ -145,52 +145,6 @@ class sdist_checked(sdist):
         with license_files():
             sdist.run(self)
 
-'''
-class CMakeExtension(Extension):
-    def __init__(self, name, sourcedir=''):
-        Extension.__init__(self, name, sources=[])
-        self.sourcedir = os.path.abspath(sourcedir)
-
-class CMakeBuild(build_ext):
-    def run(self):
-        try:
-            out = subprocess.check_output(['cmake', '--version'])
-        except OSError:
-            raise RuntimeError("CMake must be installed to build the following extensions: " +
-                               ", ".join(e.name for e in self.extensions))
-
-        for ext in self.extensions:
-            self.build_extension(ext)
-
-    def build_extension(self, ext):
-        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
-                      '-DPYTHON_EXECUTABLE=' + sys.executable,
-                      '-DCMAKE_C_COMPILER=' + 'gcc',
-                      '-DCMAKE_CXX_COMPILER=' + 'g++',
-                      '-DVERSION_INFO=' + self.distribution.get_version()]
-
-        cfg = 'Debug' if self.debug else 'Release'
-        build_args = ['--config', cfg]
-
-        if platform.system() == "Windows":
-            cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), extdir)]
-            if sys.maxsize > 2**32:
-                cmake_args += ['-A', 'x64']
-            build_args += ['--', '/m']
-        else:
-            cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
-            build_args += ['--', '-j4']
-
-        env = os.environ.copy()
-        #env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
-        #                                                      self.distribution.get_version())
-        if not os.path.exists(self.build_temp):
-            os.makedirs(self.build_temp)
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
-        subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
-'''
-
 topdir = os.path.abspath(os.path.join(__file__, '..'))
 
 try:
@@ -237,9 +191,9 @@ else:
 
 def search_lib_path(libname, extra_paths=None, version=None):
     paths = os.environ.get(LD_LIBRARY_PATH, '').split(os.pathsep)
-    if 'PYSCF_INC_DIR' in os.environ:
-        PYSCF_INC_DIR = os.environ['PYSCF_INC_DIR'].split(os.pathsep)
-        for p in PYSCF_INC_DIR:
+    if 'PYDMFET_INC_DIR' in os.environ:
+        PYDMFET_INC_DIR = os.environ['PYDMFET_INC_DIR'].split(os.pathsep)
+        for p in PYDMFET_INC_DIR:
             paths = [p, os.path.join(p, 'lib'), os.path.join(p, '..', 'lib')] + paths
     if extra_paths is not None:
         paths += extra_paths
@@ -260,8 +214,8 @@ def search_lib_path(libname, extra_paths=None, version=None):
 
 def search_inc_path(incname, extra_paths=None):
     paths = os.environ.get(LD_LIBRARY_PATH, '').split(os.pathsep)
-    if 'PYSCF_INC_DIR' in os.environ:
-        PYSCF_INC_DIR = os.environ['PYSCF_INC_DIR'].split(os.pathsep)
+    if 'PYDMFET_INC_DIR' in os.environ:
+        PYDMFET_INC_DIR = os.environ['PYDMFET_INC_DIR'].split(os.pathsep)
         for p in PYSCF_INC_DIR:
             paths = [p, os.path.join(p, 'include'), os.path.join(p, '..', 'include')] + paths
     if extra_paths is not None:
@@ -323,8 +277,8 @@ if not blas_found:
     print("*** WARNING: BLAS library not found.")
     print("* You can include the BLAS library in the global environment LDFLAGS, eg")
     print("*   export LDFLAGS='-L/path/to/blas/lib -lblas'")
-    print("* or specify the BLAS library path in  PYSCF_INC_DIR")
-    print("*   export PYSCF_INC_DIR=/path/to/blas/lib:/path/to/other/lib")
+    print("* or specify the BLAS library path in  PYDMFET_INC_DIR")
+    print("*   export PYDMFET_INC_DIR=/path/to/blas/lib:/path/to/other/lib")
     print("****************************************************************")
     raise RuntimeError
 
