@@ -264,7 +264,7 @@ if not blas_found:  # for MKL
 if not blas_found:
     possible_blas = ('blas', 'atlas', 'openblas')
     for x in possible_blas:
-        blas_path_guess = search_lib_path('libblas'+so_ext, blas_lib_dir)
+        blas_path_guess = search_lib_path('lib'+x+so_ext, blas_lib_dir)
         if blas_path_guess is not None:
             blas_libraries = [x]
             blas_lib_dir = [blas_path_guess]
