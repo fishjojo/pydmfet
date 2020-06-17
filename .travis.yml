@@ -1,15 +1,26 @@
+sudo: required
 language: python
+group: travis_lts
+
+git:
+  depth: 20
+
 python:
  - "3.5"
  - "3.6"
  - "3.7"
-cache: pip
+
+cache:
+  apt: true
+  pip: true
+
 before_install:
  - sudo apt-get -qq install gcc gfortran libblas-dev cmake curl
  - pip install -r requirements.txt
 install:
  - cd $TRAVIS_BUILD_DIR
  - echo $LD_LIBRARY_PATH
+ - ls /usr/local/lib
  - pip install .
 script:
  - cd $TRAVIS_BUILD_DIR/tests
