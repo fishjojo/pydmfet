@@ -19,8 +19,9 @@ before_install:
  - pip install -r requirements.txt
 install:
  - cd $TRAVIS_BUILD_DIR
+ - ls /usr/lib
+ - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib
  - echo $LD_LIBRARY_PATH
- - ls /usr/local/lib
  - pip install .
 script:
  - cd $TRAVIS_BUILD_DIR/tests
