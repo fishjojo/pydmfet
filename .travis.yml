@@ -17,10 +17,13 @@ cache:
 before_install:
  - sudo apt-get -qq install gcc gfortran libblas-dev cmake curl
  - pip install -r requirements.txt
+ - pip install h5py
+ - pip install pyscf
 install:
  - cd $TRAVIS_BUILD_DIR
  - export LD_LIBRARY_PATH=/usr/lib
  - pip install .
 script:
- - cd $TRAVIS_BUILD_DIR/tests
- - python test_travis.py
+ - cd $TRAVIS_BUILD_DIR
+ - export OMP_NUM_THREADS=1
+ - pytest --durations=0 $TRAVIS_BUILD_DIR/pydmfet/test/
