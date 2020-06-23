@@ -1,6 +1,7 @@
-sudo: required
 language: python
-group: travis_lts
+group: travis_latest
+os: linux
+dist: bionic
 
 git:
   depth: 20
