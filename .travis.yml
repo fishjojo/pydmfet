@@ -22,7 +22,7 @@ before_install:
  - pip install pyscf
 install:
  - cd $TRAVIS_BUILD_DIR
- - export LD_LIBRARY_PATH=/usr/lib
+ - export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
  - pip install .
 script:
  - cd $TRAVIS_BUILD_DIR
