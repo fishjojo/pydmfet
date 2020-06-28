@@ -27,4 +27,4 @@ install:
 script:
  - cd $TRAVIS_BUILD_DIR
  - export OMP_NUM_THREADS=1
- - pytest --durations=0 $TRAVIS_BUILD_DIR/pydmfet/test/
+ - pytest --durations=0 $TRAVIS_BUILD_DIR/pydmfet
